@@ -1,83 +1,80 @@
 #!/usr/bin/env python3
 """
-Integrity checker for Claude Code skills - backpressure for two-stage loading.
+Integrity check for Claude Code skills - backpressure for two-stage loading.
 
 A skill loads in two stages: SKILL.md first, then its references through the links
-inside it. When a link is broken nothing crashes and nothing complains: the agent
-silently skips the step, and the only symptom is that the work came out worse than
-usual. This script turns that silent breakage into a loud one.
+inside it. When a link is broken the agent does not crash and does not complain:
+it silently skips the step, and the only way to notice is that the work came out
+worse than usual. This script turns that silent breakage into a loud one.
 
 Usage:  python check_skills.py                        # every skill
         python check_skills.py my-skill other-skill   # only these
         python check_skills.py --skills-dir ~/.claude/skills
 
-The skills directory is resolved in this order: the `--skills-dir` flag → the
-`CLAUDE_SKILLS_DIR` environment variable → the script's own directory, if skills
-actually live in it → `~/.claude/skills`.
+Where the skills live is decided in this order: the `--skills-dir` flag → the
+`CLAUDE_SKILLS_DIR` environment variable → the script's own folder, if skills sit
+in it → `~/.claude/skills`.
 
 What it catches:
   1. Broken routing - SKILL.md points at a references/… file that is not there.
-     This is the classic breakage when parts of a skill are moved out into
-     references: the instruction "open X" without an X becomes a silent skip.
+     This is the main failure when a chunk is moved out into a reference: the
+     instruction "open X" without X turns into a silently skipped step.
   2. Broken sibling links - inside references/ a neighbour is linked in the short
-     markdown form, [text](neighbour.md). Check (1) cannot see those: different form.
+     markdown form, [text](neighbour.md). Check (1) cannot see those: different shape.
   3. Link to a skill that does not exist - ~/.claude/skills/<name>/… after a rename.
   4. Orphans - a file in references/ that nothing links to. A pruning candidate:
      either it was never wired up, or it is no longer needed.
   5. Oversized SKILL.md - it is loaded in full on every activation (see BUDGET).
   6. Broken frontmatter - without name/description the skill never activates.
-  7. Agent Skills spec violations in the frontmatter: `description` length (1024 max),
-     `name` format and length, `name` not matching the folder name, `compatibility`
-     length (500 max). Claude Code does not enforce these limits today, which is what
-     makes the breakage quiet: it works locally and falls over when the skill is
-     published or run through `skills-ref validate`. Hence a warning, not an error.
+  7. Agent Skills spec violations in the frontmatter: `description` length (1024
+     max), the format and length of `name`, `name` not matching the folder,
+     `compatibility` length (500 max). Claude Code does not enforce these limits
+     today, so the breakage is silent: it works locally and falls over when the
+     skill is published or run through `skills-ref validate`. Hence ⚠️, not ⛔.
   8. Broken section pointer - `references/foo.md` → "Section" where that heading no
-     longer exists in the file. The file itself is present, so check (1) stays quiet
-     while the agent opens the reference and does not find what it came for. This
-     breaks on a heading rename, i.e. during ordinary editing, with no files moved.
-  9. Broken outbound path - a skill points at `~/Documents/…/Note.md` and the note was
-     renamed. For skills that read an external knowledge base before they start
-     working, this is the main source of quiet degradation: the theory is gone and the
-     work goes ahead anyway. Non-ASCII names are compared normalized - a letter with a
-     diacritic can be stored precomposed (NFC) or as a base letter plus a combining
-     mark (NFD), and then a live file reads as a missing one.
+     longer exists in the file. The file is in place, so check (1) stays quiet while
+     the agent opens the reference and does not find what it came for. It breaks on
+     a renamed heading, that is, on ordinary editing, with no file moves at all.
+  9. Broken outbound path - a skill points at `~/Desktop/…/Note.md` and the note was
+     renamed. For skills that read a knowledge vault before working this is the main
+     source of silent degradation: the theory is gone and the work goes on anyway.
+     Cyrillic is compared normalized: "ё" is sometimes stored as "е" + U+0308 (NFD),
+     and then a live file reads as a missing one.
  10. Unknown frontmatter key - a typo such as `descriptoin:` kills the skill in
      silence: no field means no description, which means the agent never calls it.
  11. Duplicate `name:` across skills - one shadows the other, and which one wins is
-     not something you can predict in advance.
- 12. Oversized reference - references/ are read in full once they are reached. A 30 KB
-     file cancels out the whole point of two-stage loading (see REF_BUDGET).
- 13. Skill with no body - frontmatter present, instructions missing: it activates and
-     says nothing.
- 14. Too short a `description` - two words contain no trigger conditions, and trigger
-     conditions are the only thing the agent uses to decide whether to open the skill
-     at all (see DESC_MIN).
- 15. Code as prose - a long block in an executable language sitting in the skill text
-     (see SCRIPT_LINES). A step that is always performed the same way belongs in a
-     script under scripts/, not in a paragraph of instructions: code in prose is
-     retyped by the model every time (probabilistically, and for tokens), cannot be
-     run, and cannot be fixed once and for all. What is left for the instructions is
-     when to call the script and how to read its output. Bad/good example pairs do not
-     count (see EXAMPLE_RE): that code is shown, not executed, and in a file it would
-     be dead.
+     not something you can tell in advance.
+ 12. Oversized reference - references/ are read in full once they are reached. A
+     30 KB file cancels the point of two-stage loading (see REF_BUDGET).
+ 13. Skill with no body - frontmatter present, instructions missing: it activates
+     and says nothing.
+ 14. Too short a `description` - two words hold no trigger conditions, and trigger
+     conditions are the only thing the agent uses to decide whether to open the
+     skill (see DESC_MIN).
+ 15. Code as prose - a long block in an executable language sitting in the skill
+     text (see SCRIPT_LINES). A step that is always done the same way belongs in
+     `scripts/`, not in a paragraph: code in prose is retyped by the model every
+     time, that is, probabilistically and for tokens, and it can neither be run nor
+     fixed once and for all. The instruction only has to say when to call the script
+     and how to read its output. Teaching pairs are exempt (see EXAMPLE_RE): that
+     kind of code is shown, not executed, and in a file it would be dead.
 
 Flags:
-  --quiet   stay silent when everything is clean; print problems only
-  --mark    PostToolUse hook mode: check nothing, only record which skills were
-            touched during this turn. Edits outside the skills directory are
-            ignored. Understands both Write/Edit (file_path) and Bash (command):
-            without parsing the command the check is blind to edits made through
-            heredoc, sed, mv and rm.
-  --stop    Stop hook mode: if no skill was touched this turn, stay silent;
+  --quiet   say nothing when everything is clean; print problems only
+  --mark    PostToolUse hook mode: check nothing, only remember which skills were
+            touched during the turn. Edits outside the skills folder are ignored.
+            Understands Write/Edit (file_path) and Bash (command): without parsing
+            the command the check is blind to edits made through heredoc, sed, mv
+            and rm.
+  --stop    Stop hook mode: if no skill was touched during the turn, stay silent;
             otherwise run the full check and block the stop until the errors are
-            fixed. Checking at the end of the turn is deliberate: at PostToolUse
-            time the skill is still half-written, and a fresh SKILL.md would be
-            flagged for references/ files its author is about to create with the
-            very next command.
+            fixed. Checking at the end of the turn is deliberate: on PostToolUse the
+            skill is still half-written, and a fresh SKILL.md would complain about
+            references/ that the author is about to create with the next command.
   --hook    deprecated synonym for --mark.
 
-Exit codes: 0 - clean, 1 - errors (⛔), 2 - the same in hook mode (the only code
-the harness passes back to the model). Warnings (⚠️) never fail the run.
+Exit codes: 0 - clean, 1 - errors (⛔), 2 - the same in hook mode (the only code the
+harness passes on to the model). Warnings (⚠️) never fail the run.
 """
 import glob
 import json
@@ -93,13 +90,12 @@ SCRIPT_LINES = 15        # lines of code in prose - above this the block must be
 SUBDIRS = ("references", "assets", "scripts", "templates")
 
 # Languages in which a block in the text is a program, not an illustration. markdown,
-# yaml, json and text are deliberately out: there a block shows the shape of a result,
-# not a step to perform.
+# yaml, json and text are out: there a block shows the shape of a result, not a step.
 CODE_LANGS = {"python", "py", "bash", "sh", "shell", "powershell", "ps1", "pwsh"}
 
-# Frontmatter keys that mean something: the Agent Skills spec plus what Claude Code
-# understands. Anything else is almost certainly a typo - and a typo in a key is not a
-# syntax error: the field simply disappears, taking its meaning with it.
+# Frontmatter keys that mean something: the Agent Skills specification plus what
+# Claude Code understands. Anything else is almost certainly a typo, and a typo in a
+# key is not a syntax error: the field simply disappears along with its meaning.
 KNOWN_KEYS = {
     "name", "description", "license", "compatibility", "allowed-tools",
     "metadata", "version",
@@ -110,10 +106,10 @@ KNOWN_KEYS = {
 def resolve_skills_dir(argv):
     """Where the skills live.
 
-    "The script's folder is the skills folder" is not a safe assumption: the script
-    may sit in the skills root, inside somebody's scripts/, or anywhere else at all.
-    Hence the order: explicit flag → environment variable → the script's folder, but
-    only if skills really are in it → the standard location.
+    "The script's folder is the skills folder" is not safe to assume: the script can
+    sit at the root of the skills tree, inside somebody's scripts/, or anywhere else.
+    Hence the order: explicit flag → environment variable → the script's own folder,
+    if skills really do sit in it → the standard location.
     """
     for i, a in enumerate(argv):
         if a == "--skills-dir" and i + 1 < len(argv):
@@ -130,67 +126,65 @@ def resolve_skills_dir(argv):
 
 
 SKILLS_DIR = resolve_skills_dir(sys.argv[1:])
-# The "skills were touched this turn" marker: written by --mark, read and cleared by
-# --stop. Without it the Stop hook would have to run after every turn in every project.
+# The "skills were touched this turn" mark: --mark writes it, --stop reads and clears
+# it. Without it the Stop hook would have to run after every turn in every project.
 MARKER = os.path.join(SKILLS_DIR, ".check-pending")
 
 # A link to a file inside the skill: `references/foo.md`, `scripts/bar.py`.
-# The negative lookbehind cuts off the case where the same folder/file pair turns out
-# to be the tail of SOMEBODY ELSE'S path: `~/tools/agent-memory/scripts/add_drawer.py`
+# The negative lookbehind cuts off the case where the same "folder/file" pair turns
+# out to be the tail of SOMEBODY ELSE'S path: `~/Desktop/my/agent-memory/scripts/x.py`
 # is a tool outside the skills tree, and checking for it inside the skill folder makes
-# no sense. Without this, every link to an external script raises a false "file missing".
+# no sense. Without this, any link to an external script is a false "file is missing".
 LINK_RE = re.compile(r"(?<![\w./\\-])(?:" + "|".join(SUBDIRS) + r")/[\w./-]+\.\w+")
-# cross-skill link: .../skills/<other skill>/references/foo.md or .../SKILL.md - not our file
+# cross-skill link: .../skills/<other skill>/references/foo.md or .../SKILL.md
 CROSS_RE = re.compile(
     r"skills/([\w-]+)/((?:(?:" + "|".join(SUBDIRS) + r")/[\w./-]+\.\w+)|SKILL\.md)")
-# templated link to a directory: references/institutions/<slug>.md → the whole folder is in use
+# a templated link to a directory: references/institutions/<slug>.md → the whole folder
 WILDCARD_RE = re.compile(r"((?:" + "|".join(SUBDIRS) + r")/[\w./-]*?)/?<[^>]+>\.\w+")
-# markdown link to a neighbour in the same folder: [text](neighbour.md)
+# a markdown link to a neighbour in the same folder: [text](neighbour.md)
 SIBLING_RE = re.compile(r"\]\((?!https?:|#)([\w.-]+\.\w+)\)")
 
-# A path leading outside the skill - into a notes vault or into another skill. Only
-# what sits entirely inside backticks is taken: note names contain spaces and dashes,
-# and such a path cannot be cut out of running prose without grabbing extra words.
+# A path outside the skill - into a knowledge vault or into another skill. Only what
+# sits entirely in backticks is taken: note names contain spaces and dashes, and such
+# a path cannot be cut out of running prose without grabbing extra words.
 VAULT_RE = re.compile(r"`([~$][^`\n]{3,200})`")
 
-# A pointer to a section of a reference: `references/foo.md` → "Section", or
-# sections "A" and "B". Quotes are not allowed between the file and the pointer:
-# without that the window jumps over unrelated text and latches onto a quotation that
-# has nothing to do with any section.
-QUOTES = "\"\u201c\u201d\u00ab\u00bb"
+# A pointer to a section of a reference: `references/foo.md` → "Section" / «Раздел».
+# Guillemets are not allowed between the file and the pointer: without that the window
+# jumps over unrelated text and grabs a quotation that has nothing to do with a section.
+#
+# Both languages are matched on purpose. This script runs over skills written in
+# Russian and in English, and a matcher that knows only one of them does not report
+# less - it silently reports nothing, which is the failure mode the whole file exists
+# to prevent.
 SECPTR_RE = re.compile(
     r"((?:" + "|".join(SUBDIRS) + r")/[\w./-]+\.md)`?"      # the file
-    r"[^\n" + QUOTES + r"]{0,40}?"                          # a little text, no quotes
-    r"(?:\u2192|->|sections?)"                              # an explicit section marker
-    r"([^\n]{0,140})"                                       # rest of the line: the sections live there
+    r"[^\n«»]{0,40}?"                                       # a little text, no guillemets
+    r"(?:→|->|sections?|раздел[аыов]*)"                     # an explicit section marker
+    r"([^\n]{0,140})"                                       # rest of the line: sections live there
 )
-# The section name itself: straight quotes, curly quotes or guillemets.
-SECTION_RE = re.compile(
-    r"\"([^\"\n]{2,80})\""
-    r"|\u201c([^\u201d\n]{2,80})\u201d"
-    r"|\u00ab([^\u00bb\n]{2,80})\u00bb")
+SECTION_RE = re.compile(r"«([^»]{2,80})»|\"([^\"\n]{2,80})\"|“([^”\n]{2,80})”")
 
 # A code block in the text: ```python … ```. The fence length is remembered so that a
-# nested block inside an example does not end the outer one too early.
+# nested block inside an example does not cut the outer one short.
 CODE_RE = re.compile(r"^(?P<fence>`{3,})[ \t]*(\w+)[^\n]*\n(.*?)^(?P=fence)", re.M | re.S)
 
-# Code that DEMONSTRATES rather than EXECUTES. A bad/good pair is teaching material:
-# moving it into scripts/ means throwing it away, not optimising it. Length here is a
-# sign of a thorough example, not of debt.
+# Code that DEMONSTRATES rather than EXECUTES. A "bad - good" pair is teaching
+# material: moving it into scripts/ would be throwing it away, not optimizing it.
+# Length here is a sign of a thorough example, not of debt.
 #
-# The marker has to LABEL the block - stand on its own header line, usually inside a
-# comment (`# WRONG`). Searching for it anywhere inside the code is not allowed: words
-# like "before" and "after" show up in ordinary comments, and "❌" shows up in a string
-# that a real script prints. That laxity once hid a 49-line draft script - the very
-# thing this check was written for.
+# The marker has to LABEL the block - to stand on its own line as a heading, usually
+# in a comment (`# WRONG`). Looking for it anywhere inside the code is not allowed:
+# words like "before" and "after" show up in ordinary comments, and "❌" shows up in a
+# string that a real script prints. That exemption once hid a 49-line draft script,
+# the very thing this check was written for.
 #
-# The markers are English-only, as is the section keyword in SECPTR_RE above. If your
-# skills are written in another language, add your own words to both alternations -
-# that is the one place in this file that is language-specific.
+# Russian and English markers both, for the reason given above SECPTR_RE.
 EXAMPLE_RE = re.compile(
     r"^[ \t]*(?:#+|//)?[ \t]*"
-    r"(?:WRONG|RIGHT|BAD|GOOD|BEFORE|AFTER|DON'T|DO|\u274c|\u2705)"
-    r"[ \t]*[-\u2014:,]?[^\n]{0,60}$", re.M)
+    r"(?:WRONG|RIGHT|BAD|GOOD|BEFORE|AFTER|DON'T|DO|"
+    r"НЕПРАВИЛЬНО|ПРАВИЛЬНО|ПЛОХО|ХОРОШО|БЫЛО|СТАЛО|ДО|ПОСЛЕ|❌|✅)"
+    r"[ \t]*[-—:,]?[^\n]{0,60}$", re.M)
 
 # Agent Skills specification: agentskills.io/specification.md
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -200,13 +194,12 @@ COMPAT_MAX = 500
 
 
 def path_exists(p):
-    """Does this file or folder exist - allowing for how the name is encoded.
+    """Whether such a file or folder exists, allowing for Unicode normalization.
 
-    Within one and the same string a letter with a diacritic can be a single character
-    (NFC) or a base letter plus a combining mark (NFD). Different bytes,
-    indistinguishable by eye, and `os.path.exists` answers "no" for a file that is
-    right there. So a miss is re-checked by comparing the directory listing in
-    normalized form.
+    In one and the same string "ё" can be a single character (NFC) or the pair
+    "е" + U+0308 (NFD). The bytes differ, the eye cannot tell, and `os.path.exists`
+    answers "no" about a file that is there. So a miss is rechecked by comparing the
+    names in the folder normalized.
     """
     p = os.path.expanduser(p.replace("$HOME", "~").replace("${HOME}", "~"))
     p = p.rstrip("/\\") or p
@@ -224,26 +217,25 @@ def path_exists(p):
 
 
 def vault_paths(text):
-    """Outbound paths taken from backticks - templates and placeholders excluded.
+    """Outbound paths from backticks - without templates and placeholders.
 
-    `<name>.md` and `*` describe the shape of a path, not a path: there is nothing
-    there to check.
+    `<name>.md` and `*` are the shape of a path, not a path: there is nothing to check.
     """
     out = set()
     for raw in VAULT_RE.findall(text):
-        p = raw.strip().rstrip(".,;:)\u00bb")
+        p = raw.strip().rstrip(".,;:)»")
         if not p.startswith(("~/", "~\\", "$HOME", "${HOME}")):
             continue
         if any(c in p for c in "<>*?|"):
             continue
         if " " in p and not re.search(r"\.\w{1,5}$|/$", p):
-            continue                      # "~/somewhere in there" from prose, not a path
+            continue                      # "~/something or other" from prose, not a path
         out.add(p)
     return out
 
 
 def fm_field(fm, key):
-    """A frontmatter value, block scalars (`>-`, `|`) included, collapsed to one line."""
+    """A frontmatter key's value, block scalars (`>-`, `|`) included, collapsed to a line."""
     m = re.search(
         rf"^{key}:[ \t]*(>[-+]?|\|[-+]?)?[ \t]*\n?(.*?)(?=^[A-Za-z_][\w-]*:|\Z)",
         fm, re.M | re.S)
@@ -251,20 +243,20 @@ def fm_field(fm, key):
 
 
 def headings(path):
-    """The set of headings in a file, normalized for comparison."""
+    """The set of a file's headings, normalized for comparison."""
     try:
         text = open(path, encoding="utf-8", errors="replace").read()
     except OSError:
         return set()
     # MULTILINE is mandatory: without it ^ and $ only match the very start and end of
-    # the whole text, no headings are collected at all, and the check quietly idles
-    # while reporting "clean".
+    # the text, no headings are collected at all, and the check idles while reporting
+    # everything is clean.
     return {" ".join(h.split()).casefold()
             for h in re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", text, re.M)}
 
 
 def collect(text, mentioned, cross, wildcard_dirs, cross_full=None):
-    """Split the links found in a text into local, cross-skill and templated ones."""
+    """Sort the links found in a text into local, cross-skill and templated ones."""
     for skill, rel in CROSS_RE.findall(text):
         cross.add(rel)
         if cross_full is not None:
@@ -275,10 +267,10 @@ def collect(text, mentioned, cross, wildcard_dirs, cross_full=None):
 
 
 def collect_pointers(text, source, pointers):
-    """"File + section" pointers: (where from, which file, which section).
+    """"File plus section" pointers: (where from, which file, which section).
 
-    The tail after the pointer is parsed whole - that is how the form
-    'sections "A" and "B"', with several sections on one line, is caught too.
+    The tail after the pointer is parsed in full - that is how the form
+    'sections "A" and "B"' is caught, where one line names several sections.
     """
     for target, tail in SECPTR_RE.findall(text):
         for groups in SECTION_RE.findall(tail):
@@ -307,29 +299,29 @@ def check(skill):
         text = f.read()
     size = len(text.encode("utf-8"))
 
-    # 1. frontmatter - required fields and compliance with the spec
+    # 1. frontmatter - required fields and conformance to the specification
     fm = frontmatter(text)
     if fm is None:
-        errors.append("no frontmatter (--- at the top of the file)")
+        errors.append("no frontmatter (--- at the start of the file)")
     else:
         for key in ("name:", "description:"):
             if key not in fm:
                 errors.append(f"frontmatter has no `{key}`")
 
-        # Spec limits are warnings, not errors: Claude Code does not enforce them today
-        # and the skill works. It breaks on publication and on `skills-ref validate`.
+        # Spec limits are warnings, not errors: Claude Code does not enforce them
+        # today and the skill works. It breaks on publication and `skills-ref validate`.
         name = fm_field(fm, "name")
         if name:
             if name != skill:
                 errors.append(
                     f"`name: {name}` does not match the folder name `{skill}` - "
-                    f"the spec requires them to match; rename one of the two")
+                    f"the spec requires they match; rename one of the two")
             if len(name) > NAME_MAX:
-                warnings.append(f"`name` is {len(name)} chars > {NAME_MAX} in the spec")
+                warnings.append(f"`name` is {len(name)} chars > {NAME_MAX} per the spec")
             if not NAME_RE.match(name):
                 warnings.append(
-                    f"`name: {name}` breaks the spec: lowercase latin letters, digits "
-                    f"and single hyphens only, never at the edges")
+                    f"`name: {name}` is off-spec: lowercase latin letters, digits and "
+                    f"single hyphens only, never at the edges")
 
         desc = fm_field(fm, "description")
         if desc is not None:
@@ -337,35 +329,34 @@ def check(skill):
                 errors.append("`description` is empty - the skill will never trigger")
             elif len(desc) > DESC_MAX:
                 warnings.append(
-                    f"`description` is {len(desc)} chars > {DESC_MAX} in the spec "
+                    f"`description` is {len(desc)} chars > {DESC_MAX} per the spec "
                     f"({len(desc) - DESC_MAX} over) - Claude Code tolerates it, "
-                    f"publishing and `skills-ref validate` do not")
+                    f"publication and `skills-ref validate` do not")
 
         compat = fm_field(fm, "compatibility")
         if compat and len(compat) > COMPAT_MAX:
-            warnings.append(
-                f"`compatibility` is {len(compat)} chars > {COMPAT_MAX} in the spec")
+            warnings.append(f"`compatibility` is {len(compat)} chars > {COMPAT_MAX} per the spec")
 
-        # A skill with model invocation disabled is only ever called by slash command.
-        # It needs no trigger wording: a human decides, not the description.
+        # A skill disabled for the model is only ever called by slash. It needs no
+        # trigger words: the decision is the human's, not the description's.
         slash_only = (fm_field(fm, "disable-model-invocation") or "").lower() == "true"
         if desc and not slash_only and len(desc) < DESC_MIN:
             warnings.append(
                 f"`description` is {len(desc)} chars < {DESC_MIN} - it holds no trigger "
-                f"conditions, and those are what the agent decides by")
+                f"conditions, and those are what the agent uses to decide whether to open it")
 
-        # A typo in a key does not break the YAML: the field just vanishes, meaning included.
+        # A typo in a key does not break the YAML: the field just vanishes with its meaning.
         for key in re.findall(r"^([A-Za-z_][\w-]*):", fm, re.M):
             if key not in KNOWN_KEYS:
                 warnings.append(
                     f"unknown frontmatter key `{key}:` - a typo? "
-                    f"the harness ignores it silently")
+                    f"the harness ignores it in silence")
 
-    # 2. collect every link to a file of this skill - from SKILL.md and from the references
+    # 2. collect every link to the skill's files - from SKILL.md and from the references
     mentioned, cross, wildcard_dirs, cross_full = set(), set(), set(), set()
     pointers = []
-    texts = [text]                        # for the outbound path check - see item 9
-    sources = [("SKILL.md", text)]        # same, by file name - see item 15
+    texts = [text]                        # for outbound path checking - see item 9
+    sources = [("SKILL.md", text)]        # the same with file names - see item 15
     collect(text, mentioned, cross, wildcard_dirs, cross_full)
     collect_pointers(text, "SKILL.md", pointers)
     for sub in SUBDIRS:
@@ -383,7 +374,7 @@ def check(skill):
                     sources.append((rel_here, body))
                     collect(body, mentioned, cross, wildcard_dirs, cross_full)
                     collect_pointers(body, rel_here, pointers)
-                    # sibling markdown links resolve against the file's own folder
+                    # sibling markdown links resolve from the file's own folder
                     for sib in SIBLING_RE.findall(body):
                         target = os.path.join(dirpath, sib)
                         if not os.path.exists(target):
@@ -392,14 +383,14 @@ def check(skill):
                         else:
                             mentioned.add(os.path.relpath(target, root).replace("\\", "/"))
 
-    # 2b. a link to the skill's own file written as a full path
-    #     (`~/.claude/skills/video/scripts/…`) is our own route, not somebody else's.
-    #     Without this step a script that the skill can only invoke the one way that
-    #     works (a full path, or it cannot be run from an arbitrary folder) counted as
-    #     an orphan - and the whole "orphan" class stopped meaning anything.
+    # 2b. a link to the skill's own file by full path (`~/.claude/skills/video/scripts/…`)
+    #     is our own route, not somebody else's. Without this step a script that the
+    #     skill calls the only way it can (by full path, or it would not run from an
+    #     arbitrary folder) counted as an orphan - and the "orphan" class stopped
+    #     meaning anything.
     mentioned |= {rel for other, rel in cross_full if other == skill}
 
-    # 3. broken links - but only the ones not explained by a link into another skill
+    # 3. broken links - but only those not explained by a link into another skill
     others = {d for d in os.listdir(SKILLS_DIR)
               if os.path.isdir(os.path.join(SKILLS_DIR, d)) and d != skill}
     for rel in sorted(mentioned - cross):
@@ -411,22 +402,19 @@ def check(skill):
                 f"path with no skill name: {rel} - it lives in `{elsewhere[0]}`, "
                 f"spell it out as `~/.claude/skills/{elsewhere[0]}/{rel}`")
         elif not os.path.isdir(os.path.join(root, rel.split("/", 1)[0])):
-            # The folder does not exist at all - this is nearly always an example path
-            # from SOMEBODY ELSE'S repository (`assets/readme/hero.svg` in a README
-            # skill), not our routing. Not an error: otherwise the hook would fail on
-            # every edit because of example paths in the prose.
-            warnings.append(
-                f"path with no such folder in the skill: {rel} - looks like an example, "
-                f"not a route")
+            # The folder does not exist at all - this is almost always an example of a
+            # path in SOMEBODY ELSE'S repository, not our own routing. Not an error:
+            # otherwise the hook fails on every edit because of examples in the text.
+            warnings.append(f"path with no such folder in the skill: {rel} - looks like an example, not a route")
         else:
-            errors.append(f"link to a missing file: {rel}")
+            errors.append(f"link to a file that does not exist: {rel}")
 
-    # 3b. section pointers: the file exists, the heading no longer does
+    # 3b. section pointers: the file is there, the heading in it is not
     heads_cache = {}
     for source, target, section in pointers:
         full = os.path.join(root, target)
         if not os.path.isfile(full):
-            continue                      # a missing file is check 3's job, no duplicates
+            continue                      # a missing file is check 3's job, no need to repeat it
         if full not in heads_cache:
             heads_cache[full] = headings(full)
         heads = heads_cache[full]
@@ -435,7 +423,7 @@ def check(skill):
         want = " ".join(section.split()).casefold()
         if not any(want == h or want in h for h in heads):
             warnings.append(
-                f'pointer to a missing section: {target} \u2192 "{section}" (from {source})')
+                f"pointer to a section that is gone: {target} → \"{section}\" (from {source})")
 
     # 4. orphans
     on_disk = set()
@@ -450,32 +438,28 @@ def check(skill):
                 rel = os.path.relpath(os.path.join(dirpath, fn), root).replace("\\", "/")
                 on_disk.add(rel)
     for rel in sorted(on_disk - mentioned):
-        # the folder is wired up through a template (references/types/<type>.md) -
-        # the files inside it are not orphans
+        # the folder is wired in by a template (references/types/<type>.md) - not orphans
         if any(rel.startswith(d + "/") for d in wildcard_dirs):
             continue
         warnings.append(f"orphan (nothing links to it): {rel}")
 
-    # 5. cross-skill links: does the skill exist, and does the file exist inside it
+    # 5. cross-skill links: does the skill exist, and the file inside it
     for other, rel in sorted(cross_full):
         if other == skill:
-            # our own file spelled as a full path: it slipped past check 3 (which
-            # subtracts cross-skill links), so its existence is verified here
+            # our own file named by full path: it slipped past check 3 (which subtracts
+            # cross links), so its existence is verified here
             if not os.path.exists(os.path.join(root, rel)):
-                errors.append(f"link to a missing file: {rel}")
+                errors.append(f"link to a file that does not exist: {rel}")
             continue
         if not os.path.isdir(os.path.join(SKILLS_DIR, other)):
             errors.append(f"link to a skill that does not exist: {other} (in {rel})")
         elif not os.path.exists(os.path.join(SKILLS_DIR, other, rel)):
             errors.append(f"skill {other} has no file {rel}")
 
-    # 6. budget - for SKILL.md and for the references alike: the second level is paid
-    #    for in context too, just later. A 30 KB reference is opened whole, and there
-    #    is nobody to split it for you.
+    # 6. budget - for SKILL.md and for references alike: the second stage is paid for in
+    #    context too, just later. A 30 KB reference is opened whole, nobody splits it.
     if size > BUDGET:
-        warnings.append(
-            f"SKILL.md is {size} B > the {BUDGET} B budget - "
-            f"something can move into references/")
+        warnings.append(f"SKILL.md is {size} B > the {BUDGET} B budget - something can move into references/")
     for rel in sorted(on_disk):
         if not rel.endswith(".md"):
             continue
@@ -485,10 +469,9 @@ def check(skill):
             continue
         if rsize > REF_BUDGET:
             warnings.append(
-                f"{rel} is {rsize} B > the {REF_BUDGET} B budget - "
-                f"it is opened whole, split it")
+                f"{rel} is {rsize} B > the {REF_BUDGET} B budget - it is opened whole, split it")
 
-    # 7. the body: frontmatter present, instructions missing - it activates and says nothing
+    # 7. body: frontmatter present, instructions missing - the skill activates and says nothing
     main_body = text[text.find("\n---", 3) + 4:] if fm is not None else text
     if not main_body.strip():
         errors.append("no body: frontmatter is there, instructions are not")
@@ -500,8 +483,8 @@ def check(skill):
         if not path_exists(p):
             errors.append(f"no such path: {p}")
 
-    # 9. code as prose instead of a file. Only meaningful lines are counted: blank and
-    #    comment lines do not make a program, and the threshold drifts if they are.
+    # 9. code as prose instead of a file. Substantive lines are counted: blank lines and
+    #    comment lines do not make a program, and the threshold drifts on them.
     for src, body in sources:
         for _, lang, code in CODE_RE.findall(body):
             if lang.lower() not in CODE_LANGS or EXAMPLE_RE.search(code):
@@ -511,8 +494,8 @@ def check(skill):
             if len(payload) > SCRIPT_LINES:
                 warnings.append(
                     f"code as prose: {src} - a ```{lang} block of {len(payload)} lines "
-                    f"> {SCRIPT_LINES}; move it into scripts/ and leave the call and "
-                    f"how to read its output in the text")
+                    f"> {SCRIPT_LINES}; move it into scripts/ and leave the call and how "
+                    f"to read its output in the text")
 
     return errors, warnings, size, name
 
@@ -520,10 +503,10 @@ def check(skill):
 def skills_in(blob):
     """Skill names mentioned as paths inside a text.
 
-    The path to the skills folder is written in many ways: `~/.claude/skills/bars`,
-    `C:\\Users\\me\\.claude\\skills\\bars`, and under git-bash also
-    `/c/Users/me/.claude/skills/bars`. The full path is no anchor here - we latch onto
-    its two-part tail (`.claude/skills`) and take whatever name follows it.
+    The path to the skills folder is written in several ways: `~/.claude/skills/bars`,
+    `C:\\Users\\joker\\.claude\\skills\\bars`, and in git-bash also
+    `/c/Users/joker/.claude/skills/bars`. The full path is no anchor here - we hold on
+    to its two-part tail (`.claude/skills`) and take the name that follows it.
     """
     norm = blob.replace("\\", "/")
     parts = [p for p in os.path.normpath(SKILLS_DIR).replace("\\", "/").split("/") if p]
@@ -535,16 +518,16 @@ def skills_in(blob):
         if who and not who.startswith(".") and not who.endswith(".py"):
             found.add(who)
     if seen_root and not found:
-        found.add("*")                    # the folder was touched, which skill is unclear
+        found.add("*")                    # the folder was touched, which skill is unreadable
     return found
 
 
 def touched_skills():
     """Which skills this tool call touched.
 
-    Write/Edit put the path in `file_path`, Bash puts the whole command in `command`.
-    Reading only `file_path` means being blind to edits through heredoc, sed, mv and
-    rm - and skills are edited that way just as often as through an editor.
+    Write/Edit put the path in `file_path`, Bash puts a whole command in `command`.
+    Reading only `file_path` means not seeing edits through heredoc, sed, mv and rm,
+    and skills are edited that way as often as with an editor.
     """
     try:
         payload = json.load(sys.stdin)
@@ -569,7 +552,7 @@ def write_marker(names):
         with open(MARKER, "w", encoding="utf-8") as f:
             f.write("\n".join(sorted(names)))
     except OSError:
-        pass                              # the marker is a convenience, not a precondition
+        pass                              # the mark is a convenience, not a precondition
 
 
 def clear_marker():
@@ -603,7 +586,7 @@ def main():
         names = touched_skills()
         if names:
             write_marker(read_marker() | names)
-        return 0                          # PostToolUse only marks, it does not judge
+        return 0                          # on PostToolUse we only mark, never judge
 
     touched = None
     if stop:
@@ -615,7 +598,7 @@ def main():
             return 0                      # the stop was already blocked - do not loop
         touched = read_marker()
         if not touched:
-            return 0                      # no skill touched this turn, nothing to check
+            return 0                      # no skill was touched this turn, nothing to check
         clear_marker()
 
     targets = args or sorted(
@@ -633,9 +616,9 @@ def main():
         if name:
             by_name.setdefault(name, []).append(skill)
         total_err += len(errors)
-        # Warnings: on a manual run - for every skill; in the Stop hook - only for the
-        # ones edited this turn (their author has already seen the others and is not
-        # going to fix them now); on a bare --quiet - never, there only breakage counts.
+        # Warnings: on a manual run, for every skill; in the Stop hook, only for the
+        # ones edited this turn (the author has already seen the others and will not
+        # sit down to fix them); on a bare --quiet, never - there only breakage matters.
         show_warn = bool(warnings) and stop and ("*" in touched or skill in touched)
         if quiet and not errors and not show_warn:
             continue
@@ -644,18 +627,17 @@ def main():
         if show_warn or not quiet:
             lines.extend(f"     ⚠️  {w}" for w in warnings)
 
-    # Duplicate `name` across skills: the harness picks one and says nothing about the
-    # other, and which one it picks is not predictable. The check is global, hence here.
+    # A duplicate `name` across skills: the harness picks one and says nothing about the
+    # other, and which one it picks is not knowable in advance. A global check, hence here.
     for name, dirs in sorted(by_name.items()):
         if len(dirs) > 1:
             total_err += 1
             lines.append(
-                f"⛔ duplicate `name: {name}` - folders {', '.join(dirs)}; "
-                f"one shadows the other")
+                f"⛔ duplicate `name: {name}` - folders {', '.join(dirs)}; one shadows the other")
 
     if quiet:
         if lines:
-            # in a hook the reader is the model, and the harness hands it stderr, not stdout
+            # in the hook the reader is the model, and the harness hands it stderr, not stdout
             print("The skill check found breakage that needs fixing:" if total_err
                   else "Skills were edited, the check has remarks:", file=sys.stderr)
             print("\n".join(lines), file=sys.stderr)

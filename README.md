@@ -49,7 +49,8 @@ Otherwise the hook would fail on every skill that shows example paths from anoth
 **The section pointer** (10) is the one an ordinary link checker cannot do. The file exists,
 so the link is fine; it is the *heading* inside it that was renamed. The agent opens the
 reference and does not find what it came for. Only the explicit form is matched: a file, then
-`→`, `->` or the word *section*, then the name in quotes - `"x"`, `“x”` or `«x»`. A loose
+`→`, `->` or the word *section* (or Russian *раздел*), then the name in quotes - `"x"`,
+`“x”` or `«x»`. A loose
 paraphrase is deliberately not matched: guessing at those produces false positives on
 ordinary quotations, and a linter that lies stops being read.
 
@@ -58,6 +59,11 @@ the same way belongs in `scripts/`: code left in the instructions is retyped by 
 every run - probabilistically, and for tokens - cannot be executed, and cannot be fixed once
 and for all. Bad/good example pairs are exempt (they are teaching material, and in a file
 they would be dead), recognised by a marker line such as `# WRONG` / `# GOOD`.
+
+Both checks read Russian as well as English. A skill tree is often written in one
+language and linted by a tool written in another, and a matcher that knows only one of
+them does not report less: it silently reports nothing, which is the exact failure this
+script exists to prevent.
 
 Both the example markers and the *section* keyword are English. For skills written in
 another language, add your words to `EXAMPLE_RE` and `SECPTR_RE` at the top of the script -
