@@ -1,71 +1,158 @@
 ---
-name: skill-lint
-description: >-
-  Integrity check for Claude Code skills: broken links into references/, pointers to
-  sections that no longer exist, links to skills that were renamed away, orphan files,
-  broken frontmatter, Agent Skills spec violations (description length, name format,
-  name not matching the folder), an oversized SKILL.md, and long code blocks left in
-  the prose instead of scripts/. Trigger when the user asks to check or lint skills,
-  complains that a skill "does not fire" or "only half works", renames a skill, a file
-  inside one, or a heading inside a reference, moves part of a SKILL.md out into a
-  reference, installs somebody else's skill and wants to be sure it is intact, or asks
-  why the agent keeps skipping steps of an instruction. Also before publishing or
-  committing a skill.
+name: skill-quality-suite
+description: Reviews, repairs and builds Agent Skills - structure, specification conformance, instruction quality, cross-runtime compatibility, security, routing, publication readiness and mechanical fixes, under one command. Use when asked to check, lint, validate, audit or score a SKILL.md; when a skill does not fire, fires on somebody else's work, or half-works and silently skips steps; when writing a new skill or reworking an existing one; after renaming a skill, a file inside one, or a heading a reference points at; before committing or publishing a skill; and when a skill arrives from elsewhere and has to be read before it is trusted.
 ---
 
-# Checking skills
+# Skill quality suite
+
+Eight checks over a skill, one command each. They are separate because they fail at
+different moments: structure breaks today and in silence, the specification breaks on
+publication, compatibility breaks on somebody else's machine, routing breaks when a
+neighbour's description moves. Running them as one undifferentiated pass reports all
+four with the same urgency, which is how a report stops being read.
+
+Everything lives in `scripts/sqs.py`. No dependencies; it finds the skills folder on its
+own, or takes `--skills-dir`.
+
+## Start here
+
+| The situation | Run |
+|---|---|
+| Just edited a skill, want it intact | `sqs.py check <skill>` |
+| A skill does not fire, or half-works | `sqs.py check <skill>` then `sqs.py evals --live --skill <skill>` |
+| Writing a new skill | `sqs.py new <name>`, then [creating-a-skill.md](references/creating-a-skill.md) |
+| Reworking a skill that grew unwieldy | `sqs.py check <skill>`, then the reading pass in [writing-rubric.md](references/writing-rubric.md) |
+| A skill arrived from elsewhere | `sqs.py security <skill>` **before** running it, then `check` |
+| About to commit or publish | `sqs.py all <skill> --strict`, then [publishing.md](references/publishing.md) |
+| Renamed something | `sqs.py structure` - it catches the pointers the rename orphaned |
+| Sweeping the whole tree | `sqs.py check --quiet` |
+| Will it work anywhere but this machine | `sqs.py compat <skill> --harness all` |
+
+`check` is the everyday one: structure, spec, quality, compat and security together.
+`all` adds the publish module. Neither runs the live routing pass, which costs money.
+
+## Reading the report
 
 ```
-python ~/.claude/skills/skill-lint/scripts/check_skills.py
-python ~/.claude/skills/skill-lint/scripts/check_skills.py my-skill other   # these only
+⛔ SP004  `name: video-tools` does not match the folder `video` (SKILL.md)
+⚠️  ST006  SKILL.md is 21370 B > the 15000 B budget (SKILL.md)
+·   QL006  при необходимости - lines 191, 295 (SKILL.md:191)
 ```
 
-No dependencies. The script finds the skills folder on its own; override it with
-`--skills-dir <path>` when needed.
+- **⛔ error** - fix it. Nothing here is cosmetic: a broken pointer into `references/`
+  does not crash anything, the agent just skips the step in silence, and from outside it
+  looks like the work came out weaker than usual. That is why this class of breakage
+  survives for months.
+- **⚠️ warning** - a decision, not a defect. An orphan file is either unwired or no
+  longer needed, and only you know which.
+- **· info** - a nudge. Real, small, and safe to leave.
 
-## How to read the result
+Every finding carries a rule code. `sqs.py explain ST008` gives the code's reasoning and
+its fix; `sqs.py rules` lists all of them. Reach for `explain` rather than guessing at
+what a message means - the reasoning is the part that decides whether the finding
+applies to your case.
 
-⛔ **Errors have to be fixed.** A broken link into `references/…` does not crash anything:
-the agent silently skips the step, and from the outside it just looks like weaker work.
-That is exactly why such breakage survives for months. The same goes for a `name` that
-does not match the folder: the spec requires them to match, and some loaders trip on it.
+## The eight modules
 
-⚠️ **Warnings are something to think about, not to fix mechanically:**
+```
+sqs.py structure   links, orphans, budgets, section pointers, outbound paths
+sqs.py spec        layout, fences, description shape, asset weight, nesting
+sqs.py quality     the description as a pointer, placeholders, vague bounds
+sqs.py compat      will the skill work on somebody else's harness
+sqs.py security    secrets, destructive commands, injection, hidden characters
+sqs.py evals       routing: does it fire on the wording a human uses
+sqs.py publish     what has to be true before the skill leaves the machine
+sqs.py fix         the repairs with exactly one correct answer
+```
 
-- *orphan* - either the file was never wired up (then link to it) or it is no longer
-  needed (then delete it). An orphan is not wrong by itself;
-- *oversized SKILL.md* - it is loaded whole on every activation. Move what is not always
-  needed into `references/`, and keep the routing in `SKILL.md`: which reference to open
-  when;
-- *path with no such folder in the skill* - nearly always an example path from somebody
-  else's repository, not a route of your own;
-- *pointer to a missing section* - `references/foo.md` → "Section" after the heading was
-  renamed. The file is still there, so an ordinary link check stays quiet while the agent
-  opens the reference and does not find what it came for. It is fixed in one direction or
-  the other: restore the heading, or correct the pointer - and **the section name is
-  copied from the file verbatim, never from memory**;
-- *`description` over 1024* - Claude Code does not enforce that limit today and the skill
-  works. But the Agent Skills spec sets it, so on publication and on `skills-ref validate`
-  the description is rejected. Fix before publishing, not urgently;
-- *code as prose* - a long executable block sitting in the text. A step that is always
-  performed the same way belongs in `scripts/`: code in prose is retyped by the model
-  every time, cannot be run and cannot be fixed once. Leave the call and how to read the
-  output in the text.
+Three of them need a word of their own.
 
-## Limits of the section check
+**`security`** is the one to run on a skill somebody else wrote, *before* the agent reads
+it for work. A skill is executable text; an installed skill is a supply chain. It reports
+credentials, destructive commands, text addressed at the agent rather than the task, and
+hidden or bidirectional characters that make the rendered file differ from the file the
+model reads.
 
-Only the explicit form is caught: a file, then `→`, `->` or the word *section*, then the
-name in quotes - `"like this"`, `“like this”` or `«like this»`. A loose paraphrase ("see
-the part about the loop in there") is deliberately not caught: guessing at those produces
-false positives on ordinary quotations, and a linter that lies stops being read.
+**`compat`** is the check your own machine can never make for you. It reads the skill
+as a list of features - a frontmatter field, a directory, a tool name, a hard-coded
+path into someone's skill folder - and asks ten harness adapters what each one means
+to them: Claude Code, Codex, Cursor, Gemini CLI, Antigravity, OpenCode, Cline, Roo
+Code, Windsurf, GitHub Copilot. Every row rests on that project's own documentation,
+and what the documentation does not state comes back `UNKNOWN` rather than as an
+invented incompatibility. `sqs.py harnesses` lists them with the page each rests on.
 
-The example markers for the *code as prose* check (`# WRONG`, `# GOOD`, `# BEFORE`, …) are
-English. If your skills are written in another language, add your words to `EXAMPLE_RE` and
-to the section keyword in `SECPTR_RE` - that is the only language-specific spot in the file.
+**`evals`** delegates to `evals/run_evals.py` when that exists beside the skills. Static
+by default - invariants over the descriptions, no network. `--live` asks a judge model
+where a given wording actually routes, which costs money and time and is the only thing
+that catches "the new skill now takes half of its neighbour's work".
 
-## After fixing
+**`fix`** is a dry run unless you pass `--apply`. It only repairs what the broken state
+forces: the name the folder already dictates, characters that should never have been in
+the file. It deliberately will not shorten an over-long description - there is no single
+right shortening, and picking one for you deletes a trigger you needed.
 
-Run it again and confirm there are zero errors. If you edited somebody else's skill, tell
-the user exactly what you changed: they may have had their reasons for an odd structure.
+## Fixing what it found
 
-Details, hook installation and budget tuning are in [README.md](README.md).
+1. `sqs.py explain <CODE>` - the reasoning, then the fix.
+2. `sqs.py fix --apply` for the mechanical ones.
+3. The rest by hand. When the finding is about **what the skill says** rather than how it
+   is wired, the report has taken you as far as counting can: open
+   [writing-rubric.md](references/writing-rubric.md) and do the reading pass.
+4. Re-run until clean. A run that ends `0 error` and a run you assumed would are
+   different things.
+
+Three scopes of escape hatch, for findings that are correct-and-intended:
+
+- **A line** - write `sqs-allow: SE002` on it or just above it. This is how one
+  quotation of a dangerous pattern avoids being reported as a use of one.
+- **A file** - `sqs-allow-file: SE001, SE002` in its first 25 lines, for a file whose
+  whole job is to hold the patterns. Annotating each occurrence there would be noise
+  pretending to be care.
+- **The tree** - `sqs.config.json` beside the skills: `rules` maps a code to
+  `off`/`info`/`warning`/`error`, `ignore` skips skills, `allow_dirs` accepts a directory
+  the spec does not name, `harnesses` sets the target environments and `lang` the
+  publication language.
+
+Record *why* in the config next to the entry. A silenced rule with no reason gets
+un-silenced by the next person who reads the file, including you.
+
+## Editing this suite
+
+The rule codes are the join key of the whole thing: `rules.py` is the single place a code
+is defined, and every engine emits codes from it. After adding or changing a rule:
+
+```
+python scripts/sqs.py rules --audit
+```
+
+It fails when an engine emits a code the registry does not carry, or the registry carries
+a row nothing emits. That check is what keeps the two from drifting apart.
+
+The structure module is `scripts/check_skills.py`, imported rather than shelled out to -
+it also runs standalone, and as a `PostToolUse` + `Stop` hook pair. Parsing its printed
+output back into findings would be a second, drifting source of truth, so it carries the
+rule codes itself.
+
+A new harness is one file in `scripts/harnesses/` and nothing above it changes: the
+registry finds it, the engine classifies through it, the report prints it. Its
+declarations come from that project's own documentation, and what the documentation
+does not state is left out - an empty `limits` means unchecked, which is not the same
+as passed.
+
+New heuristics earn their place by being **checkable**: a rule that cannot name a file
+and a line does not belong in a linter - it belongs in the reading pass, where a human
+applies judgement. A linter that cries wolf stops being read, and then the real findings
+go unread with it.
+
+## The references
+
+- [creating-a-skill.md](references/creating-a-skill.md) - the order for building a new
+  skill, and for reworking an old one. Open it before writing any skill from scratch.
+- [writing-rubric.md](references/writing-rubric.md) - the reading pass: the pointer, the
+  two loads, the information hierarchy, completion criteria, leading words, pruning. Open
+  it when the problem is what the skill says rather than how it is wired.
+- [agent-compatibility.md](references/agent-compatibility.md) - the ten harnesses, what
+  each row rests on, the five portability verdicts, and how to add a harness without
+  inventing one. Open it before answering "will this work on X".
+- [publishing.md](references/publishing.md) - the gate before a skill leaves the machine,
+  and what the publish module cannot see.

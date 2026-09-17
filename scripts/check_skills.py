@@ -82,6 +82,12 @@ import os
 import re
 import sys
 import unicodedata
+from collections import namedtuple
+
+# A finding carries its rule code: the code is what `sqs.py explain` looks up,
+# what a config file switches off, and what CI annotations group by. Prose alone
+# cannot be any of those.
+F = namedtuple("F", "code msg")
 
 BUDGET = 15_000          # SKILL.md bytes - soft ceiling (~5-6k tokens per activation)
 REF_BUDGET = 25_000      # reference bytes - it is opened whole, nobody splits it for you
@@ -132,7 +138,7 @@ MARKER = os.path.join(SKILLS_DIR, ".check-pending")
 
 # A link to a file inside the skill: `references/foo.md`, `scripts/bar.py`.
 # The negative lookbehind cuts off the case where the same "folder/file" pair turns
-# out to be the tail of SOMEBODY ELSE'S path: `~/Desktop/my/agent-memory/scripts/x.py`
+# out to be the tail of SOMEBODY ELSE'S path: `~/tools/scripts/x.py`
 # is a tool outside the skills tree, and checking for it inside the skill folder makes
 # no sense. Without this, any link to an external script is a false "file is missing".
 LINK_RE = re.compile(r"(?<![\w./\\-])(?:" + "|".join(SUBDIRS) + r")/[\w./-]+\.\w+")
@@ -286,6 +292,71 @@ def frontmatter(text):
     return text[3:end] if end != -1 else None
 
 
+IMPORT_RE = re.compile(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w.,\t ]+))", re.M)
+
+
+def reached_by_import(root, mentioned):
+    """Modules pulled in, transitively, by the scripts the skill links.
+
+    A tool split across files is linked by its entry point only: listing its imports in
+    SKILL.md would be documentation nobody reads, and it would go stale on the first
+    refactor. Without following the imports every module but the entry point reads as an
+    orphan - and a warning that fires on correct code is a warning that gets ignored,
+    which costs more than the orphan check is worth.
+    """
+    queue = [m for m in mentioned if m.endswith(".py")]
+    seen, extra = set(queue), set()
+    while queue:
+        rel = queue.pop()
+        full = os.path.join(root, rel)
+        if not os.path.isfile(full):
+            continue
+        folder = os.path.dirname(rel)
+        try:
+            with open(full, encoding="utf-8", errors="replace") as f:
+                src = f.read()
+        except OSError:
+            continue
+        for from_mod, plain in IMPORT_RE.findall(src):
+            for name in ([from_mod] if from_mod else plain.split(",")):
+                mod = name.strip().split(" as ")[0].split(".")[0].strip()
+                if not mod:
+                    continue
+                base = f"{folder}/{mod}" if folder else mod
+                found = []
+                if os.path.isfile(os.path.join(root, base + ".py")):
+                    found = [base + ".py"]
+                elif os.path.isfile(os.path.join(root, base, "__init__.py")):
+                    # A package is reached as a unit. Its members often have no import
+                    # edge at all - a registry that discovers its plugins at runtime is
+                    # the normal case - so following only static imports would report
+                    # every one of them as an orphan.
+                    found = sorted(
+                        f"{base}/{f}" for f in os.listdir(os.path.join(root, base))
+                        if f.endswith(".py"))
+                for cand in found:
+                    if cand not in seen:
+                        seen.add(cand)
+                        extra.add(cand)
+                        queue.append(cand)
+    return extra
+
+
+# A file-scoped waiver in a file's header: `sqs-allow-file: ST011`, or `*` for all.
+# The escape hatch for a file whose subject IS the thing a check hunts for - a table of
+# other environments' paths, a registry of dangerous patterns.
+WAIVER_RE = re.compile(r"sqs-allow-file:\s*([A-Z]{2}\d{3}(?:\s*,\s*[A-Z]{2}\d{3})*|\*)")
+
+
+def waived(body, code):
+    """Whether this file's first lines waive that code."""
+    for line in body.split("\n", 25)[:25]:
+        m = WAIVER_RE.search(line)
+        if m and (m.group(1) == "*" or code in m.group(1)):
+            return True
+    return False
+
+
 def check(skill):
     root = os.path.join(SKILLS_DIR, skill)
     md = os.path.join(root, "SKILL.md")
@@ -293,7 +364,7 @@ def check(skill):
     name, slash_only = None, False
 
     if not os.path.isfile(md):
-        return ["no SKILL.md"], [], 0, None
+        return [F("ST015", "no SKILL.md")], [], 0, None
 
     with open(md, encoding="utf-8") as f:
         text = f.read()
@@ -302,61 +373,60 @@ def check(skill):
     # 1. frontmatter - required fields and conformance to the specification
     fm = frontmatter(text)
     if fm is None:
-        errors.append("no frontmatter (--- at the start of the file)")
+        errors.append(F("SP001", "no frontmatter (--- at the start of the file)"))
     else:
-        for key in ("name:", "description:"):
+        for key, code in (("name:", "SP002"), ("description:", "SP003")):
             if key not in fm:
-                errors.append(f"frontmatter has no `{key}`")
+                errors.append(F(code, f"frontmatter has no `{key}`"))
 
         # Spec limits are warnings, not errors: Claude Code does not enforce them
         # today and the skill works. It breaks on publication and `skills-ref validate`.
         name = fm_field(fm, "name")
         if name:
             if name != skill:
-                errors.append(
+                errors.append(F("SP004", 
                     f"`name: {name}` does not match the folder name `{skill}` - "
-                    f"the spec requires they match; rename one of the two")
+                    f"the spec requires they match; rename one of the two"))
             if len(name) > NAME_MAX:
-                warnings.append(f"`name` is {len(name)} chars > {NAME_MAX} per the spec")
+                warnings.append(F("SP005", f"`name` is {len(name)} chars > {NAME_MAX} per the spec"))
             if not NAME_RE.match(name):
-                warnings.append(
+                warnings.append(F("SP006", 
                     f"`name: {name}` is off-spec: lowercase latin letters, digits and "
-                    f"single hyphens only, never at the edges")
+                    f"single hyphens only, never at the edges"))
 
         desc = fm_field(fm, "description")
         if desc is not None:
             if not desc:
-                errors.append("`description` is empty - the skill will never trigger")
+                errors.append(F("SP007", "`description` is empty - the skill will never trigger"))
             elif len(desc) > DESC_MAX:
-                warnings.append(
+                warnings.append(F("SP008", 
                     f"`description` is {len(desc)} chars > {DESC_MAX} per the spec "
                     f"({len(desc) - DESC_MAX} over) - Claude Code tolerates it, "
-                    f"publication and `skills-ref validate` do not")
+                    f"publication and `skills-ref validate` do not"))
 
         compat = fm_field(fm, "compatibility")
         if compat and len(compat) > COMPAT_MAX:
-            warnings.append(f"`compatibility` is {len(compat)} chars > {COMPAT_MAX} per the spec")
+            warnings.append(F("SP009", f"`compatibility` is {len(compat)} chars > {COMPAT_MAX} per the spec"))
 
         # A skill disabled for the model is only ever called by slash. It needs no
         # trigger words: the decision is the human's, not the description's.
         slash_only = (fm_field(fm, "disable-model-invocation") or "").lower() == "true"
         if desc and not slash_only and len(desc) < DESC_MIN:
-            warnings.append(
+            warnings.append(F("QL001", 
                 f"`description` is {len(desc)} chars < {DESC_MIN} - it holds no trigger "
-                f"conditions, and those are what the agent uses to decide whether to open it")
+                f"conditions, and those are what the agent uses to decide whether to open it"))
 
         # A typo in a key does not break the YAML: the field just vanishes with its meaning.
         for key in re.findall(r"^([A-Za-z_][\w-]*):", fm, re.M):
             if key not in KNOWN_KEYS:
-                warnings.append(
+                warnings.append(F("SP010", 
                     f"unknown frontmatter key `{key}:` - a typo? "
-                    f"the harness ignores it in silence")
+                    f"the harness ignores it in silence"))
 
     # 2. collect every link to the skill's files - from SKILL.md and from the references
     mentioned, cross, wildcard_dirs, cross_full = set(), set(), set(), set()
     pointers = []
-    texts = [text]                        # for outbound path checking - see item 9
-    sources = [("SKILL.md", text)]        # the same with file names - see item 15
+    sources = [("SKILL.md", text)]        # file name and body - see items 8 and 15
     collect(text, mentioned, cross, wildcard_dirs, cross_full)
     collect_pointers(text, "SKILL.md", pointers)
     for sub in SUBDIRS:
@@ -369,7 +439,6 @@ def check(skill):
                     full = os.path.join(dirpath, fn)
                     with open(full, encoding="utf-8", errors="replace") as f:
                         body = f.read()
-                    texts.append(body)
                     rel_here = os.path.relpath(full, root).replace("\\", "/")
                     sources.append((rel_here, body))
                     collect(body, mentioned, cross, wildcard_dirs, cross_full)
@@ -379,7 +448,7 @@ def check(skill):
                         target = os.path.join(dirpath, sib)
                         if not os.path.exists(target):
                             here = os.path.relpath(full, root).replace("\\", "/")
-                            errors.append(f"broken sibling link: {sib} (from {here})")
+                            errors.append(F("ST002", f"broken sibling link: {sib} (from {here})"))
                         else:
                             mentioned.add(os.path.relpath(target, root).replace("\\", "/"))
 
@@ -398,16 +467,16 @@ def check(skill):
             continue
         elsewhere = [o for o in others if os.path.exists(os.path.join(SKILLS_DIR, o, rel))]
         if elsewhere:
-            warnings.append(
+            warnings.append(F("ST010", 
                 f"path with no skill name: {rel} - it lives in `{elsewhere[0]}`, "
-                f"spell it out as `~/.claude/skills/{elsewhere[0]}/{rel}`")
+                f"spell it out as `~/.claude/skills/{elsewhere[0]}/{rel}`"))
         elif not os.path.isdir(os.path.join(root, rel.split("/", 1)[0])):
             # The folder does not exist at all - this is almost always an example of a
             # path in SOMEBODY ELSE'S repository, not our own routing. Not an error:
             # otherwise the hook fails on every edit because of examples in the text.
-            warnings.append(f"path with no such folder in the skill: {rel} - looks like an example, not a route")
+            warnings.append(F("ST009", f"path with no such folder in the skill: {rel} - looks like an example, not a route"))
         else:
-            errors.append(f"link to a file that does not exist: {rel}")
+            errors.append(F("ST001", f"link to a file that does not exist: {rel}"))
 
     # 3b. section pointers: the file is there, the heading in it is not
     heads_cache = {}
@@ -422,8 +491,11 @@ def check(skill):
             continue                      # no headings at all - nothing to compare against
         want = " ".join(section.split()).casefold()
         if not any(want == h or want in h for h in heads):
-            warnings.append(
-                f"pointer to a section that is gone: {target} → \"{section}\" (from {source})")
+            warnings.append(F("ST008", 
+                f"pointer to a section that is gone: {target} → \"{section}\" (from {source})"))
+
+    # 4a. a module imported by a linked script is reached through it, not orphaned
+    mentioned |= reached_by_import(root, mentioned)
 
     # 4. orphans
     on_disk = set()
@@ -441,7 +513,7 @@ def check(skill):
         # the folder is wired in by a template (references/types/<type>.md) - not orphans
         if any(rel.startswith(d + "/") for d in wildcard_dirs):
             continue
-        warnings.append(f"orphan (nothing links to it): {rel}")
+        warnings.append(F("ST005", f"orphan (nothing links to it): {rel}"))
 
     # 5. cross-skill links: does the skill exist, and the file inside it
     for other, rel in sorted(cross_full):
@@ -449,17 +521,17 @@ def check(skill):
             # our own file named by full path: it slipped past check 3 (which subtracts
             # cross links), so its existence is verified here
             if not os.path.exists(os.path.join(root, rel)):
-                errors.append(f"link to a file that does not exist: {rel}")
+                errors.append(F("ST001", f"link to a file that does not exist: {rel}"))
             continue
         if not os.path.isdir(os.path.join(SKILLS_DIR, other)):
-            errors.append(f"link to a skill that does not exist: {other} (in {rel})")
+            errors.append(F("ST003", f"link to a skill that does not exist: {other} (in {rel})"))
         elif not os.path.exists(os.path.join(SKILLS_DIR, other, rel)):
-            errors.append(f"skill {other} has no file {rel}")
+            errors.append(F("ST004", f"skill {other} has no file {rel}"))
 
     # 6. budget - for SKILL.md and for references alike: the second stage is paid for in
     #    context too, just later. A 30 KB reference is opened whole, nobody splits it.
     if size > BUDGET:
-        warnings.append(f"SKILL.md is {size} B > the {BUDGET} B budget - something can move into references/")
+        warnings.append(F("ST006", f"SKILL.md is {size} B > the {BUDGET} B budget - something can move into references/"))
     for rel in sorted(on_disk):
         if not rel.endswith(".md"):
             continue
@@ -468,20 +540,26 @@ def check(skill):
         except OSError:
             continue
         if rsize > REF_BUDGET:
-            warnings.append(
-                f"{rel} is {rsize} B > the {REF_BUDGET} B budget - it is opened whole, split it")
+            warnings.append(F("ST007", 
+                f"{rel} is {rsize} B > the {REF_BUDGET} B budget - it is opened whole, split it"))
 
     # 7. body: frontmatter present, instructions missing - the skill activates and says nothing
     main_body = text[text.find("\n---", 3) + 4:] if fm is not None else text
     if not main_body.strip():
-        errors.append("no body: frontmatter is there, instructions are not")
+        errors.append(F("SP014", "no body: frontmatter is there, instructions are not"))
     elif len(main_body.strip()) < 30 and not slash_only:
-        warnings.append(f"body is {len(main_body.strip())} chars - the skill is nearly empty")
+        warnings.append(F("ST013", f"body is {len(main_body.strip())} chars - the skill is nearly empty"))
 
     # 8. outbound paths: the note was renamed and the skill still calls it by the old name
-    for p in sorted({p for t in texts for p in vault_paths(t)}):
-        if not path_exists(p):
-            errors.append(f"no such path: {p}")
+    reported = set()
+    for src, body in sources:
+        if waived(body, "ST011"):
+            continue
+        for p in sorted(vault_paths(body)):
+            if p in reported or path_exists(p):
+                continue
+            reported.add(p)
+            errors.append(F("ST011", f"no such path: {p} (in {src})"))
 
     # 9. code as prose instead of a file. Substantive lines are counted: blank lines and
     #    comment lines do not make a program, and the threshold drifts on them.
@@ -492,10 +570,10 @@ def check(skill):
             payload = [ln for ln in code.splitlines()
                        if ln.strip() and not ln.strip().startswith("#")]
             if len(payload) > SCRIPT_LINES:
-                warnings.append(
+                warnings.append(F("ST012", 
                     f"code as prose: {src} - a ```{lang} block of {len(payload)} lines "
                     f"> {SCRIPT_LINES}; move it into scripts/ and leave the call and how "
-                    f"to read its output in the text")
+                    f"to read its output in the text"))
 
     return errors, warnings, size, name
 
@@ -504,8 +582,8 @@ def skills_in(blob):
     """Skill names mentioned as paths inside a text.
 
     The path to the skills folder is written in several ways: `~/.claude/skills/bars`,
-    `C:\\Users\\joker\\.claude\\skills\\bars`, and in git-bash also
-    `/c/Users/joker/.claude/skills/bars`. The full path is no anchor here - we hold on
+    `C:\\Users\\you\\.claude\\skills\\bars`, and in git-bash also
+    `/c/Users/you/.claude/skills/bars`. The full path is no anchor here - we hold on
     to its two-part tail (`.claude/skills`) and take the name that follows it.
     """
     norm = blob.replace("\\", "/")
@@ -623,9 +701,9 @@ def main():
         if quiet and not errors and not show_warn:
             continue
         lines.append(f"{'⛔' if errors else ('⚠️ ' if warnings else '✅')} {skill}  ({size} B)")
-        lines.extend(f"     ⛔ {e}" for e in errors)
+        lines.extend(f"     ⛔ {e.code} {e.msg}" for e in errors)
         if show_warn or not quiet:
-            lines.extend(f"     ⚠️  {w}" for w in warnings)
+            lines.extend(f"     ⚠️  {w.code} {w.msg}" for w in warnings)
 
     # A duplicate `name` across skills: the harness picks one and says nothing about the
     # other, and which one it picks is not knowable in advance. A global check, hence here.
@@ -633,7 +711,7 @@ def main():
         if len(dirs) > 1:
             total_err += 1
             lines.append(
-                f"⛔ duplicate `name: {name}` - folders {', '.join(dirs)}; one shadows the other")
+                f"⛔ ST014 duplicate `name: {name}` - folders {', '.join(dirs)}; one shadows the other")
 
     if quiet:
         if lines:
