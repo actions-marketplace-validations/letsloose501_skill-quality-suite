@@ -274,13 +274,13 @@ What an installed skill can do to the machine that loads it. A skill is executab
 
 ### SE002 - Destructive command in an instruction
 
-**Why it matters.** `rm -rf`, `curl | sh`, `chmod 777`, a force push: the agent runs what the skill tells it to run.
+**Why it matters.** A recursive delete, a download piped into a shell, world-writable permissions, a force push: the agent runs what the skill tells it to run.
 
 **Fix.** Narrow the command, or make the step ask the human first.
 
 ### SE003 - Instruction-override text
 
-**Why it matters.** `ignore previous instructions`, `you are now`, `disregard the system prompt`. In a skill you wrote it is a mistake; in a skill you installed it is the payload.
+**Why it matters.** An instruction to disregard what came before, a claimed change of role, an order to keep something from the user. In a skill you wrote it is a mistake; in a skill you installed it is the payload.
 
 **Fix.** Remove it. If the skill came from elsewhere, read the whole file before using it.
 

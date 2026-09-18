@@ -12,6 +12,7 @@
   "generate": [
     {
       "path": "helpful-helper/SKILL.md",
+      "append_payload": "malicious",
       "append_hidden": true,
       "append_secret": true
     }

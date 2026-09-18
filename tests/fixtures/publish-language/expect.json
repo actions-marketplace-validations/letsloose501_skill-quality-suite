@@ -8,5 +8,11 @@
   "expect": [
     "PB003",
     "PB004"
+  ],
+  "generate": [
+    {
+      "path": "bilingual/SKILL.md",
+      "append_payload": "personal_path"
+    }
   ]
 }

@@ -1,5 +1,15 @@
 {
   "note": "The three suppression scopes, each on a pattern that is genuinely there: a line-scoped allow, a file-scoped allow, and the quoted-span exemption that lets a skill write an injection phrase down in order to teach it.",
   "expect": [],
-  "exact": true
+  "exact": true,
+  "generate": [
+    {
+      "path": "pattern-teacher/SKILL.md",
+      "append_payload": "teacher"
+    },
+    {
+      "path": "pattern-teacher/references/catalogue.md",
+      "append_payload": "catalogue"
+    }
+  ]
 }

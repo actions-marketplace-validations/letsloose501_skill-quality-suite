@@ -275,11 +275,13 @@ _ROWS = {
               "An API key, token or private key committed into a skill travels with every copy "
               "of it.", "Revoke the credential, then remove it and read it from the environment.", False),
     "SE002": ("warning", "Destructive command in an instruction",
-              "`rm -rf`, `curl | sh`, `chmod 777`, a force push: the agent runs what the skill "
+              "A recursive delete, a download piped into a shell, world-writable permissions, a "
+              "force push: the agent runs what the skill "
               "tells it to run.",
               "Narrow the command, or make the step ask the human first.", False),
     "SE003": ("error", "Instruction-override text",
-              "`ignore previous instructions`, `you are now`, `disregard the system prompt`. In a "
+              "An instruction to disregard what came before, a claimed change of role, an order to "
+              "keep something from the user. In a "
               "skill you wrote it is a mistake; in a skill you installed it is the payload.",
               "Remove it. If the skill came from elsewhere, read the whole file before using it.", False),
     "SE004": ("error", "Hidden or bidirectional Unicode",

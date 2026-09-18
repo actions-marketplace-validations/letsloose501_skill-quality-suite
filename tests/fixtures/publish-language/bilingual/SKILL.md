@@ -6,7 +6,7 @@ license: MIT
 
 # Bilingual
 
-1. Write the note under /home/alexeyivanov/vault/inbox and print the path.
+1. Write the note under the path the generated line below names, and print it.
 2. Stop when the index lists it.
 
 ## Замечание

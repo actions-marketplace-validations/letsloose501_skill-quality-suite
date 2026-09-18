@@ -81,9 +81,8 @@ runs:
       env:
         # Inputs arrive through the environment rather than through `${{ }}` inside the
         # script: an expression is pasted into the shell before bash ever sees it, so a
-        # sqs-allow: SE002
-        # path like `; rm -rf ~` would run. This is a security tool; it does not get to
-        # model the practice badly.
+        # path carrying a semicolon and a destructive command would run. This is a
+        # security tool; it does not get to model the practice badly.
         SQS_ACTION_DIR: ${{ github.action_path }}
         SQS_PATH: ${{ inputs.path }}
         SQS_COMMAND: ${{ inputs.command }}

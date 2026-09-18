@@ -30,7 +30,7 @@ become a finding.
 ### Destructive commands (`SE002`)
 
 Commands nobody meant to hand an agent: a recursive delete of a root-level path, a
-download piped straight into a shell, `chmod 777`, a force push, a history rewrite, a
+download piped straight into a shell, `chmod` to world-writable, a force push, a history rewrite, a
 dropped database, a write to a raw device, a fork bomb, disabled certificate checks.
 
 ### Prompt injection (`SE003`)
@@ -38,7 +38,7 @@ dropped database, a write to a raw device, a fork bomb, disabled certificate che
 Text addressed at the **agent** rather than at the task. In a skill you wrote this is a
 mistake; in a skill you installed it is the payload:
 
-- instruction override ("ignore all previous instructions");
+- instruction override: an order to disregard whatever came before;
 - fake authority over the system prompt;
 - instructions to hide an action from the user;
 - attempts to switch off a guardrail.
@@ -49,8 +49,8 @@ people switch off.
 
 ### Exfiltration (`SE005`)
 
-A local file leaving the machine: `curl --data @~/.aws/credentials`, an upload of a path
-the skill just read, `Invoke-RestMethod -InFile`.
+A local file leaving the machine: a request that posts a credentials file as its body,
+an upload of a path the skill just read, a PowerShell upload with an input file.
 
 ### Hidden and bidirectional Unicode (`SE004`)
 
