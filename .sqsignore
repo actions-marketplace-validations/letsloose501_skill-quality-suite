@@ -6,3 +6,11 @@
 # it is claimed. That is the difference between this file and `sqs-allow`, which says
 # "found it, and it is meant to be there".
 tests/
+
+# The documentation site and the examples page. They are written for a human arriving
+# from a search engine, not for the agent that loads this skill - the agent reads
+# references/. Both are generated or hand-written English prose about the tool, and
+# checking them as skill payload would report the tool's own examples of bad skills as
+# defects of the tool.
+docs/
+examples/

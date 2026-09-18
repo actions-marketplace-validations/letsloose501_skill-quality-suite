@@ -1,0 +1,20 @@
+# GitHub Pages. The site is the docs/ folder; everything else in the repository is
+# source, and Jekyll has no business rendering it.
+title: Skill Quality Suite
+description: >-
+  Quality, linting, security, compatibility and publishing toolkit for AI Agent Skills.
+  Validate SKILL.md against the Agent Skills specification, scan a skill before you
+  install it, check portability across Claude Code, Codex, Cursor and Gemini CLI, and
+  measure whether the skill actually helps.
+theme: jekyll-theme-cayman
+lang: en
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

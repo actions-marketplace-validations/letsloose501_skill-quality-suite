@@ -1,28 +1,51 @@
 # skill-quality-suite
 
-A quality gate and evaluation toolkit for [Agent Skills](https://agentskills.io).
+**A quality, linting, security and validation toolkit for AI Agent Skills.** It
+validates a `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification),
+lints the instructions an agent will actually follow, scans a skill for secrets and
+prompt injection before you install it, checks whether it will work on another agent,
+and measures whether it improves the agent's work at all.
 
-```
-Can it load?            structure, spec
-Is it worth loading?    quality
-Is it safe?             security
-Is it portable?         compat
-Does it fire?           eval --trigger
-Does it actually help?  eval --runtime
-Did the last change make it worse?   eval --compare
-Can it be published?    publish
+No dependencies: the static half is Python standard library only, offline and
+deterministic. The evaluation half runs an agent, costs money, and never runs unless you
+name it.
+
+```bash
+python scripts/sqs.py check    ./my-skill                # skill lint: the everyday five
+python scripts/sqs.py security ./my-skill                # before you install a stranger's skill
+python scripts/sqs.py compat   ./my-skill --harness all  # will it work anywhere else
+python scripts/sqs.py eval     ./my-skill --trigger      # does it actually fire
+python scripts/sqs.py explain  ST008                     # what a finding means, and the fix
 ```
 
-The static half is Python standard library only, offline and deterministic. The
-evaluation half runs an agent, costs money, and never runs unless you name it.
+Use it when:
 
-```
-python scripts/sqs.py check ./my-skill                  free, offline
-python scripts/sqs.py check ./my-skill --format board   one line per layer
-python scripts/sqs.py compat ./my-skill --harness all
-python scripts/sqs.py eval  ./my-skill --trigger        runs the agent
-python scripts/sqs.py explain ST008
-```
+- a skill **does not fire**, fires on a neighbour's work, or half-works and silently
+  skips steps;
+- you are about to **install a skill somebody else wrote**, and want to know what it can
+  do to your machine first;
+- you **renamed** a file, a heading or a skill, and something now points at nothing;
+- you are about to **publish** a skill and need the personal paths, the licence and the
+  version drift caught before it leaves;
+- you changed a description and want to know whether the skill got **better or worse**.
+
+Harnesses it classifies portability for: **Claude Code, OpenAI Codex, Cursor, Gemini
+CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
+
+📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
+🧪 **[Worked examples with real output](examples/)** ·
+📋 **[All 70 rules](docs/quality-rules.md)**
+
+| Question | Command |
+|---|---|
+| Can it load? Is it valid? | `check` (structure, spec) |
+| Is it worth loading? | `quality` |
+| Is it safe to install? | `security` |
+| Is it portable? | `compat` |
+| Does it fire? | `eval --trigger` |
+| Does it actually help? | `eval --runtime` |
+| Did the last change make it worse? | `eval --compare v1 v2` |
+| Can it be published? | `publish` |
 
 ## Why
 
@@ -287,7 +310,26 @@ to. It also runs standalone as the single-file linter this repository used to be
 works as a `PostToolUse` + `Stop` hook pair - `--mark` records which skills a turn
 touched, `--stop` checks those and blocks the stop on breakage.
 
+## Documentation
+
+The [documentation site](https://letsloose501.github.io/skill-quality-suite/) is the
+same material organised for someone arriving from a search engine:
+
+- [Skill validation](docs/skill-validation.md) - validating `SKILL.md` against the
+  Agent Skills specification, the pointers that break in silence, and the
+  instruction-quality rules a strict validator does not cover
+- [Skill security](docs/skill-security.md) - secrets, destructive commands, prompt
+  injection, exfiltration and hidden Unicode in a skill you did not write
+- [Quality rules](docs/quality-rules.md) - all 70, generated from the registry
+- [Compatibility](docs/compatibility.md) - the ten harnesses, the five verdicts, and why
+  `UNKNOWN` is never `NOT_SUPPORTED`
+- [Evaluation](docs/evaluation.md) - trigger evals, the baseline/treatment comparison,
+  the regression gate
+- [Publishing](docs/publishing.md) - the gate before a skill leaves your machine
+
 ## References
+
+The working detail, written for whoever is editing a skill rather than choosing a tool:
 
 - [writing-rubric.md](references/writing-rubric.md) - the reading pass no script can do:
   the description as a context pointer, the two loads, the information hierarchy,

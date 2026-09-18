@@ -58,22 +58,11 @@ opt-in.
   longer needed, and only you know which.
 - **· info** - a nudge. Real, small, and safe to leave.
 
-`--format board` prints one line per layer instead of a finding list, which is the view
-for deciding rather than fixing:
-
-```
-STRUCTURE       PASS      does every pointer still resolve
-SPEC            WARN      2 warning
-SECURITY        PASS      what can it do to the machine that loads it
-TRIGGER         NOT RUN   `sqs.py eval <skill> --trigger` runs the agent
-```
-
-`NOT RUN` is the point of that view: a layer that was skipped and a layer that passed
-look identical in a findings list, and that is how a report comes to say "clean" about a
-question nobody asked. `--score` adds an aggregate number and prints the arithmetic that
-produced it - additional, never the headline, because a number hides which question
-failed. `--format sarif` is the same analysis for GitHub code scanning, `github` for
-inline annotations, `json` for everything else.
+`--format board` prints one line per layer instead of a finding list - the view for
+deciding rather than fixing, where a layer nobody ran says `NOT RUN` instead of looking
+like a pass. `--score` adds an aggregate number and the arithmetic that produced it:
+additional, never the headline, because a number hides which question failed. `sarif`
+feeds GitHub code scanning, `github` annotates a diff, `json` everything else.
 
 Every finding carries a rule code. `sqs.py explain ST008` gives the code's reasoning and
 its fix; `sqs.py rules` lists all of them. Reach for `explain` rather than guessing at
@@ -197,6 +186,14 @@ python tests/run_tests.py               every case, then the unit checks
 registry carries a row nothing emits, or when a rule has no confidence and
 false-positive grading. It also reports how many rules the corpus has ever observed
 firing.
+
+Two pages are generated rather than written, because a hand-written page about a tool
+is a snapshot of what the tool did the day somebody wrote it:
+
+```
+python scripts/build_docs.py            docs/quality-rules.md and examples/README.md
+python scripts/build_docs.py --check    fails when either has gone stale
+```
 
 `tests/fixtures/` is that corpus: small skills trees with an `expect.json` beside each,
 listing the codes the suite must report and the codes it must not. A new rule needs a
