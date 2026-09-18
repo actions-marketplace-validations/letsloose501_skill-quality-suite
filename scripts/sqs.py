@@ -881,8 +881,17 @@ def main(argv=None):
     by_name = {}
     for s in skills:
         by_name.setdefault(s.name or s.folder, []).append(s.folder)
-    dupes = [Finding("ST014", f"`name: {n}` in {', '.join(d)} - one shadows the other",
-                     severity="error") for n, d in sorted(by_name.items()) if len(d) > 1]
+    by_folder = {s.folder: s.root for s in skills}
+    dupes = []
+    for n, d in sorted(by_name.items()):
+        if len(d) <= 1:
+            continue
+        f = Finding("ST014", f"`name: {n}` in {', '.join(d)} - one shadows the other",
+                    severity="error", where="SKILL.md")
+        # it belongs to a real file, so a report that anchors findings to lines - SARIF,
+        # a CI annotation - has somewhere to put it
+        f.skill, f.root = d[0], by_folder.get(d[0])
+        dupes.append(f)
     if dupes or eval_findings:
         results.append(("(all skills)", dupes + eval_findings))
 
@@ -933,7 +942,10 @@ def main(argv=None):
     if a.format == "json":
         print(report.render_json(results))
     elif a.format == "sarif":
-        print(report.render_sarif(results))
+        first = skills[0] if skills else None
+        fallback = os.path.relpath(os.path.join(first.root, "SKILL.md"),
+                                   os.getcwd()).replace(chr(92), "/") if first else None
+        print(report.render_sarif(results, fallback=fallback))
     elif a.format == "github":
         out = report.render_github(results)
         if out:

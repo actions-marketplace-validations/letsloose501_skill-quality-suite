@@ -218,6 +218,35 @@ def unit_checks():
             parse(r.stdout)
         except ValueError as e:
             out.append(f"`--format {fmt}` did not produce parseable output: {e}")
+
+    # Code scanning refuses a whole SARIF file over one result without a location
+    # ("expected at least one location"), so the finding that has no line to point at -
+    # a duplicate `name`, a routing invariant - is the one that breaks the upload for
+    # everything else. It is checked on the case that produces exactly that finding.
+    # Two cases: `duplicate-name` for a finding about a skill rather than a line, and
+    # `routing-static` for one about the whole tree, which has no file of its own at all.
+    # The second is the one that broke the upload.
+    for case_name, command in (("duplicate-name", "check"), ("routing-static", "evals")):
+        case = os.path.join(FIXTURES, case_name)
+        r = subprocess.run([sys.executable, SQS, command, "--skills-dir", case,
+                            "--format", "sarif"], capture_output=True, text=True,
+                           encoding="utf-8", env=dict(os.environ, CLAUDE_SKILLS_DIR=case,
+                                                      PYTHONIOENCODING="utf-8"), cwd=REPO)
+        try:
+            sarif = json.loads(r.stdout)
+        except ValueError as e:
+            out.append(f"SARIF over {case_name} did not parse: {e}")
+            continue
+        results = sarif["runs"][0]["results"]
+        if not results:
+            out.append(f"SARIF over {case_name} carried no results at all")
+        placeless = [x["ruleId"] for x in results
+                     if not x.get("locations")
+                     or not (x["locations"][0].get("physicalLocation", {})
+                             .get("artifactLocation", {}).get("uri"))]
+        if placeless:
+            out.append(f"SARIF results with no location in {case_name}, which makes code "
+                       f"scanning reject the whole file: " + ", ".join(placeless))
     return out
 
 

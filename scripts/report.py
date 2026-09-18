@@ -108,7 +108,17 @@ def fingerprint(finding):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def render_sarif(results, base=None):
+class _whole_skill:
+    """A stand-in finding that points at the skill itself rather than at a line."""
+
+    def __init__(self, finding):
+        self.root = finding.root
+        self.skill = finding.skill
+        self.where = "SKILL.md"
+        self.line = None
+
+
+def render_sarif(results, base=None, fallback=None):
     """SARIF 2.1.0, for GitHub Code Scanning and anything else that reads it.
 
     Every rule the run could emit is declared, not only the ones that fired, so the
@@ -143,12 +153,19 @@ def render_sarif(results, base=None):
                 "partialFingerprints": {"sqsFindingV1": fingerprint(f)},
                 "properties": {"skill": folder, "module": module_of(f.code)},
             }
+            # Every result gets a location, because code scanning refuses a SARIF file
+            # where one does not ("expected at least one location"). A finding about the
+            # skill as a whole - a duplicate `name`, a routing invariant - has no line to
+            # point at, so it points at the skill's own SKILL.md, which is the file whose
+            # content caused it.
             uri = uri_of(f, base)
-            if uri:
-                loc = {"physicalLocation": {"artifactLocation": {"uri": uri}}}
-                if f.line:
-                    loc["physicalLocation"]["region"] = {"startLine": f.line}
-                result["locations"] = [loc]
+            if not uri and getattr(f, "root", None):
+                uri = uri_of(_whole_skill(f), base)
+            uri = uri or fallback or "SKILL.md"
+            loc = {"physicalLocation": {"artifactLocation": {"uri": uri}}}
+            if f.line and f.where:
+                loc["physicalLocation"]["region"] = {"startLine": f.line}
+            result["locations"] = [loc]
             out.append(result)
     return json.dumps({
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
