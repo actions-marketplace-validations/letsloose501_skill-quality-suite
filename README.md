@@ -4,6 +4,7 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://github.com/letsloose501/skill-quality-suite/actions/workflows/quality.yml)
 [![no dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#install)
+[![skills.sh](https://skills.sh/b/letsloose501/skill-quality-suite)](https://skills.sh/letsloose501/skill-quality-suite)
 
 **A quality, linting, security and validation toolkit for AI Agent Skills.** It
 validates a `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification),
@@ -77,10 +78,18 @@ sorts them by *when* they would have bitten:
 
 ## Install
 
-As a skill, so your agent can run it on itself:
+As a skill, through the cross-agent installer - it works for Claude Code, Cursor,
+Codex, Windsurf, Gemini and the rest of the agents `skills` supports:
 
 ```bash
-git clone https://github.com/letsloose501/skill-quality-suite \n  ~/.claude/skills/skill-quality-suite
+npx skills@1 add letsloose501/skill-quality-suite
+```
+
+Or as a plain clone, if you would rather see what lands:
+
+```bash
+git clone https://github.com/letsloose501/skill-quality-suite \
+  ~/.claude/skills/skill-quality-suite
 ```
 
 Or as a plain tool: clone anywhere and call `scripts/sqs.py`. It finds the skills folder

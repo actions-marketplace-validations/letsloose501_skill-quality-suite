@@ -78,7 +78,14 @@ skill than without it, and did the last edit make any of that worse.
 
 ## Install
 
-As a skill, so your own agent can run it on itself:
+Through the cross-agent installer, which works for Claude Code, Cursor, Codex,
+Windsurf, Gemini and the rest of the agents `skills` supports:
+
+```bash
+npx skills@1 add letsloose501/skill-quality-suite
+```
+
+Or as a plain clone, so your own agent can run it on itself:
 
 ```bash
 git clone https://github.com/letsloose501/skill-quality-suite \
