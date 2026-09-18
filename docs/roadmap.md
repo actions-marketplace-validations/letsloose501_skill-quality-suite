@@ -67,6 +67,39 @@ repository as the free one - it is where the free half's rules come from.
 - **Version and changelog analysis** - evidence-based warnings only: a version bumped
   with no changelog entry, a breaking change with no major bump. Where the evidence is
   not there, no finding.
+- **Ghost triggers, named as their own rule** - `QL004` reports that a description and a
+  body barely overlap, which is a statistic and reads as vague. The specific defect worth
+  its own code is narrower and checkable: a trigger phrase in the description that no
+  instruction in the body serves. The skill fires on that wording and then has nothing to
+  do about it, which is the half-working case users report as "it activates and ignores me".
+
+## Cross-engine evaluation
+
+The evaluation half runs one engine. The requirement is that a skill can be measured on
+whatever runtime and model it will actually be used on, which is a different question from
+"does it pass on mine". Three things stand between here and there, and the first two are
+structural rather than new features.
+
+**Separate what to run from how to run it.** `evals/evals.json` currently holds both: the
+cases and, implicitly, the single environment they run in. There is nowhere to say *which
+engine, which model, which workspace*, so a second engine has no place to be declared. The
+split is a config file for the environment beside a case file for the cases, and it has to
+land before any second provider, or the provider arrives with its settings threaded through
+the command line forever.
+
+**A judge that runs a program.** Grading is rule-based today, which in practice means matching
+substrings in the output, and that has a ceiling: anything whose correctness is a property of
+a produced *file* cannot be expressed. A judge that runs a program and takes its exit code
+removes the ceiling and stays deterministic, which the model-based judge never will be. It is
+also the cheapest of the three to build.
+
+**The provider itself.** `providers.py` already carries the contract: `available()`, `run()`
+with a `model`, and `isolates_skills`, which declares whether an engine can run a task with a
+named skill present and absent. That flag is the honest part and it matters more as engines
+multiply: an engine that cannot isolate a skill is still useful for output quality, and the
+report has to say so rather than present the comparison as a baseline. Adding an engine is a
+subclass and a registry entry; what it needs from elsewhere is where that runtime looks for a
+skill, which the harness adapters already hold. Those two modules compose into this one.
 
 ## Porting between harnesses
 
