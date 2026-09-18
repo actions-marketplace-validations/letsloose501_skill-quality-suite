@@ -77,8 +77,9 @@ Cursor runs it the same way.*
 This is the first item that would make `compat` load-bearing rather than informational, and it
 is the strongest argument for keeping that module alive at all. The knowledge is already in the
 ten adapters: each carries its runtime's field table, discovery rule and locations, and
-`fix --apply` is already a working transformation mechanism. Nobody else does it - cclint lints
-the wider component family without porting, `skill-creator` does not leave its own runtime.
+`fix --apply` is already a working transformation mechanism. A tool tied to one runtime cannot
+follow: the knowledge of where every other runtime looks for a skill is what makes the rewrite
+possible, and that knowledge is this project's own.
 
 **It does not start until the adapters can age visibly.** A wrong compatibility *report* is read
 by a person who can disagree with it. A wrong *port* silently rewrites their file. The adapters
@@ -97,9 +98,9 @@ Recorded here so that decision is made on purpose.
 
 **Specification versions (13)** - `--spec latest` / `1.x`. Right shape, wrong moment: it
 pays off once two versions of the specification are in the wild and old skills start
-going red for a reason that is not their fault. Today there is effectively one. The
-schema-driven approach cclint uses (a versioned schema per spec version rather than a
-version switch in the code) is the form to build it in when the time comes.
+going red for a reason that is not their fault. Today there is effectively one. The form to
+build it in is a versioned schema per specification version, kept as data, rather than a
+version switch threaded through the code.
 
 ## Rejected, and why
 
@@ -123,52 +124,3 @@ Kept here so they stop coming back.
   covers the export half. What survives is one field: **`checked:` on every adapter**,
   printed with the row. A matrix that asserts today's facts without saying when it last
   looked is a matrix that rots silently, and it is the precondition for porting above.
-
-## Worth taking from the neighbours
-
-Two projects solve adjacent problems well. Read before building the items above.
-
-### [alibaba/skill-up](https://github.com/alibaba/skill-up) - evaluation and evolution
-
-Go, Apache 2.0, the largest of the neighbours. Its subject is the half this suite added
-last, and it went further in four places:
-
-- **Declarative eval config**: `eval.yaml` for environment, engine and model, and
-  `cases/*.yaml` for the cases. This suite keeps everything in `evals/evals.json`, which
-  mixes what to run with how to run it.
-- **Multiple agent engines as first-class citizens**: `claude_code`, `codex`,
-  `qodercli`, `qwen_code`, plus user-defined engines. This suite has one real provider
-  and a scripted one; `evaluation/providers.py` was built for exactly this and has no
-  second engine in it yet.
-- **Three judging strategies**: `rule_based`, `script`, `agent_judge`. This suite has
-  only the first. A `script` judge - run a program, take its exit code - is cheap to add
-  and removes the substring-matching ceiling.
-- **Anthropic-compatible reports**: `grading.json`, `benchmark.json`, `benchmark.md`,
-  plus `skill-up import` for an existing `evals.json`. Interop worth having: a report
-  nobody else can read is a report that stays local.
-
-### [dotcommander/cclint](https://github.com/dotcommander/cclint) - linting the whole component family
-
-Go, smaller, and aimed one level wider: agents, commands, skills, plugins and settings.
-
-- **Schema-driven frontmatter validation** (embedded CUE schemas) rather than
-  hand-written checks. That is the shape the specification-versioning item (13) wants: a
-  versioned schema per spec version, not a version switch inside the code.
-- **"Ghost triggers"** as a named cross-file defect. `QL004` here reports a description
-  that drifted from its body statistically; naming the specific case - a trigger in the
-  description that no instruction serves - would be sharper and checkable.
-- **`fmt --write`** for component files. `sqs.py fix --apply` repairs what is broken; it
-  does not normalise what merely differs.
-- **Baseline mode** arrived at independently, in the same shape: snapshot, then fail on
-  new findings only. Good evidence the design is right.
-
-Where this project deliberately diverges: cclint gives every component a 0-100 score
-with tier grades as its headline. Here the headline is the board - one line per layer,
-with `NOT RUN` where nothing was measured - and the aggregate is optional and prints its
-own arithmetic. A single number hides which question failed, and the questions are not
-interchangeable.
-
-The wider component family (agents, commands, plugins, settings) is a real gap and a
-deliberate one: pointed at a plugin, this suite checks the skills inside it and says
-plainly that the other components were not analysed. Half-checking them would imply the
-rest had been looked at.
