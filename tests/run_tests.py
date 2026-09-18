@@ -279,6 +279,21 @@ def unit_checks():
     if "ST015" in codes:
         out.append("checking a skill with --skills-dir pointing at it reported ST015")
 
+    # The examples page promises six security findings and prints a real report under
+    # that promise. When the malicious fixture went inert in git, the page started
+    # printing a CLEAN report there - a documentation page claiming the tool found
+    # nothing, which is the one output this project exists to prevent.
+    page = os.path.join(REPO, "examples", "README.md")
+    if os.path.isfile(page):
+        with open(page, encoding="utf-8") as f:
+            body = f.read()
+        missing = [c for c in ("SE001", "SE002", "SE003", "SE004", "SE005", "SE006")
+                   if c not in body]
+        if missing:
+            out.append("examples/README.md no longer shows " + ", ".join(missing)
+                       + " - the page promises findings it does not print; run "
+                         "`python scripts/build_docs.py`")
+
     # every documented format has to produce parseable output on a real skill
     for fmt, parse in (("json", json.loads), ("sarif", json.loads)):
         r = subprocess.run([sys.executable, SQS, "check", REPO, "--format", fmt],

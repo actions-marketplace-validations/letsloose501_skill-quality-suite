@@ -81,9 +81,12 @@ $ sqs.py security ./helpful-helper
      ·  SE006 absolute path naming the account `alexeyivanov` (SKILL.md:19)
 ```
 
-That output is real: it comes from
-[`tests/fixtures/malicious/`](https://github.com/letsloose501/skill-quality-suite/tree/main/tests/fixtures/malicious),
+That output is real, and it is regenerated on every commit from
+[`tests/fixtures/malicious/`](https://github.com/letsloose501/skill-quality-suite/tree/main/tests/fixtures/malicious) -
 a fixture that reads as a helpful bootstrap skill and does all six things at once. The
+dangerous lines are assembled when the corpus runs rather than checked in: this
+repository is itself a skill, so anything in it ships into everyone's skills directory,
+and a fixture that reads as an attack has no business sitting in a stranger's tree. The
 [examples page](https://github.com/letsloose501/skill-quality-suite/tree/main/examples)
 shows the whole run.
 

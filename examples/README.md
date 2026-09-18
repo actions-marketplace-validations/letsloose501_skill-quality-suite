@@ -116,9 +116,16 @@ This is what `sqs.py security` is for: a skill somebody else wrote, read **befor
 
 ```
 $ sqs.py security tests/fixtures/malicious
-✅ helpful-helper
+⛔ helpful-helper
+     ⛔ SE001 GitHub token committed in the text (SKILL.md:34)
+     ⛔ SE003 text addressed at the agent, overriding its instructions (SKILL.md:25)
+     ⛔ SE004 hidden characters: RLO, ZWSP (SKILL.md:32)
+     ⚠️  SE002 piping a download straight into a shell (SKILL.md:20)
+     ⚠️  SE002 recursive delete of a root-level path (SKILL.md:21)
+     ⚠️  SE005 a local file is sent to a network endpoint (SKILL.md:23)
+     ·  SE006 absolute path naming the account `alexeyivanov` (SKILL.md:30)
 
-1 skill(s) · 0 error · 0 warning · 0 info  ·  `sqs.py explain <CODE>` for any of them
+1 skill(s) · 3 error · 3 warning · 1 info  ·  `sqs.py explain <CODE>` for any of them
 ```
 
 The file itself is [`tests/fixtures/malicious/`](../tests/fixtures/malicious). It is not reproduced here: it carries a token-shaped string on purpose, and pasting that into a README is how a repository gets its next push blocked by somebody else's secret scanner.

@@ -19,6 +19,7 @@ true fails the build before it reaches a reader.
 """
 import argparse
 import difflib
+import json
 import os
 import re
 import shutil
@@ -143,6 +144,23 @@ def fix_before_after(case, skill, filename="SKILL.md"):
     return before, after, said
 
 
+def scan_materialised(case, command="check", *extra):
+    """Run a module over a fixture with its generated payloads applied.
+
+    The materialising is imported from `tests/run_tests.py` rather than reimplemented:
+    two copies of the payload assembly would drift, and the drift would show up as a
+    documentation page quietly disagreeing with the tests.
+    """
+    sys.path.insert(0, os.path.join(REPO, "tests"))
+    import run_tests                                            # noqa: PLC0415
+    with open(os.path.join(FIXTURES, case, "expect.json"), encoding="utf-8") as f:
+        spec_ = json.load(f)
+    with tempfile.TemporaryDirectory() as work:
+        root = run_tests.materialise(os.path.join(FIXTURES, case), spec_, work)
+        return run([command, "--skills-dir", root] + list(extra),
+                   env={"CLAUDE_SKILLS_DIR": root}).replace(root, f"tests/fixtures/{case}")
+
+
 def fence(text, lang=""):
     return f"```{lang}\n{text}\n```"
 
@@ -155,11 +173,13 @@ def render_examples():
         before.split("\n"), after.split("\n"),
         fromfile="renamed-folder/SKILL.md (before)",
         tofile="renamed-folder/SKILL.md (after)", lineterm="", n=2))
-    # The insecure example is shown through the report rather than through its own text:
-    # the file carries a token-shaped string on purpose, and pasting that into a README
-    # is how a repository gets its push blocked by somebody else's secret scanner.
-    malicious = run(["security", "--skills-dir", os.path.join(FIXTURES, "malicious")],
-                    env={"CLAUDE_SKILLS_DIR": os.path.join(FIXTURES, "malicious")})
+    # The insecure fixture is inert in git - its dangerous lines are assembled at run
+    # time, because this repository is itself a skill and ships into everyone's skills
+    # directory. So the page has to materialise it exactly as the corpus runner does,
+    # through the same function: scanning the checked-in file would print a clean report
+    # under a paragraph promising six findings, which is the one output this project
+    # exists to prevent.
+    malicious = scan_materialised("malicious", "security")
 
     return "\n".join([
         GENERATED, "",
