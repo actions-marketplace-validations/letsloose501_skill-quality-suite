@@ -13,7 +13,10 @@ import re
 
 from core import Finding
 
-ALLOWED_DIRS = {"references", "assets", "scripts"}
+# `evals/` is named by the official skill-creation guidance, which puts eval files
+# inside the skill directory. It was reported as a non-standard directory until
+# that page was read - a rule wrong about the thing it checks.
+ALLOWED_DIRS = {"references", "assets", "scripts", "evals"}
 # The Agent Skills validation rules, from the authoring guide: neither field may carry
 # an XML tag, and the name may not carry a vendor word. Both refusals arrive at upload,
 # after the skill is finished, so they are worth catching at home.

@@ -23,10 +23,10 @@ class ClaudeCode(HarnessAdapter):
         "license": OPTIONAL,
         "compatibility": OPTIONAL,
         "metadata": OPTIONAL,
-        "version": OPTIONAL,
         "allowed-tools": OPTIONAL,
         "model": EXTENSION,
         "argument-hint": EXTENSION,
+        # Not Claude Code's alone: Cursor documents the same field.
         "disable-model-invocation": EXTENSION,
         "user-invocable": EXTENSION,
     }

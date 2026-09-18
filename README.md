@@ -27,7 +27,7 @@ sorts them by *when* they would have bitten:
 | `quality` | a description that never says *when*, vague bounds, placeholders | every run, a little |
 | `compat` | what will not survive a move to another agent | on somebody else's machine |
 | `security` | secrets, destructive commands, injection, hidden characters | when you install a stranger's skill |
-| `evals` | whether the skill fires on the wording a human uses | when a neighbour's description moves |
+| `evals` | the eval set, the routing, and an opt-in loop that runs the agent | when a neighbour's description moves |
 | `publish` | personal paths, missing license, version drift | the moment it leaves your machine |
 | `fix` | the repairs with exactly one correct answer | - |
 
@@ -105,7 +105,7 @@ table, the source behind each row, and how to add one without guessing.
 - **· info** - a nudge. Real, small, safe to leave.
 
 Every finding carries a rule code. `sqs.py explain ST008` prints the reasoning and the
-fix; `sqs.py rules` lists all 65.
+fix; `sqs.py rules` lists all 70.
 
 ## Commands
 
@@ -119,7 +119,15 @@ sqs.py explain <CODE>        what a code means and how to fix it
 sqs.py rules [--module X]    the registry
 sqs.py harnesses [--show]    the harness adapters and their sources
 sqs.py new <name>            scaffold a skill that already passes
+sqs.py evals . --init        scaffold the two documented eval files
+sqs.py evals . --trigger     run the agent and measure how often the skill loads
 ```
+
+`--trigger` is the only command here that spends money. It sends each query in
+`evals/eval_queries.json` to a headless session and watches whether the skill was
+actually loaded, several runs per query because the model is not deterministic, split
+60/40 into train and validation so a description tuned on the failures can be checked
+for generalising rather than for memorising. Every other check reads text.
 
 A target is a path or a skill name. Pointed at a plugin, the suite finds the skills
 inside it and says plainly that the plugin's other components were not analysed:
@@ -159,6 +167,10 @@ Three scopes, for findings that are correct-and-intended:
 Write down *why* next to the entry. A silenced rule with no reason gets un-silenced by
 the next person who reads the file, including you.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Design notes
 
 **Precision over coverage.** A rule earns its place by being checkable: it names a file
@@ -193,6 +205,8 @@ touched, `--stop` checks those and blocks the stop on breakage.
   skill, and for reworking an old one.
 - [agent-compatibility.md](references/agent-compatibility.md) - the harness table and
   what each row rests on.
+- [evaluating.md](references/evaluating.md) - the two eval kinds: the trigger loop with
+  its train/validation split, and the output-quality loop that stays a human's job.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the
   machine.
 

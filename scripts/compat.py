@@ -19,7 +19,10 @@ from portability import findings as portability_findings
 # The Agent Skills specification: the only fields a strict validator accepts at the top
 # level. Everything else belongs under `metadata:`, the spec's own escape hatch.
 SPEC_REQUIRED = {"name", "description"}
-SPEC_OPTIONAL = {"license", "compatibility", "metadata", "allowed-tools", "version"}
+# Exactly the specification's frontmatter table. `version` is NOT in it - it belongs
+# under `metadata:`, and having it here made CP002 miss a field `skills-ref validate`
+# rejects.
+SPEC_OPTIONAL = {"license", "compatibility", "metadata", "allowed-tools"}
 SPEC_FIELDS = SPEC_REQUIRED | SPEC_OPTIONAL
 
 # Values a field accepts. A field absent here has its value unchecked.

@@ -31,12 +31,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import compat                                                   # noqa: E402
+import evalcheck                                                # noqa: E402
 import fix as fixer                                             # noqa: E402
 import portability                                              # noqa: E402
 import publish                                                  # noqa: E402
 import quality                                                  # noqa: E402
 import security                                                 # noqa: E402
 import spec                                                     # noqa: E402
+import trigger_evals                                            # noqa: E402
 from core import Finding, Skill, discover                       # noqa: E402
 from harnesses import registry as harness_registry              # noqa: E402
 from model import SkillModel                                    # noqa: E402
@@ -233,6 +235,8 @@ def collect(skill, modules, cfg, skill_registry, engine, world=None):
             out += security.check(skill, cfg)
         elif name == "publish":
             out += publish.check(skill, cfg)
+        elif name == "evals":
+            out += evalcheck.check(skill, cfg)
         elif name == "fix":
             out += fixer.check(skill, cfg)
     for f in out:
@@ -341,6 +345,51 @@ def cmd_rules(module=None, audit=False):
 
 # One line, not a block scalar: a scaffold that trips its own linter teaches the wrong
 # thing on the first run.
+QUERY_TEMPLATE = [
+    {"query": "TODO a realistic prompt that should reach this skill, in the words a "
+              "human would actually type - file paths, a bit of backstory, the odd typo",
+     "should_trigger": True},
+    {"query": "TODO a near-miss: shares vocabulary with the skill and needs something "
+              "else. These are the ones that test precision", "should_trigger": False},
+]
+
+CASE_TEMPLATE = {
+    "skill_name": "",
+    "evals": [
+        {"id": 1,
+         "prompt": "TODO a realistic task for this skill",
+         "expected_output": "TODO what success looks like, in a sentence",
+         "assertions": ["TODO something checkable about the output"]},
+    ],
+}
+
+
+def cmd_init_evals(skills):
+    """Scaffold the two documented eval files for each named skill."""
+    import json as _json
+    made = 0
+    for s in skills:
+        d = os.path.join(s.root, "evals")
+        os.makedirs(d, exist_ok=True)
+        for rel, payload in (("eval_queries.json", QUERY_TEMPLATE),
+                             ("evals.json", dict(CASE_TEMPLATE,
+                                                 skill_name=s.name or s.folder))):
+            path = os.path.join(d, rel)
+            if os.path.exists(path):
+                print(f"{s.folder}: evals/{rel} already exists, left alone")
+                continue
+            with open(path, "w", encoding="utf-8") as f:
+                _json.dump(payload, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            print(f"{s.folder}: wrote evals/{rel}")
+            made += 1
+    if made:
+        print("\nFill the TODOs, then `sqs.py evals <skill> --trigger`. Aim for about "
+              "twenty queries,\neight to ten on each side; the negatives are what test "
+              "precision.")
+    return 0
+
+
 def cmd_harnesses(world, verbose=False):
     """The adapter registry: what a `--harness` name can be, and what it rests on."""
     for a in world:
@@ -434,6 +483,13 @@ def main(argv=None):
     ap.add_argument("--show", action="store_true",
                     help="harnesses: locations, discovery and caveats for each")
     ap.add_argument("--lang", help="the language the published docs are written in")
+    ap.add_argument("--trigger", action="store_true",
+                    help="evals: run the agent against evals/eval_queries.json (costs money)")
+    ap.add_argument("--init", action="store_true",
+                    help="evals: scaffold the two documented eval files")
+    ap.add_argument("--runs", type=int, default=3, help="evals --trigger: runs per query")
+    ap.add_argument("--no-split", action="store_true",
+                    help="evals --trigger: measure one set instead of train/validation")
     ap.add_argument("--live", action="store_true", help="evals: ask the model, not the invariants")
     ap.add_argument("--apply", action="store_true", help="fix: write the repairs")
     ap.add_argument("--module", help="rules: only this module")
@@ -491,13 +547,28 @@ def main(argv=None):
     # evals is a whole-tree check: it compares descriptions against each other, so it
     # has no per-skill form and runs once.
     eval_findings = []
-    if "evals" in modules or a.command in ("evals", "all"):
+    if a.command in ("evals", "all"):
+        # Routing is a property of the whole tree, so it runs once rather than per skill.
         eval_findings = evals_findings(root, a.live, names)
-        modules = [m for m in modules if m != "evals"]
-    if not modules:
-        # Routing is a property of the whole tree, not of one skill, so with evals as
-        # the only module there is no per-skill pass to print.
-        skills = []
+
+    # The trigger loop runs the agent, so it is opt-in and never part of `check`.
+    if a.command == "evals" and a.trigger:
+        rc = 0
+        ran = False
+        for s in skills:
+            text, code = trigger_evals.run(s, runs=a.runs, model=cfg.get("live_model"),
+                                           use_split=not a.no_split, show=a.show)
+            if text is None:
+                print(f"{s.folder}: no evals/eval_queries.json - "
+                      f"`sqs.py evals {s.folder} --init` writes one", file=sys.stderr)
+                continue
+            ran = True
+            print(text)
+            rc = max(rc, code)
+        return rc if ran else 2
+
+    if a.command == "evals" and a.init:
+        return cmd_init_evals(skills)
 
     engine = load_structure_engine(root) if "structure" in modules else None
 

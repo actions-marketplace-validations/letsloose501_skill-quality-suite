@@ -152,3 +152,28 @@ plugin container `my-plugin`: 2 skill(s) checked, other plugin components
 That boundary is deliberate. Checking `plugin.json`, hooks, commands and agents is a
 different tool's job, and a half-done version of it would be worse than none: it would
 imply the rest had been looked at.
+
+## Harnesses with no adapter yet
+
+The official [client showcase](https://agentskills.io/clients) lists well over forty
+products reading `SKILL.md`, each with a link to its own setup page. The registry here
+holds ten. The rest are a recorded gap rather than a claim that they do not work:
+Junie, Amp, Goose, VS Code, Kiro, Letta, OpenHands, Factory, Zed, Warp, Trae, Firebender,
+Tabnine, Qodo, pi, Mux, Databricks, Snowflake, Spring AI, Laravel Boost and the others.
+
+Adding one is the process above: read that product's own page, fill the declarations it
+states, leave out what it does not, run the result against a skill you know works there.
+
+Two cross-client facts from the client-implementation guide worth knowing whatever your
+targets are:
+
+- **`.agents/skills/` is the convention for cross-client sharing.** It is not in the
+  specification, which defines only what goes inside a skill directory, but clients
+  scan it so that skills installed by one are visible to the others. A skill meant to
+  travel belongs there rather than in a vendor folder.
+- **Real clients validate leniently**, and the guide says exactly how: a name that does
+  not match its folder, or is over 64 characters, is a warning and the skill loads
+  anyway; a missing or empty description, or unparseable YAML, and the skill is skipped.
+  So the two failure classes are genuinely different, and the suite grades them that
+  way: the first pair fail on `skills-ref validate` and at publication, the second pair
+  fail everywhere, immediately.

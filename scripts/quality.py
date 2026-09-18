@@ -54,6 +54,30 @@ NEIGHBOUR_RE = re.compile(
     r"[`/]([a-z][a-z0-9-]{2,63})[`\b]|\b(?:не подменяет|not to be confused|instead of|"
     r"это |а не )\s*`?([a-z][a-z0-9-]{2,63})`?")
 
+# A description is an instruction to the agent about when to act. `This skill does X`
+# is a paragraph about itself, and first or second person does not fit the system prompt
+# the description is injected into. Both are named in the official guidance.
+SELF_TALK_RE = re.compile(
+    r"^\s*(?:this|the)\s+skill\b|\bthis\s+skill\s+(?:does|is|will|can|provides|helps|"
+    r"handles|allows)\b|^\s*I\s+(?:can|will|help)\b|\byou\s+can\s+use\s+this\b|"
+    r"^\s*[Ээ]тот\s+скилл\b",
+    re.I)
+
+# Agents run in non-interactive shells, so a script that blocks on a prompt hangs until
+# something kills it. `sys.stdin.read()` is deliberately absent: taking input from stdin
+# is what the guidance asks for, and only a prompt at a terminal is the failure.
+INTERACTIVE_RE = re.compile(
+    r"(?<![\w.])(?:input|raw_input)\s*\(|\bgetpass\b|\bRead-Host\b|"
+    r"\bread\s+-[a-zA-Z]*p\b|\bclick\.(?:prompt|confirm)\b|\binquirer\.|"
+    r"\bquestionary\.|\bprompts?\.(?:confirm|select)\b|\bConfirm-Host\b")
+
+# `npx eslint` resolves to whatever is newest today. A scoped package needs the version
+# after the package name, so `@scope/pkg` on its own is still unpinned.
+UNPINNED_RE = re.compile(
+    r"\b(npx|bunx|uvx)\s+(?:--?\S+\s+)*(@?[\w.-]+(?:/[\w.-]+)?)(?![\w./-]*@)")
+
+SCRIPT_EXT = (".py", ".sh", ".bash", ".ps1", ".js", ".ts", ".rb")
+
 WORD_RE = re.compile(r"[^\W\d_]{4,}", re.U)
 
 
@@ -120,6 +144,11 @@ def check(skill, cfg=None, registry=None):
                                         f"twice", where="SKILL.md"))
         if re.search(r"\b" + re.escape(skill.folder) + r"\b", desc, re.I):
             out.append(Finding("QL009", f"description repeats `{skill.folder}`", where="SKILL.md"))
+        m = SELF_TALK_RE.search(desc)
+        if m:
+            out.append(Finding("QL010", f'"{m.group(0).strip()}" - a description is read as '
+                                        f'an instruction about when to act, not as a '
+                                        f'paragraph about the skill', where="SKILL.md"))
 
         # QL008 - a disclaimer that can only attract. A neighbour with
         # `disable-model-invocation` cannot intercept anything, so naming its topic here
@@ -165,4 +194,29 @@ def check(skill, cfg=None, registry=None):
                                         f"{', '.join(map(str, first))}, ...) - check which of "
                                         f"them have a positive form",
                                where=rel, line=first[0]))
+
+        # QL012 - an unpinned one-off command. It lives inside a fence, so the raw text
+        # is searched: blanking code here would blank the thing being checked.
+        for m in UNPINNED_RE.finditer(text):
+            out.append(Finding("QL012", f"`{m.group(1)} {m.group(2)}` has no version",
+                               where=rel, line=text.count("\n", 0, m.start()) + 1))
+
+    # QL011 - the worst failure mode in the set: the agent waits forever and nothing
+    # explains why. Bundled scripts are read directly; texts() only carries prose.
+    for rel, size, _ in sorted(skill.walk()):
+        if not rel.lower().endswith(SCRIPT_EXT) or size > 2_000_000:
+            continue
+        try:
+            with open(f"{skill.root}/{rel}", encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().split("\n")
+        except OSError:
+            continue
+        for n, line in enumerate(lines, 1):
+            if line.lstrip().startswith(("#", "//", "*")):
+                continue
+            m = INTERACTIVE_RE.search(line)
+            if m:
+                out.append(Finding("QL011", f"`{m.group(0).strip()}` waits for a human",
+                                   where=rel, line=n))
+                break
     return out

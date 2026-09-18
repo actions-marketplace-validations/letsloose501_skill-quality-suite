@@ -50,8 +50,10 @@ RULES = {
               "The description is the skill's only context pointer. No description, no triggering.",
               "Add a description stating what the skill does and when to reach for it.", False),
     "SP004": ("error", "`name` does not match the folder",
-              "The spec requires them equal; some loaders index by folder and resolve by name, "
-              "so a mismatch makes the skill unreachable without any error.",
+              "The specification requires them equal. What actually happens is split, and the "
+              "client-implementation guide states both halves: a lenient client warns and "
+              "loads the skill anyway, while `skills-ref validate` and publication reject it. "
+              "So it works on your machine and fails the moment the skill leaves it.",
               "Rename the folder or the field so the two agree.", True),
     "SP005": ("warning", "`name` longer than 64 characters",
               "Over the spec limit. Claude Code tolerates it, `skills-ref validate` and "
@@ -74,10 +76,15 @@ RULES = {
     "SP011": ("error", "Unclosed code fence",
               "Everything after the unclosed fence reads as code, so the instructions that "
               "follow it stop being instructions.", "Close the fence.", False),
-    "SP012": ("warning", "Non-spec top-level directory",
-              "The spec names `scripts/`, `references/`, `assets/`. A fourth directory is "
-              "invisible to tools that walk the standard layout.",
-              "Move the files under a standard directory, or allow the name in the config.", False),
+    "SP012": ("info", "Directory outside the conventions",
+              "The specification permits any directory beside SKILL.md and calls "
+              "`scripts/`, `references/` and `assets/` recommendations, so this is not a "
+              "violation. It is a portability note: tools that walk the conventional "
+              "layout will not see the directory, and harnesses document different sets - "
+              "Cline names `docs/` and `templates/`, Antigravity names `examples/` and "
+              "`resources/`.",
+              "Leave it if the skill links it from SKILL.md; `compat` says what each "
+              "harness makes of it. Add the name to `allow_dirs` to stop being told.", False),
     "SP013": ("info", "Extraneous file at the skill root",
               "README.md, CHANGELOG.md, Makefile and friends are repository furniture. Inside a "
               "published skill they ship as payload nobody reads.",
@@ -214,6 +221,24 @@ RULES = {
               "Identity the body already carries, paid for on every turn.",
               "Cut the restatement and spend the room on a trigger.", False),
 
+    "QL010": ("warning", "Description talks about itself",
+              "The description is an instruction to the agent about when to act, not a "
+              "paragraph about the skill. `Use when the user ...` outperforms `This skill "
+              "does ...`, and first or second person (`I can help you ...`) is injected "
+              "into a system prompt where the point of view does not fit.",
+              "Rewrite in the imperative, third person: what it does, then the situations "
+              "that should reach it.", False),
+    "QL011": ("error", "Bundled script waits for input",
+              "Agents run in non-interactive shells. A script that blocks on a prompt does "
+              "not fail - it hangs until something kills it, and the skill looks broken for "
+              "reasons nothing explains.",
+              "Take every input from flags, environment variables or stdin, and fail with a "
+              "message naming the missing one.", False),
+    "QL012": ("info", "Unpinned one-off command",
+              "`npx eslint` resolves to whatever is newest today. The skill's behaviour then "
+              "changes without the skill changing, which is the hardest kind of drift to "
+              "trace.", "Pin the version: `npx eslint@9.0.0`.", False),
+
     # ---- CP: agent compatibility --------------------------------------------
     "CP001": ("warning", "Field value the runtime cannot read",
               "The field is read; the value is not one of the ones it accepts, so the runtime "
@@ -302,6 +327,17 @@ RULES = {
     "EV003": ("error", "Live routing run below threshold",
               "The judge sent wording to the wrong skill.",
               "Read the failing cases: usually one description is claiming a neighbour's branch.", False),
+    "EV004": ("warning", "Malformed evals",
+              "An `evals/` directory that does not parse is worse than none: it looks like "
+              "the skill is tested.",
+              "`evals/evals.json` is `{skill_name, evals: [{id, prompt, expected_output, "
+              "assertions}]}`; `evals/eval_queries.json` is `[{query, should_trigger}]`.",
+              False),
+    "EV005": ("info", "Thin trigger set",
+              "A trigger set with few cases on one side measures almost nothing. The "
+              "negatives matter most, and the useful ones are near-misses: queries sharing "
+              "keywords with the skill that need something else.",
+              "Aim for about twenty queries, eight to ten on each side.", False),
 }
 
 

@@ -1,6 +1,7 @@
 ---
 name: skill-quality-suite
 description: Reviews, repairs and builds Agent Skills - structure, specification conformance, instruction quality, cross-runtime compatibility, security, routing, publication readiness and mechanical fixes, under one command. Use when asked to check, lint, validate, audit or score a SKILL.md; when a skill does not fire, fires on somebody else's work, or half-works and silently skips steps; when writing a new skill or reworking an existing one; after renaming a skill, a file inside one, or a heading a reference points at; before committing or publishing a skill; and when a skill arrives from elsewhere and has to be read before it is trusted.
+license: MIT
 ---
 
 # Skill quality suite
@@ -60,7 +61,7 @@ sqs.py spec        layout, fences, description shape, asset weight, nesting
 sqs.py quality     the description as a pointer, placeholders, vague bounds
 sqs.py compat      will the skill work on somebody else's harness
 sqs.py security    secrets, destructive commands, injection, hidden characters
-sqs.py evals       routing: does it fire on the wording a human uses
+sqs.py evals       the eval set, the routing, and the trigger loop
 sqs.py publish     what has to be true before the skill leaves the machine
 sqs.py fix         the repairs with exactly one correct answer
 ```
@@ -81,10 +82,15 @@ Code, Windsurf, GitHub Copilot. Every row rests on that project's own documentat
 and what the documentation does not state comes back `UNKNOWN` rather than as an
 invented incompatibility. `sqs.py harnesses` lists them with the page each rests on.
 
-**`evals`** delegates to `evals/run_evals.py` when that exists beside the skills. Static
-by default - invariants over the descriptions, no network. `--live` asks a judge model
-where a given wording actually routes, which costs money and time and is the only thing
-that catches "the new skill now takes half of its neighbour's work".
+**`evals`** answers three questions that share a name. Free and per skill: does this one
+carry a usable eval set (`evals/eval_queries.json`, `evals/evals.json`; `--init`
+scaffolds both). Free and tree-wide: does routing still hold, delegated to
+`evals/run_evals.py` when one sits beside the skills. Costly and opt-in: `--trigger`
+**runs the agent** against the query set and measures how often the skill actually
+loads, split train/validation so a description tuned on failures can be checked for
+generalising. That last one is the only check in the suite that observes activation
+instead of reasoning about the description; see
+[evaluating.md](references/evaluating.md).
 
 **`fix`** is a dry run unless you pass `--apply`. It only repairs what the broken state
 forces: the name the folder already dictates, characters that should never have been in
@@ -128,8 +134,8 @@ python scripts/sqs.py rules --audit
 It fails when an engine emits a code the registry does not carry, or the registry carries
 a row nothing emits. That check is what keeps the two from drifting apart.
 
-The structure module is `scripts/check_skills.py`, imported rather than shelled out to -
-it also runs standalone, and as a `PostToolUse` + `Stop` hook pair. Parsing its printed
+The structure module is `scripts/check_skills.py`, imported rather than shelled out to.
+It also runs standalone, and as a `PostToolUse` + `Stop` hook pair. Parsing its printed
 output back into findings would be a second, drifting source of truth, so it carries the
 rule codes itself.
 
@@ -154,5 +160,8 @@ go unread with it.
 - [agent-compatibility.md](references/agent-compatibility.md) - the ten harnesses, what
   each row rests on, the five portability verdicts, and how to add a harness without
   inventing one. Open it before answering "will this work on X".
+- [evaluating.md](references/evaluating.md) - the two eval kinds, the trigger loop with
+  its train/validation split, and the output-quality loop that stays a human's job. Open
+  it before touching a description that already fires.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the machine,
   and what the publish module cannot see.
