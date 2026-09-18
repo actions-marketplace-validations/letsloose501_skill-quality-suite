@@ -1,5 +1,10 @@
 # skill-quality-suite
 
+[![quality](https://github.com/letsloose501/skill-quality-suite/actions/workflows/quality.yml/badge.svg)](https://github.com/letsloose501/skill-quality-suite/actions/workflows/quality.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://github.com/letsloose501/skill-quality-suite/actions/workflows/quality.yml)
+[![no dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#install)
+
 **A quality, linting, security and validation toolkit for AI Agent Skills.** It
 validates a `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification),
 lints the instructions an agent will actually follow, scans a skill for secrets and
