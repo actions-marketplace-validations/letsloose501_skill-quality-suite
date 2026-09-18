@@ -2,8 +2,8 @@
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
   The planned layers of skill-quality-suite: semantic overlap between skills, routing
-  analysis, capability manifests, static analysis of bundled scripts, package
-  verification, specification versioning, and an optional LLM review layer.
+  analysis, capability manifests, static analysis of bundled scripts, a measured
+  description budget, and an optional LLM review layer - plus what was rejected and why.
 ---
 
 # Roadmap
@@ -26,11 +26,9 @@ The two rules the whole project runs on apply to everything below:
 |---|---|---|
 | 5 | Semantic overlap / skill collision | two skills claim the same wording, and only one can win |
 | 6 | Routing analysis - `sqs.py route --prompt "..."` | which skill wins this prompt, and by how much |
-| 10 | Capability manifest - `sqs.py capabilities` | what this skill can actually do to the machine |
 | 9 | Static analysis of bundled scripts | what `scripts/*.py` inside a skill does: network, subprocess, credentials |
-| 14 | Packaging - `pack` / `unpack` / `verify` | is the archive safe **before** installing: path traversal, symlinks, secrets |
-| 13 | Specification versions - `--spec latest` / `1.x` | which version was validated against, and why an old skill went red |
-| 11, 12 | Dynamic harness registry, compatibility matrix as JSON | where a table row came from, and when it was last checked |
+| 10 | Capability manifest - `sqs.py capabilities` | what this skill can actually do to the machine |
+| 15 | Description budget, measured | how long a description can get before routing degrades |
 
 Notes on the harder ones.
 
@@ -47,7 +45,18 @@ in the same breath, or the two get confused.
 **Capabilities (10)** and **script analysis (9)** are one layer seen from two ends: the
 first summarises, the second finds. Both describe capability rather than forbid it - the
 security module's discipline is that a finding explains what a skill *can* do and leaves
-the decision where it belongs.
+the decision where it belongs. They are also the two items with a life outside this
+project: the question "what can this thing do to my machine" is the same one for an MCP
+server, a hook and a plugin script, and none of those is a `SKILL.md`.
+
+**Description budget (15)** is the gap the registry admits to. `QL001` fires when a
+description is too short to carry triggers and `SP008` fires at the specification's 1024
+characters, and between those two there is no opinion at all. Neighbouring projects have
+none either, and their thresholds are guesses. This project is the one that can stop
+guessing: `eval --trigger` already measures precision and recall of activation, so the
+same harness run against progressively trimmed descriptions turns a house style into a
+measured threshold. That is also what justifies keeping the expensive half in the same
+repository as the free one - it is where the free half's rules come from.
 
 ## P2
 
@@ -55,15 +64,39 @@ the decision where it belongs.
   edge cases: the things a regex cannot reach. Hard requirement: `DETERMINISTIC` and
   `LLM REVIEW` stay separated in the output, and the model never promotes an opinion to
   an error.
-- **Reproducible packages** - a manifest of file hashes, so "this skill was modified
-  after publication" becomes checkable.
 - **Version and changelog analysis** - evidence-based warnings only: a version bumped
   with no changelog entry, a breaking change with no major bump. Where the evidence is
   not there, no finding.
-- **`sqs.py rubric`** - the human reading pass from
-  [writing-rubric.md](https://github.com/letsloose501/skill-quality-suite/blob/main/references/writing-rubric.md)
-  as a printable checklist. Deliberately not automated.
-- **Visualisation and catalogue integrations.**
+
+## Deferred, not rejected
+
+**Specification versions (13)** - `--spec latest` / `1.x`. Right shape, wrong moment: it
+pays off once two versions of the specification are in the wild and old skills start
+going red for a reason that is not their fault. Today there is effectively one. The
+schema-driven approach cclint uses (a versioned schema per spec version rather than a
+version switch in the code) is the form to build it in when the time comes.
+
+## Rejected, and why
+
+Kept here so they stop coming back.
+
+- **Packaging `pack` / `unpack` (14)** - that is an installer's job, and the ecosystem
+  already has one in `npx skills add`. What was worth having in the item is the
+  *verification*: path traversal, symlinks and secrets inside an archive. That is the
+  `security` module reading an archive instead of a directory, which is a flag, not three
+  commands.
+- **Reproducible packages** - "this skill was modified after publication" needs an
+  external anchor of trust. A manifest of hashes committed beside the files it describes
+  proves nothing: whoever edits the files edits the manifest. Either a catalogue serves
+  the hashes, and then it is a network feature that breaks the offline rule above, or the
+  item does not exist.
+- **`sqs.py rubric`** - fails this page's own admission rule. It adds a command and no
+  question; the rubric is a file in `references/` that a person reads.
+- **Visualisation and catalogue integrations** - no question named, so nothing to build
+  against.
+- **Dynamic harness registry, compatibility matrix as JSON (11, 12)** - half of it exists
+  as `--format json`, and the other half is maintenance infrastructure for a scale this
+  project does not have at ten harnesses.
 
 ## Worth taking from the neighbours
 

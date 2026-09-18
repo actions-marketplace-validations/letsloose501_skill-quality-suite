@@ -1,13 +1,18 @@
 ---
 name: skill-quality-suite
-description: Reviews, repairs and builds Agent Skills - structure, specification conformance, instruction quality, cross-runtime compatibility, security, routing, publication readiness and mechanical fixes, under one command. Use when asked to check, lint, validate, audit or score a SKILL.md; when a skill does not fire, fires on somebody else's work, or half-works and silently skips steps; when writing a new skill or reworking an existing one; after renaming a skill, a file inside one, or a heading a reference points at; before committing or publishing a skill; when a skill arrives from elsewhere and has to be read before it is trusted; and when the question is whether the skill fires on the right wordings, whether it makes the agent's work better at all, or whether the last edit to it made any of that worse.
+description: Lint, validate and security-scan Agent Skills. Use when asked to check or audit a SKILL.md; when a skill does not fire, fires on a neighbour's work, or half-works and silently skips steps; when writing or reworking one; after a rename left a reference pointing at nothing; before committing or publishing; when a skill came from elsewhere and has to be read before it is trusted; and when the question is whether the last edit made its routing better or worse.
 license: MIT
 ---
 
 # Skill quality suite
 
-A quality gate for a skill, in two halves. The **static** half reads the skill: eight
-checks, one command each, separate because they fail at different moments - structure
+Validates a `SKILL.md` against the Agent Skills specification, lints the instructions an
+agent will actually follow, scans a skill for secrets and prompt injection before you
+install it, checks whether it will work on another agent, and measures whether it
+improves the agent's work at all.
+
+A quality gate in two halves. The **static** half reads the skill: eight checks,
+one command each, separate because they fail at different moments - structure
 breaks today and in silence, the specification breaks on publication, compatibility
 breaks on somebody else's machine, routing breaks when a neighbour's description moves.
 Running them as one undifferentiated pass reports all four with the same urgency, which
