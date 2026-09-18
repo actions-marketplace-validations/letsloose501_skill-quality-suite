@@ -5,6 +5,7 @@
 [![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://github.com/letsloose501/skill-quality-suite/actions/workflows/quality.yml)
 [![no dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#install)
 [![skills.sh](https://skills.sh/b/letsloose501/skill-quality-suite)](https://skills.sh/letsloose501/skill-quality-suite)
+[![GitHub Marketplace](https://img.shields.io/badge/marketplace-skill--quality--suite-2ea44f?logo=github&logoColor=white)](https://github.com/marketplace/actions/skill-quality-suite)
 
 **A quality, linting, security and validation toolkit for AI Agent Skills.** It
 validates a `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification),
@@ -219,6 +220,8 @@ Exit codes: `0` clean, `1` findings that count as failures, `2` usage error.
     harness: all
     upload-sarif: "true"        # needs security-events: write on the job
 ```
+
+The action is on the [GitHub Marketplace](https://github.com/marketplace/actions/skill-quality-suite).
 
 The action annotates the diff, writes SARIF for code scanning, and fails the job on the
 findings that count. `changed: "true"` checks only the skills the diff touched, and

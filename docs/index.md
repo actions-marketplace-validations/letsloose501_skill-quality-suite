@@ -95,7 +95,7 @@ git clone https://github.com/letsloose501/skill-quality-suite \
 As a plain tool: clone anywhere and call `scripts/sqs.py`. It finds the skills folder on
 its own, or takes `--skills-dir`.
 
-In CI, as a GitHub Action:
+In CI, as a [GitHub Action from the Marketplace](https://github.com/marketplace/actions/skill-quality-suite):
 
 ```yaml
 - uses: letsloose501/skill-quality-suite@v1
