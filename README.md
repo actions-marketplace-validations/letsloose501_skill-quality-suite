@@ -41,7 +41,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 70 rules](docs/quality-rules.md)**
+📋 **[All 71 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|
@@ -206,7 +206,14 @@ half-done version of it would imply the rest had been looked at.
 
 Flags: `--format text|json|github|sarif|board`, `--strict` (warnings count as failures),
 `--quiet`, `--changed` (only what the diff touched), `--baseline`, `--min-confidence`,
-`--score`, `--skills-dir`, `--config`.
+`--score`, `--skills-dir`, `--config`, `--trust-target`.
+
+**The suite does not run the tree it is reading.** A skills directory can carry its
+own `check_skills.py` and its own `evals/run_evals.py`, and both are Python the suite
+would otherwise import or shell out to - which turns "read this before I trust it" into
+running it. The structure engine is always the one the suite ships; the routing runner
+inside a target tree is reported as not executed (`EV006`) rather than run. `--trust-target`
+turns both back on for a tree you own.
 
 Exit codes: `0` clean, `1` findings that count as failures, `2` usage error.
 

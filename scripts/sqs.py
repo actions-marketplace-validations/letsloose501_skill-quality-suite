@@ -202,21 +202,37 @@ def load_config(root, path=None):
         return {}
 
 
-def load_structure_engine(root):
+def own_tree(root):
+    """Is `root` the tree this suite itself is installed in?
+
+    The one tree whose scripts are not material under analysis. Everywhere else `root`
+    is a directory somebody handed the suite to be read, and the whole point of reading
+    it is that nobody has vouched for what is inside.
+    """
+    try:
+        return (os.path.realpath(root)
+                == os.path.realpath(os.path.dirname(os.path.dirname(HERE))))
+    except OSError:
+        return False
+
+
+def load_structure_engine(root, trust_target=False):
     """check_skills.py, imported rather than shelled out to.
 
     It is the structure engine and it already carries the rule codes; parsing its
     printed output back into findings would be a second, drifting source of truth.
     """
-    # Three places, because the engine legitimately lives in two of them: bundled in
-    # `scripts/` when the suite is a checkout, and beside the skills when it is
-    # installed as one (it runs standalone there, and as a hook pair). The third is the
-    # tree being checked, which is only the same directory when that tree is also the
-    # one the suite is installed in - checking a fixture or a foreign checkout is not.
-    for candidate in (os.path.join(root, "check_skills.py"),
-                      os.path.join(HERE, "check_skills.py"),
-                      os.path.join(os.path.dirname(os.path.dirname(HERE)),
-                                   "check_skills.py")):
+    # The engine the suite runs is the engine the suite ships: bundled in `scripts/`,
+    # and beside the skills when the suite is installed as one (it runs standalone
+    # there, and as a hook pair). The tree being checked used to come first, which is
+    # how a folder handed over to be read got its own `check_skills.py` imported and
+    # executed instead - an analyser running the material it was pointed at. It is a
+    # candidate now only when the caller says in as many words that the tree is theirs.
+    candidates = [os.path.join(HERE, "check_skills.py"),
+                  os.path.join(os.path.dirname(os.path.dirname(HERE)), "check_skills.py")]
+    if trust_target:
+        candidates.insert(0, os.path.join(root, "check_skills.py"))
+    for candidate in candidates:
         if os.path.isfile(candidate):
             os.environ.setdefault("CLAUDE_SKILLS_DIR", root)
             sp = importlib.util.spec_from_file_location("check_skills", candidate)
@@ -250,12 +266,20 @@ def structure_findings(skill, engine):
             [Finding(f.code, f.msg, severity="warning") for f in warnings])
 
 
-def evals_findings(root, live=False, names=()):
+def evals_findings(root, live=False, names=(), trust_target=False):
     """Routing checks, delegated to the runner that owns them."""
     runner = os.path.join(root, "evals", "run_evals.py")
     if not os.path.isfile(runner):
         return [Finding("EV002", "no evals/ beside the skills - nothing verifies that any "
                                  "description still fires on the wording a human uses",
+                        severity="info")]
+    # The runner belongs to the tree, so running it means running a script out of the
+    # directory under analysis. That is the suite's own tree by default and nobody
+    # else's: a routing report is not worth executing a stranger's Python for.
+    if not trust_target and not own_tree(root):
+        return [Finding("EV006", f"{os.path.relpath(runner, root)} belongs to the tree "
+                                 "being checked and was not executed; pass --trust-target "
+                                 "if the tree is yours",
                         severity="info")]
     cmd = [sys.executable, runner, "--quiet"]
     if live:
@@ -718,6 +742,10 @@ def main(argv=None):
                     + " | fix | eval | baseline | explain | rules | harnesses | new")
     ap.add_argument("args", nargs="*", help="skill names, a rule code, or a new skill's name")
     ap.add_argument("--skills-dir")
+    ap.add_argument("--trust-target", action="store_true",
+                    help="the tree is yours: let its own check_skills.py and "
+                         "evals/run_evals.py run. Off by default - reading a skill is "
+                         "not a reason to execute one")
     ap.add_argument("--config")
     ap.add_argument("--format", choices=("text", "json", "github", "sarif", "board"),
                     default="text", help="sarif for code-scanning, board for the layer view")
@@ -841,7 +869,7 @@ def main(argv=None):
     eval_findings = []
     if a.command in ("evals", "all"):
         # Routing is a property of the whole tree, so it runs once rather than per skill.
-        eval_findings = evals_findings(root, a.live, names)
+        eval_findings = evals_findings(root, a.live, names, a.trust_target)
 
     # The trigger loop runs the agent, so it is opt-in and never part of `check`. It
     # lives under `eval` now, with the rest of the layer that costs money; the old
@@ -855,7 +883,7 @@ def main(argv=None):
     if a.command == "evals" and a.init:
         return cmd_init_evals(skills)
 
-    engine = load_structure_engine(root) if "structure" in modules else None
+    engine = load_structure_engine(root, a.trust_target) if "structure" in modules else None
 
     if a.command == "fix":
         rc = 0

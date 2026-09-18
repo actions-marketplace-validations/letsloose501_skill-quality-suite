@@ -1,0 +1,14 @@
+{
+  "note": "A tree carrying its own evals/run_evals.py, read the way a tree nobody has vouched for is read: no --trust-target. The routing report is delegated to a script inside that tree, so producing it would mean executing the material under analysis. EV006 is the suite saying so out loud instead of either running the script or going quiet about the missing module. The sibling routing-static is the same tree with the flag on.",
+  "command": "evals",
+  "args": [],
+  "expect": [
+    "EV006"
+  ],
+  "reject": [
+    "EV001",
+    "EV002",
+    "EV003"
+  ],
+  "exact": true
+}

@@ -304,8 +304,15 @@ class FakeProvider(Provider):
         if spec.get("error"):
             return Run(ok=False, error=spec["error"], duration_s=spec.get("duration_s"),
                        workdir=cwd)
+        # `creates` names files the scripted run pretends the agent wrote, and the
+        # script is a file on disk like any other. A path that climbs out of the run's
+        # working directory is not a test case, it is the fake provider writing
+        # wherever the script says - so the write stays inside `cwd` or does not happen.
+        base = os.path.realpath(cwd or ".")
         for rel in spec.get("creates") or []:
-            full = os.path.join(cwd or ".", rel)
+            full = os.path.realpath(os.path.join(base, rel))
+            if full != base and not full.startswith(base + os.sep):
+                raise ValueError(f"`creates` path escapes the run directory: {rel!r}")
             os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
             with open(full, "w", encoding="utf-8") as f:
                 f.write("written by the fake provider" + chr(10))

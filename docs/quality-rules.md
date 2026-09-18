@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 70 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 71 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -82,6 +82,7 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 | `EV003` | error | high | low | no | Live routing run below threshold |
 | `EV004` | warning | high | low | no | Malformed evals |
 | `EV005` | info | high | low | no | Thin trigger set |
+| `EV006` | info | high | low | no | Routing runner in the tree was not executed |
 
 ### EV001 - Routing invariant broken
 
@@ -112,6 +113,12 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 **Why it matters.** A trigger set with few cases on one side measures almost nothing. The negatives matter most, and the useful ones are near-misses: queries sharing keywords with the skill that need something else.
 
 **Fix.** Aim for about twenty queries, eight to ten on each side.
+
+### EV006 - Routing runner in the tree was not executed
+
+**Why it matters.** The routing report comes from a script that lives in the tree being checked. Running it would mean executing code out of the directory the suite was handed to read, which is the thing reading it was meant to avoid.
+
+**Fix.** If the tree is yours, pass `--trust-target`. If it is not, a missing routing report is the correct outcome.
 
 ## publish (PBxxx)
 

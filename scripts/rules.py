@@ -340,6 +340,13 @@ _ROWS = {
               "negatives matter most, and the useful ones are near-misses: queries sharing "
               "keywords with the skill that need something else.",
               "Aim for about twenty queries, eight to ten on each side.", False),
+    "EV006": ("info", "Routing runner in the tree was not executed",
+              "The routing report comes from a script that lives in the tree being "
+              "checked. Running it would mean executing code out of the directory the "
+              "suite was handed to read, which is the thing reading it was meant to "
+              "avoid.",
+              "If the tree is yours, pass `--trust-target`. If it is not, a missing "
+              "routing report is the correct outcome.", False),
 }
 
 # ---- rule metadata ---------------------------------------------------------
@@ -417,6 +424,7 @@ GRADES = {
     # evals: file parsing and a delegated runner
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),
     "EV004": ("high", "low"),    "EV005": ("high", "low"),
+    "EV006": ("high", "low"),
 }
 
 CONFIDENCE_ORDER = ("unrated", "low", "medium", "high")

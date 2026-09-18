@@ -1,8 +1,9 @@
 {
-  "note": "The suite does not do routing itself - it delegates to the runner that owns it and carries the verdict back. The runner here is a stub that fails on purpose: what is under test is the wiring and the static/live split, not the routing.",
+  "note": "The suite does not do routing itself - it delegates to the runner that owns it and carries the verdict back. The runner here is a stub that fails on purpose: what is under test is the wiring and the static/live split, not the routing. The runner lives in the fixture, so the case carries `--trust-target`: without it the suite refuses to execute a script out of the tree it was pointed at, which is the corpus exercising the opt-in as well as the routing wiring.",
   "command": "evals",
   "args": [
-    "--live"
+    "--live",
+    "--trust-target"
   ],
   "expect": [
     "EV003"

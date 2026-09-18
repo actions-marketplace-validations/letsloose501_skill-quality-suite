@@ -279,6 +279,25 @@ def unit_checks():
     if "ST015" in codes:
         out.append("checking a skill with --skills-dir pointing at it reported ST015")
 
+    # The fake provider writes the files a scripted run claims the agent created, and
+    # the script naming them is a file on disk. A `creates` path climbing out of the run
+    # directory is the script writing wherever it likes under the eval harness's
+    # permissions, so it is refused rather than joined onto `cwd`.
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = os.path.join(tmp, "run")
+        os.makedirs(run_dir)
+        from evaluation import providers
+        fake = providers.FakeProvider(script_path=os.path.join(tmp, "script.json"))
+        fake.script = {"default": {"creates": ["../escaped.txt"]}}
+        try:
+            fake.run("anything", skill=None, cwd=run_dir)
+            out.append("the fake provider wrote a `creates` path outside the run "
+                       "directory instead of refusing it")
+        except ValueError:
+            pass
+        if os.path.exists(os.path.join(tmp, "escaped.txt")):
+            out.append("a `creates` path escaped the run directory and landed in " + tmp)
+
     # The examples page promises six security findings and prints a real report under
     # that promise. When the malicious fixture went inert in git, the page started
     # printing a CLEAN report there - a documentation page claiming the tool found
@@ -302,6 +321,60 @@ def unit_checks():
             parse(r.stdout)
         except ValueError as e:
             out.append(f"`--format {fmt}` did not produce parseable output: {e}")
+
+    # The suite is pointed at trees nobody has vouched for - that is what `security` is
+    # advertised for - so a script sitting in such a tree must not get to run merely
+    # because the tree was read. Two scripts used to: `check_skills.py`, imported as the
+    # structure engine, and `evals/run_evals.py`, shelled out to for routing. The probe
+    # plants both, has each write a marker, and fails if a marker appears.
+    with tempfile.TemporaryDirectory() as tmp:
+        marker_dir = os.path.join(tmp, "markers")
+        os.makedirs(marker_dir)
+        tree = os.path.join(tmp, "tree")
+        os.makedirs(os.path.join(tree, "a-skill"))
+        with open(os.path.join(tree, "a-skill", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: a-skill\ndescription: Does a thing. Use when a thing "
+                    "needs doing, or when the user asks for a thing.\n---\n\n# A skill\n\n"
+                    "1. Do the thing.\n")
+        payload = ("import os, sys\n"
+                   "open(os.path.join(%r, sys.argv[0].replace(os.sep, '_')[-40:]), 'w').close()\n"
+                   % marker_dir)
+        with open(os.path.join(tree, "check_skills.py"), "w", encoding="utf-8") as f:
+            f.write(payload + "SKILLS_DIR = '.'\n"
+                              "def check(folder):\n    return [], [], None, None\n")
+        os.makedirs(os.path.join(tree, "evals"))
+        with open(os.path.join(tree, "evals", "run_evals.py"), "w", encoding="utf-8") as f:
+            f.write(payload)
+
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        for command in ("check", "evals"):
+            subprocess.run([sys.executable, SQS, command, "--skills-dir", tree,
+                            "--format", "json"], capture_output=True, text=True,
+                           encoding="utf-8", env=env, cwd=REPO)
+        ran = sorted(os.listdir(marker_dir))
+        if ran:
+            out.append("a script from the tree under analysis was executed by the suite: "
+                       + ", ".join(ran))
+
+        # and the routing report says so rather than going quiet about it
+        r = subprocess.run([sys.executable, SQS, "evals", "--skills-dir", tree,
+                            "--format", "json"], capture_output=True, text=True,
+                           encoding="utf-8", env=env, cwd=REPO)
+        try:
+            codes = [f["code"] for f in json.loads(r.stdout).get("findings", [])]
+        except ValueError:
+            codes = ["(no json)"]
+        if "EV006" not in codes:
+            out.append("the unrun routing runner produced no EV006, so the report is "
+                       "silently missing a module: " + ", ".join(codes))
+
+        # --trust-target is the opt-in, and an opt-in that does nothing is worse than
+        # none: it reads as a control and is not one.
+        subprocess.run([sys.executable, SQS, "evals", "--skills-dir", tree,
+                        "--trust-target", "--format", "json"], capture_output=True,
+                       text=True, encoding="utf-8", env=env, cwd=REPO)
+        if not os.listdir(marker_dir):
+            out.append("--trust-target did not let the tree's own run_evals.py run")
 
     # Code scanning refuses a whole SARIF file over one result without a location
     # ("expected at least one location"), so the finding that has no line to point at -
