@@ -68,6 +68,31 @@ repository as the free one - it is where the free half's rules come from.
   with no changelog entry, a breaking change with no major bump. Where the evidence is
   not there, no finding.
 
+## Porting between harnesses
+
+**`sqs.py port <skill> --to cursor`** - rewrite a skill written for one runtime so it works on
+another. The question it answers: *this skill assumes Claude Code, what has to change before
+Cursor runs it the same way.*
+
+This is the first item that would make `compat` load-bearing rather than informational, and it
+is the strongest argument for keeping that module alive at all. The knowledge is already in the
+ten adapters: each carries its runtime's field table, discovery rule and locations, and
+`fix --apply` is already a working transformation mechanism. Nobody else does it - cclint lints
+the wider component family without porting, `skill-creator` does not leave its own runtime.
+
+**It does not start until the adapters can age visibly.** A wrong compatibility *report* is read
+by a person who can disagree with it. A wrong *port* silently rewrites their file. The adapters
+name their source (`docs = "https://..."`) but record no date of last verification, and
+`cursor.py` already carries in its own docstring the story of being built from the wrong page
+and inventing an incompatibility. Porting on top of that produces broken skills and blames the
+tool that produced them. The precondition is the `checked:` field below: a claim that cannot
+say when it was last true must not be allowed to rewrite anything.
+
+**It is also a third position.** The project's front page is being narrowed to reading somebody
+else's skill before trusting it; a porting tool is a different promise to a different person.
+Promoting this above P1 is a decision about what the project is, not a decision about features.
+Recorded here so that decision is made on purpose.
+
 ## Deferred, not rejected
 
 **Specification versions (13)** - `--spec latest` / `1.x`. Right shape, wrong moment: it
@@ -94,9 +119,10 @@ Kept here so they stop coming back.
   question; the rubric is a file in `references/` that a person reads.
 - **Visualisation and catalogue integrations** - no question named, so nothing to build
   against.
-- **Dynamic harness registry, compatibility matrix as JSON (11, 12)** - half of it exists
-  as `--format json`, and the other half is maintenance infrastructure for a scale this
-  project does not have at ten harnesses.
+- **Dynamic harness registry (11, 12)** - rejected as written; `--format json` already
+  covers the export half. What survives is one field: **`checked:` on every adapter**,
+  printed with the row. A matrix that asserts today's facts without saying when it last
+  looked is a matrix that rots silently, and it is the precondition for porting above.
 
 ## Worth taking from the neighbours
 
