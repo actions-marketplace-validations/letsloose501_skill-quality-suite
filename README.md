@@ -327,6 +327,11 @@ same material organised for someone arriving from a search engine:
   the regression gate
 - [Publishing](docs/publishing.md) - the gate before a skill leaves your machine
 
+Two walkthroughs rather than references:
+
+- [How to validate an AI Agent Skill](docs/how-to-validate-an-agent-skill.md)
+- [How to secure Agent Skills](docs/how-to-secure-agent-skills.md)
+
 ## References
 
 The working detail, written for whoever is editing a skill rather than choosing a tool:

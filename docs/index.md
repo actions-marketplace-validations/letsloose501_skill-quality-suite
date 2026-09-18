@@ -31,6 +31,13 @@ python skill-quality-suite/scripts/sqs.py check ./my-skill
 [Worked examples with real output](https://github.com/letsloose501/skill-quality-suite/tree/main/examples)
 show each of these on a good skill, a weak one and a malicious one.
 
+## Guides
+
+- [How to validate an AI Agent Skill](how-to-validate-an-agent-skill.md) - the four
+  failures that are silent, and the order to check them in
+- [How to secure Agent Skills](how-to-secure-agent-skills.md) - what to look for in a
+  skill you did not write, before an agent reads it
+
 ## Why a skill needs a linter at all
 
 A skill loads in two stages: `SKILL.md` first, then its references through the links
