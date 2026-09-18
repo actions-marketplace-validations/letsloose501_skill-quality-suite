@@ -1,7 +1,7 @@
 name: skill-quality-suite
-description: >-
-  Quality gate for Agent Skills: structure, specification conformance, instruction
-  quality, cross-runtime compatibility and security, with SARIF for code scanning.
+# Marketplace refuses a description of 125 characters or more and counts the
+# rendered text, so this stays on one line, where its length is visible.
+description: "Lint, validate and scan AI Agent Skills: spec conformance, broken pointers, secrets, prompt injection, portability"
 author: letsloose501
 branding:
   icon: check-circle
