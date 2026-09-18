@@ -343,6 +343,8 @@ same material organised for someone arriving from a search engine:
 - [Evaluation](docs/evaluation.md) - trigger evals, the baseline/treatment comparison,
   the regression gate
 - [Publishing](docs/publishing.md) - the gate before a skill leaves your machine
+- [Roadmap](docs/roadmap.md) - the layers not built yet, and what the neighbouring
+  projects already do better
 
 Two walkthroughs rather than references:
 

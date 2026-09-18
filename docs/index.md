@@ -129,6 +129,8 @@ like a real one, and that is how a compatibility tool stops being believed.
 
 ## Project
 
+- [Roadmap](roadmap.md) - what is not built yet, and what is worth taking from the
+  neighbouring projects
 - [Source on GitHub](https://github.com/letsloose501/skill-quality-suite) - MIT
 - [The Agent Skills specification](https://agentskills.io/specification) it validates against
 - 70 coded rules, every one of them with a test that has watched it fire
