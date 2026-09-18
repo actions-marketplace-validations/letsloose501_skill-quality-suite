@@ -99,6 +99,19 @@ A new rule needs a row in `scripts/rules.py`, a grading in `GRADES` beside it, a
 case: the way these rules go wrong is not failing to fire, it is firing on correct work,
 and `reject` is the only thing that notices.
 
+## What only CI can check
+
+The workflow runs the corpus on Python 3.9, 3.11 and 3.13, and that matrix is not
+decoration. `publish.py` carried a backslash inside an f-string expression for months:
+legal from Python 3.12, a `SyntaxError` before it, and invisible on a machine running a
+newer interpreter. Everything imported, every test passed, and the suite would not start
+on half the versions it claimed to support.
+
+`ast.parse(..., feature_version=(3, 9))` does **not** catch that class - it was tried,
+and it reports nothing on all three versions. Compiling locally is evidence about the
+local interpreter and nothing else. The matrix is the only thing here that can see the
+opposite.
+
 Then check the harness itself still fails when it should. Break a fixture on purpose and
 confirm the runner goes red - a test suite that passes no matter what it is given is the
 most expensive kind of green.

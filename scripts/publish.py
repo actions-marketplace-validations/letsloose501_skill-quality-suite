@@ -23,6 +23,8 @@ PRIVATE_PATH = re.compile(r"[`\"']?(~|\$env:USERPROFILE|%USERPROFILE%)[/\\]"
                           r"(?!\.claude[/\\]skills)([^\s`\"'\n]{2,80})")
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 EMAIL_GENERIC = re.compile(r"@(?:example\.|test\.|localhost|domain\.|email\.)", re.I)
+# Backtick, double quote, apostrophe: what a quoted path is wrapped in.
+QUOTES = "`" + chr(34) + chr(39)
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 SCRIPTS = {"en": CYRILLIC}
 
@@ -84,7 +86,11 @@ def check(skill, cfg=None):
             # PB006 - a pointer into material the reader has no copy of
             m = PRIVATE_PATH.search(line)
             if m:
-                out.append(Finding("PB006", f"`{m.group(0).strip('`\"' + chr(39))}` points into "
+                # The quotes are stripped through a module-level constant rather than
+                # inline: a backslash inside an f-string expression is only legal from
+                # Python 3.12, and this file has to parse on the oldest version the
+                # suite claims to run on.
+                out.append(Finding("PB006", f"`{m.group(0).strip(QUOTES)}` points into "
                                             f"the author's own files", where=rel, line=n))
             m = EMAIL.search(line)
             if m and not EMAIL_GENERIC.search(m.group(0)):
