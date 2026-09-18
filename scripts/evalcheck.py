@@ -7,9 +7,10 @@ files with different jobs:
     evals/eval_queries.json   [{query, should_trigger}]          does it fire at all
     evals/evals.json          {skill_name, evals: [{...}]}       is the output any good
 
-This module only reads them. Running the trigger set costs money and lives in
-`trigger_evals.py`; grading output quality is a human-in-the-loop process the guidance
-describes and no linter should pretend to automate.
+This module only reads them. Running them costs money and lives in `evaluation/`,
+behind `sqs.py eval`: `--trigger` for the query set, `--runtime` for the task set.
+Reading the outputs afterwards stays a human's job, and no linter should pretend
+otherwise.
 
 An `evals/` directory that does not parse is worse than none, because from the outside
 it looks like the skill is tested.

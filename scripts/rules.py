@@ -38,7 +38,7 @@ MODULES = {
 }
 
 # code: (severity, title, why it matters, how to fix, fixable by `sqs.py fix`)
-RULES = {
+_ROWS = {
     # ---- SP: Agent Skills specification -------------------------------------
     "SP001": ("error", "No frontmatter",
               "Without a `---` block the file is plain markdown and never loads as a skill.",
@@ -340,6 +340,127 @@ RULES = {
               "Aim for about twenty queries, eight to ten on each side.", False),
 }
 
+# ---- rule metadata ---------------------------------------------------------
+#
+# Two gradings per rule, and they answer different questions:
+#
+#   confidence      does the check reliably find the thing it names? A filesystem
+#                   fact or a parse is `high`; a regex over prose is `medium`; a
+#                   similarity heuristic is `low`.
+#   false_positive  when the thing IS there, how often is it nonetheless intended?
+#                   `README.md` inside a skill folder is a finding and also exactly
+#                   what a repository-shaped skill does, so SP013 is `high`.
+#
+# Both are about the mechanism, not about how much the finding matters - severity
+# already carries that. They exist so a report can be filtered by how much a machine
+# should be trusted with the judgement: `--min-confidence high` is a gate you can
+# leave on in CI, and a `high` false-positive rule is one to read before believing.
+#
+# A code with no row here fails `sqs.py rules --audit`. `unrated` is the honest value
+# for a rule whose engine has not been written yet, and it is not the same as `high`.
+GRADES = {
+    # spec: frontmatter parsing and filesystem layout, so the detection is a fact
+    "SP001": ("high", "low"),    "SP002": ("high", "low"),    "SP003": ("high", "low"),
+    "SP004": ("high", "low"),    "SP005": ("high", "low"),    "SP006": ("high", "low"),
+    "SP007": ("high", "low"),    "SP008": ("high", "low"),    "SP009": ("high", "low"),
+    "SP010": ("high", "medium"),  # a key this suite does not know may be a new one
+    "SP011": ("high", "low"),
+    "SP012": ("high", "medium"),  # `allow_dirs` exists because the spec permits any
+    "SP013": ("high", "high"),    # a repository-shaped skill ships its own README
+    "SP014": ("high", "low"),    "SP015": ("high", "low"),
+    "SP016": ("high", "medium"), "SP017": ("high", "medium"),
+    "SP018": ("high", "low"),    "SP019": ("high", "low"),
+
+    # structure: links resolved against the filesystem, except the text heuristics
+    "ST001": ("high", "low"),    "ST002": ("high", "low"),    "ST003": ("high", "low"),
+    "ST004": ("high", "low"),
+    "ST005": ("high", "medium"),  # an orphan a bundled script opens is not an orphan
+    "ST006": ("high", "low"),    "ST007": ("high", "low"),
+    "ST008": ("medium", "medium"),
+    "ST009": ("medium", "medium"), "ST010": ("medium", "medium"),
+    "ST011": ("high", "low"),
+    "ST012": ("medium", "high"),  # prose that looks like code is a judgement call
+    "ST013": ("high", "low"),    "ST014": ("high", "low"),    "ST015": ("high", "low"),
+    "ST016": ("unrated", "unrated"),  # documented gap: no engine emits it yet
+
+    # quality: mostly regex over prose, and two similarity heuristics
+    "QL001": ("high", "low"),
+    "QL002": ("medium", "medium"),
+    "QL003": ("low", "high"),     # stem overlap between two trigger phrases
+    "QL004": ("low", "high"),     # stem overlap between description and body
+    "QL005": ("medium", "high"),  # a hard guardrail is a legitimate prohibition
+    "QL006": ("medium", "medium"),
+    "QL007": ("high", "low"),
+    "QL008": ("medium", "medium"),
+    "QL009": ("high", "medium"),
+    "QL010": ("medium", "low"),
+    "QL011": ("medium", "medium"),
+    "QL012": ("high", "low"),
+
+    # compat: every verdict comes from an adapter's declared support table
+    "CP001": ("high", "low"),    "CP002": ("high", "low"),
+    "CP006": ("medium", "medium"),
+    "CP007": ("high", "low"),     # "undocumented" is a statement about the docs
+    "CP008": ("high", "low"),    "CP009": ("high", "low"),
+
+    # security: shaped secrets and codepoints are facts, command patterns are not
+    "SE001": ("high", "medium"), "SE002": ("medium", "medium"),
+    "SE003": ("medium", "medium"), "SE004": ("high", "low"),
+    "SE005": ("medium", "medium"), "SE006": ("high", "medium"),
+
+    # publish: half of these are correct-and-intended for a skill that stays home
+    "PB001": ("high", "low"),    "PB002": ("high", "low"),    "PB003": ("high", "low"),
+    "PB004": ("high", "medium"), "PB005": ("high", "low"),    "PB006": ("medium", "medium"),
+
+    # evals: file parsing and a delegated runner
+    "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),
+    "EV004": ("high", "low"),    "EV005": ("high", "low"),
+}
+
+CONFIDENCE_ORDER = ("unrated", "low", "medium", "high")
+
+
+class Rule:
+    """One row of the registry, with its metadata attached.
+
+    Indexable like the tuple it grew out of, so the older unpacking still reads the
+    same: `severity, title, why, how, fixable = RULES[code]`.
+    """
+
+    __slots__ = ("code", "severity", "title", "why", "how", "fixable",
+                 "confidence", "false_positive_risk")
+
+    def __init__(self, code, row, grade):
+        self.code = code
+        self.severity, self.title, self.why, self.how, self.fixable = row
+        self.confidence, self.false_positive_risk = grade or ("unrated", "unrated")
+
+    @property
+    def module(self):
+        return module_of(self.code)
+
+    @property
+    def category(self):
+        return module_of(self.code)
+
+    @property
+    def autofix(self):
+        return self.fixable
+
+    def __getitem__(self, i):
+        return (self.severity, self.title, self.why, self.how, self.fixable)[i]
+
+    def __iter__(self):
+        return iter((self.severity, self.title, self.why, self.how, self.fixable))
+
+    def as_dict(self):
+        return {"id": self.code, "severity": self.severity, "category": self.category,
+                "title": self.title, "confidence": self.confidence, "autofix": self.fixable,
+                "false_positive_risk": self.false_positive_risk}
+
+
+RULES = {code: Rule(code, row, GRADES.get(code)) for code, row in _ROWS.items()}
+
 
 def module_of(code):
     return MODULES.get(code[:2], "?")
@@ -347,9 +468,26 @@ def module_of(code):
 
 def severity_of(code, default="warning"):
     row = RULES.get(code)
-    return row[0] if row else default
+    return row.severity if row else default
+
+
+def confidence_of(code, default="unrated"):
+    row = RULES.get(code)
+    return row.confidence if row else default
+
+
+def at_least(confidence, floor):
+    """Whether `confidence` clears the `floor` on the confidence ladder."""
+    if floor not in CONFIDENCE_ORDER:
+        return True
+    return CONFIDENCE_ORDER.index(confidence) >= CONFIDENCE_ORDER.index(floor)
 
 
 def audit(emitted):
     """Codes an engine emitted that have no row here. Empty means the two agree."""
     return sorted(c for c in emitted if c not in RULES)
+
+
+def ungraded():
+    """Codes with no metadata row. A rule nobody has graded is a rule nobody has read."""
+    return sorted(c for c in _ROWS if c not in GRADES)

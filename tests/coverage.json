@@ -1,0 +1,9 @@
+{
+  "note": "Rules no fixture can cover, and why. Read by tests/run_tests.py and by `sqs.py rules --audit`, so the two never disagree about what is tested.",
+  "unit_covered": {
+    "ST015": "sqs.py builds its work list from folders that have a SKILL.md, so a folder without one never reaches it. The structure engine is called directly in tests/run_tests.py instead."
+  },
+  "no_engine": {
+    "ST016": "The opt-in external-link check. The row documents a gap; nothing emits it yet."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "skill_name": "half-tested",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "log this receipt"
+    }
+  ]
+}

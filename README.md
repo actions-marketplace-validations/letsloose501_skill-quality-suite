@@ -1,11 +1,26 @@
 # skill-quality-suite
 
-A quality suite for [Agent Skills](https://agentskills.io): eight checks over a
-`SKILL.md`, one command each. No dependencies, Python standard library only.
+A quality gate and evaluation toolkit for [Agent Skills](https://agentskills.io).
 
 ```
-python scripts/sqs.py check ./my-skill
+Can it load?            structure, spec
+Is it worth loading?    quality
+Is it safe?             security
+Is it portable?         compat
+Does it fire?           eval --trigger
+Does it actually help?  eval --runtime
+Did the last change make it worse?   eval --compare
+Can it be published?    publish
+```
+
+The static half is Python standard library only, offline and deterministic. The
+evaluation half runs an agent, costs money, and never runs unless you name it.
+
+```
+python scripts/sqs.py check ./my-skill                  free, offline
+python scripts/sqs.py check ./my-skill --format board   one line per layer
 python scripts/sqs.py compat ./my-skill --harness all
+python scripts/sqs.py eval  ./my-skill --trigger        runs the agent
 python scripts/sqs.py explain ST008
 ```
 
@@ -27,7 +42,8 @@ sorts them by *when* they would have bitten:
 | `quality` | a description that never says *when*, vague bounds, placeholders | every run, a little |
 | `compat` | what will not survive a move to another agent | on somebody else's machine |
 | `security` | secrets, destructive commands, injection, hidden characters | when you install a stranger's skill |
-| `evals` | the eval set, the routing, and an opt-in loop that runs the agent | when a neighbour's description moves |
+| `evals` | the eval files and the routing invariants | when a neighbour's description moves |
+| `eval` | does it fire, does it help, did the last edit make it worse | after every change, if you let it |
 | `publish` | personal paths, missing license, version drift | the moment it leaves your machine |
 | `fix` | the repairs with exactly one correct answer | - |
 
@@ -119,29 +135,75 @@ sqs.py explain <CODE>        what a code means and how to fix it
 sqs.py rules [--module X]    the registry
 sqs.py harnesses [--show]    the harness adapters and their sources
 sqs.py new <name>            scaffold a skill that already passes
-sqs.py evals . --init        scaffold the two documented eval files
-sqs.py evals . --trigger     run the agent and measure how often the skill loads
+sqs.py evals . --init        scaffold the eval files
+sqs.py eval ./s --trigger    does it fire, and only when it should
+sqs.py eval ./s --runtime    the task set, with the skill and without it
+sqs.py eval ./s --compare v1 v2    what the last edit moved
+sqs.py baseline create       record what a tree already has, so new findings stand out
 ```
 
-`--trigger` is the only command here that spends money. It sends each query in
-`evals/eval_queries.json` to a headless session and watches whether the skill was
-actually loaded, several runs per query because the model is not deterministic, split
-60/40 into train and validation so a description tuned on the failures can be checked
-for generalising rather than for memorising. Every other check reads text.
+`eval` is the only command here that spends money, and it says so before it does.
+`sqs.py eval ./my-skill` with no layer named runs nothing: it prints how many agent runs
+each layer would take and stops.
+
+- `--trigger` sends each query to a headless session and counts what loaded. It reports
+  the confusion matrix - true and false positives and negatives, precision, recall, F1 -
+  beside the cases it came from, split 60/40 into train and validation so a description
+  tuned on the failures can be checked for generalising. **F1 is printed, not scored**:
+  it weighs a miss and a false fire equally, and in a tree of skills they are not equal.
+- `--runtime` runs the task set twice - `claude --bare` for the baseline, `--plugin-dir`
+  with the skill alone for the treatment - and reports task success, tool calls, turns,
+  time, tokens, cost, forbidden tools and safety violations. A task with no assertions
+  comes back `ungraded`, never as a pass; a metric the provider never reported comes
+  back `n/a`, never as zero.
+- `--save <label>` stores a run and `--compare` diffs two. Quality falling fails the
+  gate; cost rising is reported and does not, unless `--fail-on-cost`.
+
+Every other check reads text, costs nothing and works offline.
 
 A target is a path or a skill name. Pointed at a plugin, the suite finds the skills
 inside it and says plainly that the plugin's other components were not analysed:
 checking `plugin.json`, hooks, commands and agents is a different tool's job, and a
 half-done version of it would imply the rest had been looked at.
 
-Flags: `--format text|json|github`, `--strict` (warnings count as failures), `--quiet`,
-`--skills-dir`, `--config`.
+Flags: `--format text|json|github|sarif|board`, `--strict` (warnings count as failures),
+`--quiet`, `--changed` (only what the diff touched), `--baseline`, `--min-confidence`,
+`--score`, `--skills-dir`, `--config`.
 
-Exit codes: `0` clean, `1` findings that count as failures, `2` usage error. So
-`--strict` is what a CI step wants:
+Exit codes: `0` clean, `1` findings that count as failures, `2` usage error.
+
+## In CI
+
+```yaml
+- uses: letsloose501/skill-quality-suite@v1
+  with:
+    path: .
+    strict: "true"
+    harness: all
+    upload-sarif: "true"        # needs security-events: write on the job
+```
+
+The action annotates the diff, writes SARIF for code scanning, and fails the job on the
+findings that count. `changed: "true"` checks only the skills the diff touched, and
+`baseline: "true"` reports only what the baseline file does not already carry - which is
+how the gate goes on over a tree with three hundred existing findings without turning
+the build red on day one.
+
+Or plainly, with no action at all:
 
 ```yaml
 - run: python scripts/sqs.py check . --harness all --strict --format github
+```
+
+Before the commit, rather than after:
+
+```yaml
+repos:
+  - repo: https://github.com/letsloose501/skill-quality-suite
+    rev: v1
+    hooks:
+      - id: skill-quality-suite            # the skills this commit touches
+      - id: skill-quality-suite-security   # for a skill that arrived from elsewhere
 ```
 
 ## Silencing a finding
@@ -164,8 +226,21 @@ Three scopes, for findings that are correct-and-intended:
 }
 ```
 
+A fourth scope, for material that is not skill payload at all: `.sqsignore` at the skill
+root, one path glob per line. What it lists is not read, so nothing about it is checked
+and nothing about it is claimed - the difference from `sqs-allow`, which says "found it,
+and it is meant to be there". This repository's own `.sqsignore` carries `tests/`,
+because the corpus is full of deliberately broken skills.
+
 Write down *why* next to the entry. A silenced rule with no reason gets un-silenced by
 the next person who reads the file, including you.
+
+`--baseline` and `--min-confidence` are the other two ways to make a report survive
+contact with an existing tree, and neither hides anything: the baseline keeps every
+recorded finding in a dated file that `sqs.py baseline show` prints, and the confidence
+floor filters by how much of the judgement is the machine's, not by how much you want to
+hear it. Every rule carries a detection confidence and a false-positive risk, printed by
+`sqs.py explain <CODE>`.
 
 ## License
 
@@ -187,8 +262,25 @@ fence is recognised as fence escaping rather than a Trojan Source attack, and th
 leaves it alone.
 
 **One registry.** `scripts/rules.py` is the single place a rule code is defined.
-`sqs.py rules --audit` fails when an engine emits a code the registry does not carry, or
-the registry carries a row nothing emits.
+`sqs.py rules --audit` fails when an engine emits a code the registry does not carry,
+when the registry carries a row nothing emits, or when a rule has no confidence and
+false-positive grading.
+
+**Every rule has been watched firing.** `tests/fixtures/` holds small skills trees with
+an `expect.json` beside each: the codes the run must report, and the codes it must not.
+All 69 rules with an engine have a positive case, and the two cases that matter most -
+`clean/` and `escape-hatches/` - must report **nothing at all**. A linter is judged by
+what it stays quiet about.
+
+```
+python tests/run_tests.py              every case, then the unit checks
+python tests/run_tests.py --coverage   which rules no case observes firing
+```
+
+**The evaluation layer is tested without a model.** `--provider fake` replays canned runs
+from a JSON script, so the confusion matrix, the baseline/treatment split and the
+regression gate have tests that cost nothing. What that cannot test is whether a real
+agent behaves the way the script says, and the reports never pretend otherwise.
 
 **`scripts/check_skills.py` is the structure engine**, imported rather than shelled out
 to. It also runs standalone as the single-file linter this repository used to be, and
@@ -205,8 +297,9 @@ touched, `--stop` checks those and blocks the stop on breakage.
   skill, and for reworking an old one.
 - [agent-compatibility.md](references/agent-compatibility.md) - the harness table and
   what each row rests on.
-- [evaluating.md](references/evaluating.md) - the two eval kinds: the trigger loop with
-  its train/validation split, and the output-quality loop that stays a human's job.
+- [evaluating.md](references/evaluating.md) - the three eval questions: triggering with
+  its train/validation split, the baseline/treatment comparison, the regression gate,
+  and the part that stays a human's job.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the
   machine.
 

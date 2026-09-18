@@ -1,0 +1,7 @@
+{
+  "note": "A program pasted into the text, where nothing runs it and every activation pays for it; and a skill that activates and then says nothing.",
+  "expect": [
+    "ST012",
+    "ST013"
+  ]
+}

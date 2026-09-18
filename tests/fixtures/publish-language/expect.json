@@ -1,0 +1,12 @@
+{
+  "note": "Documentation in a language the repository does not declare, and a path that names whoever wrote the skill.",
+  "command": "publish",
+  "args": [
+    "--lang",
+    "en"
+  ],
+  "expect": [
+    "PB003",
+    "PB004"
+  ]
+}

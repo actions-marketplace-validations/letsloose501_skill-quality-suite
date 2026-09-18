@@ -79,7 +79,7 @@ class SkillModel:
             return
         text = "\n".join(t for _, t in self.skill.texts())
         for e in entries:
-            if e.startswith(".") or e == "__pycache__":
+            if e.startswith(".") or e == "__pycache__" or self.skill.ignored(e):
                 continue
             if not os.path.isdir(os.path.join(self.skill.root, e)):
                 continue

@@ -1,0 +1,31 @@
+{
+  "skill_name": "ledger-lite",
+  "evals": [
+    {
+      "id": "ledger-01",
+      "prompt": "Log this receipt: 12.40 EUR at Bakery Nord on 2026-09-18",
+      "expected_output": "a row appended to ledger.csv and the new balance printed",
+      "assertions": [
+        "12.40",
+        "re:balance",
+        "not:could not"
+      ],
+      "files": [
+        "ledger.csv"
+      ],
+      "max_tool_calls": 6
+    },
+    {
+      "id": "ledger-02",
+      "prompt": "What is my balance?",
+      "expected_output": "the balance, with the currency, on its own line",
+      "assertions": [
+        "re:\\d+\\.\\d{2}"
+      ],
+      "forbidden_tools": [
+        "WebSearch"
+      ],
+      "max_tool_calls": 3
+    }
+  ]
+}

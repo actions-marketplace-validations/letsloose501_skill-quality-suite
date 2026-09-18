@@ -1,0 +1,18 @@
+{
+  "note": "One violation family per skill folder, so a failure names the rule rather than a pile. The folders are deliberately ordinary otherwise.",
+  "expect": [
+    "SP001",
+    "SP004",
+    "SP007",
+    "SP010",
+    "SP011",
+    "SP015",
+    "SP017",
+    "SP018",
+    "SP019"
+  ],
+  "reject": [
+    "SP002",
+    "SP005"
+  ]
+}

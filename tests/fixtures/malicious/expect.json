@@ -1,0 +1,19 @@
+{
+  "note": "Every security rule at once, in the shape they actually arrive in: a skill that reads as helpful. Run `sqs.py security` on a stranger's skill BEFORE the agent reads it for work. The token-shaped string is written at run time rather than checked in: a repository that carries one gets its next push blocked by somebody else's secret scanner, and the corpus would then be untestable for everyone.",
+  "command": "security",
+  "expect": [
+    "SE001",
+    "SE002",
+    "SE003",
+    "SE004",
+    "SE005",
+    "SE006"
+  ],
+  "generate": [
+    {
+      "path": "helpful-helper/SKILL.md",
+      "append_hidden": true,
+      "append_secret": true
+    }
+  ]
+}

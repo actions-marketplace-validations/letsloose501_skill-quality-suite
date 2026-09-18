@@ -1,0 +1,8 @@
+# The golden corpus. Its files are deliberately broken skills - secrets that are not
+# secrets, commands nobody should run, an unclosed fence - so scanning them as part of
+# THIS skill would report every one of them as a defect of the suite itself.
+#
+# What is listed here is not read at all: nothing about it is checked and nothing about
+# it is claimed. That is the difference between this file and `sqs-allow`, which says
+# "found it, and it is meant to be there".
+tests/

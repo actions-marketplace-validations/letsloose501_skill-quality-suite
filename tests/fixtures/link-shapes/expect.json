@@ -1,0 +1,11 @@
+{
+  "note": "Every remaining shape of broken pointer: a heading that moved, a file that lives in the neighbour, a skill that does not exist, a file the named skill does not have, a folder the skill never had, and an outbound path into a vault that is not there.",
+  "expect": [
+    "ST003",
+    "ST004",
+    "ST008",
+    "ST009",
+    "ST010",
+    "ST011"
+  ]
+}

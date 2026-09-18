@@ -1,0 +1,14 @@
+{
+  "note": "The frontmatter limits and the layout conventions: a missing field, a name and a description over the ceiling, a skill with no body, and repository furniture shipping as payload.",
+  "expect": [
+    "SP002",
+    "SP003",
+    "SP005",
+    "SP008",
+    "SP009",
+    "SP012",
+    "SP013",
+    "SP014",
+    "QL001"
+  ]
+}

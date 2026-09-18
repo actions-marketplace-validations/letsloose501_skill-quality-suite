@@ -1,0 +1,9 @@
+# Near-misses: they share vocabulary and need something else.
+- prompt: "Write a Python HTTP server that logs requests"
+  expected: no-trigger
+- prompt: "Explain how double-entry bookkeeping works"
+  expected: no-trigger
+- prompt: "Rename every receipt photo in this folder by date"
+  expected: no-trigger
+- prompt: "What is the exchange rate for the euro today"
+  expected: no-trigger

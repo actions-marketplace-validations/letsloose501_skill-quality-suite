@@ -1,0 +1,9 @@
+{
+  "note": "A description that repeats its own folder name, writes one branch twice, names a user-invoked neighbour it cannot lose anything to, and a body that steers by prohibition.",
+  "expect": [
+    "QL003",
+    "QL005",
+    "QL008",
+    "QL009"
+  ]
+}

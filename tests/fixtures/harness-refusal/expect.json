@@ -1,0 +1,13 @@
+{
+  "note": "A harness that refuses the skill outright, a field no harness in the registry documents, and a `--harness` name with no adapter. UNKNOWN is a statement about the documentation, never an invented incompatibility.",
+  "command": "check",
+  "args": [
+    "--harness",
+    "claude-code,cursor,codex,gemini-cli,no-such-harness"
+  ],
+  "expect": [
+    "CP007",
+    "CP008",
+    "CP009"
+  ]
+}

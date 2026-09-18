@@ -1,0 +1,129 @@
+name: skill-quality-suite
+description: >-
+  Quality gate for Agent Skills: structure, specification conformance, instruction
+  quality, cross-runtime compatibility and security, with SARIF for code scanning.
+author: letsloose501
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  path:
+    description: What to check - a skills directory, one skill, or a checkout.
+    required: false
+    default: "."
+  command:
+    description: "check (the everyday five), all (adds publish), or one module."
+    required: false
+    default: check
+  strict:
+    description: Warnings count as failures.
+    required: false
+    default: "false"
+  harness:
+    description: >-
+      Target runtimes, comma-separated or `all`. Left empty, only the
+      harness-independent spec rules run - claiming a skill fails on Cursor when
+      Cursor was never a target would be inventing a problem.
+    required: false
+    default: ""
+  min-confidence:
+    description: >-
+      Drop findings the suite is less sure of than this (low, medium, high). `high`
+      keeps the filesystem and parse facts and drops the prose heuristics.
+    required: false
+    default: ""
+  baseline:
+    description: >-
+      Report only findings the baseline file does not already carry. For switching the
+      gate on over a tree that already has findings, without a red build on day one.
+    required: false
+    default: "false"
+  changed:
+    description: Only check skills the diff against `since` touched.
+    required: false
+    default: "false"
+  since:
+    description: What `changed` diffs against.
+    required: false
+    default: HEAD^
+  sarif-file:
+    description: Where to write SARIF. Empty writes none.
+    required: false
+    default: sqs.sarif
+  upload-sarif:
+    description: >-
+      Upload the SARIF to code scanning. Needs `security-events: write` on the job.
+    required: false
+    default: "false"
+  python-version:
+    description: Python to run on. The suite is standard library only.
+    required: false
+    default: "3.11"
+
+outputs:
+  sarif-file:
+    description: The SARIF file written, if any.
+    value: ${{ inputs.sarif-file }}
+  findings:
+    description: How many findings the run reported.
+    value: ${{ steps.run.outputs.findings }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - id: run
+      shell: bash
+      env:
+        # Inputs arrive through the environment rather than through `${{ }}` inside the
+        # script: an expression is pasted into the shell before bash ever sees it, so a
+        # sqs-allow: SE002
+        # path like `; rm -rf ~` would run. This is a security tool; it does not get to
+        # model the practice badly.
+        SQS_ACTION_DIR: ${{ github.action_path }}
+        SQS_PATH: ${{ inputs.path }}
+        SQS_COMMAND: ${{ inputs.command }}
+        SQS_STRICT: ${{ inputs.strict }}
+        SQS_HARNESS: ${{ inputs.harness }}
+        SQS_MIN_CONFIDENCE: ${{ inputs.min-confidence }}
+        SQS_BASELINE: ${{ inputs.baseline }}
+        SQS_CHANGED: ${{ inputs.changed }}
+        SQS_SINCE: ${{ inputs.since }}
+        SQS_SARIF: ${{ inputs.sarif-file }}
+      run: |
+        set -o pipefail
+        args=("$SQS_ACTION_DIR/scripts/sqs.py" "$SQS_COMMAND" "$SQS_PATH")
+        if [ "$SQS_STRICT" = "true" ]; then args+=(--strict); fi
+        if [ -n "$SQS_HARNESS" ]; then args+=(--harness "$SQS_HARNESS"); fi
+        if [ -n "$SQS_MIN_CONFIDENCE" ]; then args+=(--min-confidence "$SQS_MIN_CONFIDENCE"); fi
+        if [ "$SQS_BASELINE" = "true" ]; then args+=(--baseline); fi
+        if [ "$SQS_CHANGED" = "true" ]; then args+=(--changed --since "$SQS_SINCE"); fi
+
+        # Three passes over one analysis, on purpose. The `github` format annotates the
+        # diff where a reviewer is already looking, SARIF goes to code scanning, which
+        # keeps the history, and the JSON is what the `findings` output counts. None of
+        # them substitutes for another, and re-running the static checks is cheaper than
+        # teaching one renderer to be three.
+        python "${args[@]}" --format github || true
+        if [ -n "$SQS_SARIF" ]; then
+          python "${args[@]}" --format sarif > "$SQS_SARIF" || true
+        fi
+        python "${args[@]}" --format json > sqs-findings.json || true
+        count=$(python -c "import json;print(len(json.load(open('sqs-findings.json'))['findings']))" 2>/dev/null || echo 0)
+        echo "findings=$count" >> "$GITHUB_OUTPUT"
+
+        # The exit code of the human-readable run is the gate. It runs last so the
+        # annotations are already posted by the time the job goes red.
+        python "${args[@]}"
+
+      # `always()` leads, so the upload still happens on the run that went red -
+      # a failing gate is exactly the run whose findings somebody wants to read.
+    - if: ${{ always() && inputs.upload-sarif == 'true' && inputs.sarif-file != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: skill-quality-suite

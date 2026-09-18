@@ -1,0 +1,9 @@
+{
+  "note": "An evals/ directory that looks like testing and is not: two queries where the guidance asks for about twenty, and a case with no expected output.",
+  "command": "evals",
+  "expect": [
+    "EV002",
+    "EV004",
+    "EV005"
+  ]
+}

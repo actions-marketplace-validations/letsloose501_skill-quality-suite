@@ -1,0 +1,16 @@
+{
+  "note": "The three ways a skill stops travelling: a value no runtime accepts, a field outside the spec, and a path into one harness's own skill tree.",
+  "command": "check",
+  "args": [
+    "--harness",
+    "all"
+  ],
+  "expect": [
+    "CP001",
+    "CP002",
+    "CP006"
+  ],
+  "reject": [
+    "CP009"
+  ]
+}

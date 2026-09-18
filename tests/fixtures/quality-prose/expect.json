@@ -1,0 +1,14 @@
+{
+  "note": "Each folder carries one prose defect the quality engine can point a line at.",
+  "expect": [
+    "QL002",
+    "QL006",
+    "QL007",
+    "QL010",
+    "QL011",
+    "QL012"
+  ],
+  "reject": [
+    "QL001"
+  ]
+}

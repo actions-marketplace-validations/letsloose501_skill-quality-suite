@@ -1,0 +1,10 @@
+{
+  "note": "What only bites once the skill leaves the machine it was written on: a path into somebody's own files, an address, and a version the manifest disagrees with.",
+  "command": "publish",
+  "expect": [
+    "PB001",
+    "PB002",
+    "PB005",
+    "PB006"
+  ]
+}

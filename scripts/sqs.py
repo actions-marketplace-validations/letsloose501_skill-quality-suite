@@ -30,25 +30,26 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import baseline as baseline_store                               # noqa: E402
 import compat                                                   # noqa: E402
 import evalcheck                                                # noqa: E402
 import fix as fixer                                             # noqa: E402
 import portability                                              # noqa: E402
 import publish                                                  # noqa: E402
 import quality                                                  # noqa: E402
+import report                                                   # noqa: E402
 import security                                                 # noqa: E402
 import spec                                                     # noqa: E402
-import trigger_evals                                            # noqa: E402
 from core import Finding, Skill, discover                       # noqa: E402
 from harnesses import registry as harness_registry              # noqa: E402
 from model import SkillModel                                    # noqa: E402
-from rules import MODULES, RULES, module_of, severity_of        # noqa: E402
+from report import RANK, SIGIL                                  # noqa: E402
+from rules import (MODULES, RULES, at_least, module_of,        # noqa: E402
+                   severity_of, ungraded)
 
 _CODES = r"([A-Z]{2}\d{3}(?:\s*,\s*[A-Z]{2}\d{3})*|\*)"
 SUPPRESS_RE = re.compile(r"sqs-allow:\s*" + _CODES)
 SUPPRESS_FILE_RE = re.compile(r"sqs-allow-file:\s*" + _CODES)
-RANK = {"error": 0, "warning": 1, "info": 2}
-SIGIL = {"error": "⛔", "warning": "⚠️ ", "info": "· "}
 CHECK_MODULES = ("structure", "spec", "quality", "compat", "security")
 
 
@@ -107,6 +108,83 @@ def resolve_targets(args, root):
     return skills, notes
 
 
+def stored_eval_rows(root, skills):
+    """Board rows for the layers that run an agent, from the newest stored run.
+
+    They are stamped with the label and the date they were measured, because a stored
+    number is about the version that was measured, not about the files on disk now. A
+    board that printed yesterday's 94% next to today's edits would be the most
+    convincing wrong answer the suite could give.
+    """
+    try:
+        from evaluation import regression
+    except ImportError:
+        return []
+    if len(skills) != 1:
+        return []
+    name = skills[0].name or skills[0].folder
+    labels = regression.labels(root, name)
+    if not labels:
+        return []
+    payload, best_key = None, None
+    for label in labels:
+        data = regression.load(root, name, label)
+        if not data:
+            continue
+        # the label breaks a tie: two runs saved in the same second are ordered by the
+        # name they were given, which is the order they were written in
+        key = (data.get("saved", ""), label)
+        if best_key is None or key > best_key:
+            payload, best_key = data, key
+    if not payload:
+        return []
+    stamp = f"{payload.get('label')} · {(payload.get('saved') or '')[:10]}"
+    rows = []
+    trigger = payload.get("trigger")
+    if trigger:
+        best = None
+        for block in trigger.get("sets", {}).values():
+            m = block.get("metrics") or {}
+            if m.get("precision") is not None:
+                best = m
+        if best:
+            rows.append(("TRIGGER", f"{(best.get('precision') or 0):.0%}/"
+                                    f"{(best.get('recall') or 0):.0%}",
+                         f"precision/recall, measured {stamp}"))
+    runtime_block = payload.get("runtime")
+    if runtime_block:
+        rate = (runtime_block.get("sides", {}).get("treatment") or {}).get("success_rate")
+        rows.append(("RUNTIME", "n/a" if rate is None else f"{rate:.0%}",
+                     f"graded task success, measured {stamp}"))
+    if len(labels) > 1:
+        rows.append(("REGRESSION", "READY",
+                     f"`sqs.py eval --compare {labels[-2]} {labels[-1]}`"))
+    return rows
+
+
+def changed_skills(skills, since="HEAD"):
+    """(kept skills, note) - only those a git diff touched.
+
+    For a repository with hundreds of skills, where checking all of them on every
+    commit costs minutes nobody has. When git cannot answer - not a checkout, no
+    commits yet - this returns everything and says so: quietly checking nothing would
+    be a green build that looked at no files, which is the worst output a gate has.
+    """
+    tops = set()
+    for cmd in (["git", "diff", "--name-only", since],
+                ["git", "diff", "--name-only", "--cached", since],
+                ["git", "ls-files", "--others", "--exclude-standard"]):
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        if r.returncode != 0:
+            return skills, (f"`{' '.join(cmd)}` failed ({(r.stderr or '').strip()[:80]}) - "
+                            f"--changed checked everything instead")
+        tops |= {os.path.abspath(line.strip()) for line in r.stdout.splitlines() if line.strip()}
+    kept = [s for s in skills
+            if any(p == s.root or p.startswith(s.root + os.sep) for p in tops)]
+    return kept, f"--changed: {len(kept)} of {len(skills)} skill(s) touched since {since}"
+
+
 def load_config(root, path=None):
     """`sqs.config.json` beside the skills, unless a path is given.
 
@@ -130,8 +208,15 @@ def load_structure_engine(root):
     It is the structure engine and it already carries the rule codes; parsing its
     printed output back into findings would be a second, drifting source of truth.
     """
+    # Three places, because the engine legitimately lives in two of them: bundled in
+    # `scripts/` when the suite is a checkout, and beside the skills when it is
+    # installed as one (it runs standalone there, and as a hook pair). The third is the
+    # tree being checked, which is only the same directory when that tree is also the
+    # one the suite is installed in - checking a fixture or a foreign checkout is not.
     for candidate in (os.path.join(root, "check_skills.py"),
-                      os.path.join(HERE, "check_skills.py")):
+                      os.path.join(HERE, "check_skills.py"),
+                      os.path.join(os.path.dirname(os.path.dirname(HERE)),
+                                   "check_skills.py")):
         if os.path.isfile(candidate):
             os.environ.setdefault("CLAUDE_SKILLS_DIR", root)
             sp = importlib.util.spec_from_file_location("check_skills", candidate)
@@ -155,6 +240,11 @@ def structure_findings(skill, engine):
             print("check_skills.py not found beside the skills - the structure module is "
                   "skipped", file=sys.stderr)
         return []
+    # The engine resolves a skill by name under its own SKILLS_DIR, so it is pointed at
+    # this skill's actual parent before every call. Without that, `--skills-dir` pointing
+    # somewhere else - a checkout, a single skill - makes it look for the folder in the
+    # wrong tree and report the skill as missing its own SKILL.md.
+    engine.SKILLS_DIR = os.path.dirname(skill.root)
     errors, warnings, _, _ = engine.check(skill.folder)
     return ([Finding(f.code, f.msg, severity="error") for f in errors] +
             [Finding(f.code, f.msg, severity="warning") for f in warnings])
@@ -241,6 +331,7 @@ def collect(skill, modules, cfg, skill_registry, engine, world=None):
             out += fixer.check(skill, cfg)
     for f in out:
         f.skill = skill.folder
+        f.root = skill.root
         if f.severity is None:
             f.severity = severity_of(f.code)
     # the config has the last word on severity, including switching a rule off
@@ -252,61 +343,67 @@ def collect(skill, modules, cfg, skill_registry, engine, world=None):
     return sorted(out, key=lambda f: (RANK.get(f.severity, 3), f.code, f.where or ""))
 
 
-def render_text(results, strict, show_clean):
-    lines = []
-    for folder, found in results:
-        if not found:
-            if show_clean:
-                lines.append(f"✅ {folder}")
-            continue
-        worst = min(RANK.get(f.severity, 3) for f in found)
-        lines.append(f"{SIGIL[['error', 'warning', 'info'][worst]].strip()} {folder}")
-        for f in found:
-            place = f" ({f.where}:{f.line})" if f.where and f.line else (
-                f" ({f.where})" if f.where else "")
-            lines.append(f"     {SIGIL[f.severity]} {f.code} {f.msg}{place}")
-    return "\n".join(lines)
-
-
-def render_github(results):
-    out = []
-    for folder, found in results:
-        for f in found:
-            level = {"error": "error", "warning": "warning", "info": "notice"}[f.severity]
-            title = RULES.get(f.code, ("", f.code))[1]
-            where = f"file={folder}/{f.where}" + (f",line={f.line}" if f.line else "") \
-                if f.where else ""
-            out.append(f"::{level} {where},title={f.code} {title}::{f.msg}")
-    return "\n".join(out)
-
-
-def render_json(results):
-    return json.dumps({
-        "findings": [
-            {"skill": folder, "code": f.code, "module": module_of(f.code),
-             "severity": f.severity, "message": f.msg, "file": f.where, "line": f.line}
-            for folder, found in results for f in found
-        ]
-    }, ensure_ascii=False, indent=2)
-
-
-def cmd_explain(code):
+def cmd_explain(code, fmt="text"):
     code = code.upper()
     row = RULES.get(code)
     if not row:
         near = sorted(c for c in RULES if c.startswith(code[:2]))
         print(f"no rule {code}." + (f" {code[:2]}xx holds: {', '.join(near)}" if near else ""))
         return 2
-    severity, title, why, how, fixable = row
-    print(f"{code}  {title}")
+    if fmt == "json":
+        print(json.dumps(dict(row.as_dict(), why=row.why, how=row.how),
+                         ensure_ascii=False, indent=2))
+        return 0
+    print(f"{code}  {row.title}")
     print(f"module   {module_of(code)}")
-    print(f"severity {severity}" + ("  ·  `sqs.py fix` can repair it" if fixable else ""))
-    print(f"\nwhy      {why}")
-    print(f"fix      {how}")
+    print(f"severity {row.severity}" + ("  ·  `sqs.py fix` can repair it" if row.fixable else ""))
+    # The two gradings are about the check, not about the skill: how far to trust the
+    # machine on this one, and how often the thing it found is nonetheless intended.
+    print(f"detection confidence {row.confidence} · false positives {row.false_positive_risk}")
+    print(f"\nwhy      {row.why}")
+    print(f"fix      {row.how}")
     return 0
 
 
-def cmd_rules(module=None, audit=False):
+def fixture_coverage():
+    """{code: {"positive": n, "negative": n}} from the golden corpus, if it is here.
+
+    The corpus is what turns a rule's metadata from an opinion into a measurement: a
+    rule with no positive fixture has never been observed firing, and one with no
+    negative fixture has never been observed staying quiet.
+    """
+    tests_dir = os.path.join(os.path.dirname(HERE), "tests")
+    root = os.path.join(tests_dir, "fixtures")
+    cover = {}
+    if not os.path.isdir(root):
+        return None
+    # Rules no fixture can reach, declared once and read by both the corpus runner and
+    # this audit. Two lists would drift, and the drift would read as coverage.
+    try:
+        with open(os.path.join(tests_dir, "coverage.json"), encoding="utf-8") as f:
+            declared = json.load(f)
+    except (OSError, ValueError):
+        declared = {}
+    for code in declared.get("unit_covered", {}):
+        cover.setdefault(code, {"positive": 0, "negative": 0})["positive"] += 1
+    # a rule with no engine is not covered and not missing: it is out of the count
+    cover["__no_engine__"] = sorted(declared.get("no_engine", {}))
+    for dirpath, _, files in os.walk(root):
+        if "expect.json" not in files:
+            continue
+        try:
+            with open(os.path.join(dirpath, "expect.json"), encoding="utf-8") as f:
+                spec_ = json.load(f)
+        except (OSError, ValueError):
+            continue
+        for code in spec_.get("expect", []):
+            cover.setdefault(code, {"positive": 0, "negative": 0})["positive"] += 1
+        for code in spec_.get("reject", []):
+            cover.setdefault(code, {"positive": 0, "negative": 0})["negative"] += 1
+    return cover
+
+
+def cmd_rules(module=None, audit=False, fmt="text"):
     if audit:
         # Every code an engine can emit has to have a row here. This is the check that
         # keeps the registry from drifting away from the engines that use it.
@@ -314,8 +411,11 @@ def cmd_rules(module=None, audit=False):
         # constructor call would miss every engine that builds the code first and
         # constructs the finding after - which is most of them.
         literal = re.compile(r'"([A-Z]{2}\d{3})"')
-        engines = [os.path.join(HERE, p) for p in sorted(os.listdir(HERE))
-                   if p.endswith(".py") and p != "rules.py"]
+        engines = []
+        for base in (HERE, os.path.join(HERE, "evaluation")):
+            if os.path.isdir(base):
+                engines += [os.path.join(base, p) for p in sorted(os.listdir(base))
+                            if p.endswith(".py") and p != "rules.py"]
         engines.append(os.path.join(os.path.dirname(os.path.dirname(HERE)), "check_skills.py"))
         emitted = set()
         for path in engines:
@@ -327,19 +427,41 @@ def cmd_rules(module=None, audit=False):
         # ST016 is the opt-in external-link check, which has no engine yet: it is the
         # one row here that documents a gap rather than a rule in force.
         unused = sorted(set(RULES) - emitted - {"ST016"})
+        ungraded_codes = ungraded()
+        cover = fixture_coverage()
+        no_engine = set((cover or {}).pop("__no_engine__", ()))
+        untested = sorted(c for c in RULES
+                          if c not in no_engine
+                          and not (cover or {}).get(c, {}).get("positive")
+                          ) if cover is not None else []
         if orphan:
             print("emitted with no row in rules.py: " + ", ".join(orphan))
         if unused:
             print("rows nothing emits: " + ", ".join(unused))
-        if not orphan and not unused:
+        if ungraded_codes:
+            print("no confidence/false-positive grading: " + ", ".join(ungraded_codes))
+        if cover is None:
+            print("no tests/fixtures beside the scripts - rule coverage unmeasured")
+        else:
+            countable = len(RULES) - len(no_engine)
+            have = countable - len(untested)
+            print(f"golden corpus: {have}/{countable} rules have a positive fixture"
+                  + (f" · {', '.join(sorted(no_engine))} has no engine yet"
+                     if no_engine else ""))
+            if untested:
+                print("  never observed firing: " + ", ".join(untested))
+        if not orphan and not unused and not ungraded_codes:
             print(f"registry and engines agree · {len(RULES)} rules")
-        return 1 if orphan else 0
-    for code in sorted(RULES):
-        if module and module_of(code) != module:
-            continue
-        severity, title, _, _, fixable = RULES[code]
-        print(f"{code}  {severity:<7}  {module_of(code):<9}  {title}"
-              + ("  [fixable]" if fixable else ""))
+        return 1 if orphan or ungraded_codes else 0
+    picked = [c for c in sorted(RULES) if not module or module_of(c) == module]
+    if fmt == "json":
+        print(json.dumps([RULES[c].as_dict() for c in picked], ensure_ascii=False, indent=2))
+        return 0
+    for code in picked:
+        row = RULES[code]
+        print(f"{code}  {row.severity:<7}  {module_of(code):<9}  {row.confidence:<7}"
+              f"fp:{row.false_positive_risk:<7}{row.title}"
+              + ("  [fixable]" if row.fixable else ""))
     return 0
 
 
@@ -384,10 +506,133 @@ def cmd_init_evals(skills):
             print(f"{s.folder}: wrote evals/{rel}")
             made += 1
     if made:
-        print("\nFill the TODOs, then `sqs.py evals <skill> --trigger`. Aim for about "
+        print("\nFill the TODOs, then `sqs.py eval <skill> --trigger`. Aim for about "
               "twenty queries,\neight to ten on each side; the negatives are what test "
               "precision.")
     return 0
+
+
+def cmd_eval(skills, root, a, cfg):
+    """The layer that runs an agent: triggering, task success, and the diff between runs.
+
+    Split from `check` on purpose. Everything under `check` is free, offline and
+    deterministic; everything here costs money, needs an agent installed and gives a
+    slightly different answer every time. Folding the two together would make the
+    cheap half hostage to the expensive one.
+    """
+    from evaluation import providers, regression, runtime, triggers  # noqa: PLC0415
+
+    if not skills:
+        print("eval takes a skill: `sqs.py eval ./my-skill --trigger`", file=sys.stderr)
+        return 2
+
+    want_trigger = a.trigger or a.all_layers
+    want_runtime = a.runtime or a.all_layers
+    fmt_json = a.format == "json"
+
+    if a.compare:
+        rc = 0
+        for s in skills:
+            name = s.name or s.folder
+            if len(a.compare) != 2:
+                print("--compare takes two labels, e.g. `--compare v1 v2`", file=sys.stderr)
+                return 2
+            before, after = (regression.load(root, name, lbl) for lbl in a.compare)
+            if before is None or after is None:
+                have = regression.labels(root, name)
+                print(f"{name}: no stored run for "
+                      f"{a.compare[0] if before is None else a.compare[1]}"
+                      + (f" - stored: {', '.join(have)}" if have else
+                         " - nothing stored yet; `--save <label>` records a run"),
+                      file=sys.stderr)
+                rc = max(rc, 2)
+                continue
+            diff = regression.compare(before, after)
+            print(json.dumps(diff, ensure_ascii=False, indent=2) if fmt_json
+                  else regression.render(diff, a.fail_on_cost))
+            if regression.failed(diff, a.fail_on_cost):
+                rc = max(rc, 1)
+        return rc
+
+    if not (want_trigger or want_runtime):
+        # No layer chosen. Running both by default would spend money nobody asked to
+        # spend, and a prompt is not an option: these commands run in hooks and CI,
+        # where nothing is there to answer it.
+        for s in skills:
+            queries, qproblem = triggers.load(s.root)
+            from evaluation import tasks as taskmod
+            task_list, tproblem = taskmod.load(s.root)
+            print(f"{s.folder}:")
+            print(f"    trigger  {len(queries)} quer(y/ies) x {a.runs} runs"
+                  if not qproblem else f"    trigger  {qproblem}")
+            print(f"    runtime  {len(task_list)} task(s) x {a.runs} runs x 2 sides"
+                  if not tproblem else f"    runtime  {tproblem}")
+        print("\nPick a layer: --trigger, --runtime, or --all. Each one runs the agent, "
+              "which costs\nmoney and minutes, so nothing runs until you name it.",
+              file=sys.stderr)
+        return 2
+
+    provider, why = providers.get(a.provider)
+    if provider is None or why:
+        print(why or f"no provider `{a.provider}`", file=sys.stderr)
+        return 2
+
+    def note(*parts):
+        if not a.quiet and not fmt_json:
+            print(*parts, file=sys.stderr)
+
+    rc = 0
+    for s in skills:
+        name = s.name or s.folder
+        payload = {"skill": name}
+        blocks = []
+
+        if want_trigger:
+            note(f"{name}: trigger pass, {a.runs} run(s) per query - this costs money")
+            report, problem = triggers.evaluate(
+                s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
+                use_split=not a.no_split)
+            if problem:
+                print(f"{s.folder}: {problem}", file=sys.stderr)
+                rc = max(rc, 2)
+            else:
+                payload["trigger"] = report
+                blocks.append(triggers.render(report))
+                for block in report["sets"].values():
+                    m = block["metrics"]
+                    if m["false_positive"] or m["false_negative"]:
+                        rc = max(rc, 1)
+
+        if want_runtime:
+            note(f"{name}: runtime pass, {a.runs} run(s) per task"
+                 + (" x 2 sides" if not a.no_baseline else "") + " - this costs money")
+            report, problem = runtime.evaluate(
+                s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
+                with_baseline=not a.no_baseline,
+                task_filter=set(a.task) if a.task else None)
+            if problem:
+                print(f"{s.folder}: {problem}", file=sys.stderr)
+                rc = max(rc, 2)
+            else:
+                payload["runtime"] = report
+                blocks.append(runtime.render(report))
+                treatment = report["sides"]["treatment"]
+                if treatment.get("failed_runs"):
+                    rc = max(rc, 2)
+                success = treatment.get("success_rate")
+                if success is not None and success < 1.0:
+                    rc = max(rc, 1)
+
+        if fmt_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(("\n\n" + "-" * 60 + "\n\n").join(blocks))
+
+        label = a.save or ("baseline" if a.baseline else None)
+        if label and len(payload) > 1:
+            path = regression.save(root, name, label, payload)
+            note(f"{name}: saved as `{label}` in {path}")
+    return rc
 
 
 def cmd_harnesses(world, verbose=False):
@@ -470,11 +715,22 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sqs.py", add_help=True,
                                  description="quality suite for Agent Skills")
     ap.add_argument("command", help="check | all | " + " | ".join(sorted(MODULES.values()))
-                    + " | fix | explain | rules | harnesses | new")
+                    + " | fix | eval | baseline | explain | rules | harnesses | new")
     ap.add_argument("args", nargs="*", help="skill names, a rule code, or a new skill's name")
     ap.add_argument("--skills-dir")
     ap.add_argument("--config")
-    ap.add_argument("--format", choices=("text", "json", "github"), default="text")
+    ap.add_argument("--format", choices=("text", "json", "github", "sarif", "board"),
+                    default="text", help="sarif for code-scanning, board for the layer view")
+    ap.add_argument("--score", action="store_true",
+                    help="add the aggregate number, with the arithmetic that produced it")
+    ap.add_argument("--min-confidence", choices=("low", "medium", "high"),
+                    help="drop findings the suite is less sure of than this")
+    ap.add_argument("--baseline", action="store_true",
+                    help="report only findings the baseline does not already carry")
+    ap.add_argument("--baseline-file", help="where the baseline lives (default .sqs-baseline.json)")
+    ap.add_argument("--changed", action="store_true",
+                    help="only skills touched by the git diff against --since")
+    ap.add_argument("--since", default="HEAD", help="--changed: what to diff against")
     ap.add_argument("--strict", action="store_true", help="warnings count as failures")
     ap.add_argument("--quiet", action="store_true", help="print nothing when clean")
     ap.add_argument("--harness", action="append", default=[],
@@ -484,12 +740,27 @@ def main(argv=None):
                     help="harnesses: locations, discovery and caveats for each")
     ap.add_argument("--lang", help="the language the published docs are written in")
     ap.add_argument("--trigger", action="store_true",
-                    help="evals: run the agent against evals/eval_queries.json (costs money)")
+                    help="eval: run the agent against the trigger set (costs money)")
+    ap.add_argument("--runtime", action="store_true",
+                    help="eval: run the task set with the skill and without it (costs money)")
+    ap.add_argument("--all", dest="all_layers", action="store_true",
+                    help="eval: both layers")
+    ap.add_argument("--provider", default="claude", help="eval: which agent to drive")
+    ap.add_argument("--model", help="eval: model for the runs")
+    ap.add_argument("--task", action="append", default=[], help="eval: only this task id")
+    ap.add_argument("--no-baseline", action="store_true",
+                    help="eval: skip the without-the-skill arm; halves the cost and the meaning")
+    ap.add_argument("--save", help="eval: store the run under this label for later comparison")
+    ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"),
+                    help="eval: diff two stored runs")
+    ap.add_argument("--fail-on-cost", action="store_true",
+                    help="eval --compare: a cost rise fails the gate too")
     ap.add_argument("--init", action="store_true",
                     help="evals: scaffold the two documented eval files")
-    ap.add_argument("--runs", type=int, default=3, help="evals --trigger: runs per query")
+    ap.add_argument("--runs", type=int, default=3,
+                    help="eval: runs per query or per task; the model is not deterministic")
     ap.add_argument("--no-split", action="store_true",
-                    help="evals --trigger: measure one set instead of train/validation")
+                    help="eval --trigger: measure one set instead of train/validation")
     ap.add_argument("--live", action="store_true", help="evals: ask the model, not the invariants")
     ap.add_argument("--apply", action="store_true", help="fix: write the repairs")
     ap.add_argument("--module", help="rules: only this module")
@@ -497,9 +768,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.command == "explain":
-        return cmd_explain(a.args[0]) if a.args else cmd_rules()
+        return cmd_explain(a.args[0], a.format) if a.args else cmd_rules()
     if a.command == "rules":
-        return cmd_rules(a.module, a.audit)
+        return cmd_rules(a.module, a.audit, a.format)
     world = harness_registry()
     if a.command == "harnesses":
         return cmd_harnesses(world, a.show)
@@ -520,20 +791,41 @@ def main(argv=None):
     if a.lang:
         cfg["lang"] = a.lang
 
+    if a.command == "eval":
+        names = [n for n in a.args if n not in set(cfg.get("ignore", []))]
+        picked_skills, notes = resolve_targets(names, root)
+        for note in notes:
+            print(note, file=sys.stderr)
+        return cmd_eval(picked_skills, root, a, cfg)
+
     if a.command == "check":
         modules = list(CHECK_MODULES)
     elif a.command == "all":
         modules = list(CHECK_MODULES) + ["publish"]
+    elif a.command == "baseline":
+        modules = list(CHECK_MODULES)
     elif a.command in set(MODULES.values()) | {"fix"}:
         modules = [a.command]
     else:
         print(f"unknown command {a.command!r}", file=sys.stderr)
         return 2
 
+    baseline_action = "create"
+    if a.command == "baseline":
+        if a.args and a.args[0] in ("create", "show"):
+            baseline_action = a.args.pop(0)
+        elif a.args:
+            print(f"baseline takes `create` or `show`, not {a.args[0]!r}", file=sys.stderr)
+            return 2
+
     ignore = set(cfg.get("ignore", []))
     names = [n for n in a.args if n not in ignore]
     skills, notes = resolve_targets(names, root)
     skills = [s for s in skills if s.folder not in ignore]
+    if a.changed:
+        skills, note = changed_skills(skills, a.since)
+        if not a.quiet:
+            print(note, file=sys.stderr)
     for note in notes:
         print(note, file=sys.stderr)
     skill_registry = {s.name or s.folder: s.slash_only for s in discover(root)}
@@ -551,21 +843,14 @@ def main(argv=None):
         # Routing is a property of the whole tree, so it runs once rather than per skill.
         eval_findings = evals_findings(root, a.live, names)
 
-    # The trigger loop runs the agent, so it is opt-in and never part of `check`.
+    # The trigger loop runs the agent, so it is opt-in and never part of `check`. It
+    # lives under `eval` now, with the rest of the layer that costs money; the old
+    # spelling still works because it is in people's hooks.
     if a.command == "evals" and a.trigger:
-        rc = 0
-        ran = False
-        for s in skills:
-            text, code = trigger_evals.run(s, runs=a.runs, model=cfg.get("live_model"),
-                                           use_split=not a.no_split, show=a.show)
-            if text is None:
-                print(f"{s.folder}: no evals/eval_queries.json - "
-                      f"`sqs.py evals {s.folder} --init` writes one", file=sys.stderr)
-                continue
-            ran = True
-            print(text)
-            rc = max(rc, code)
-        return rc if ran else 2
+        print("`evals --trigger` is now `eval --trigger` - same run, and `eval` "
+              "is where the runtime and regression passes live too.",
+              file=sys.stderr)
+        return cmd_eval(skills, root, a, cfg)
 
     if a.command == "evals" and a.init:
         return cmd_init_evals(skills)
@@ -601,20 +886,80 @@ def main(argv=None):
     if dupes or eval_findings:
         results.append(("(all skills)", dupes + eval_findings))
 
+    # A confidence floor filters by how much of the judgement is the machine's. It is
+    # not a severity filter: `--min-confidence high` keeps the facts and drops the
+    # heuristics, which is the gate you can leave switched on in CI.
+    if a.min_confidence:
+        results = [(folder, [f for f in found
+                             if at_least(RULES[f.code].confidence if f.code in RULES
+                                         else "unrated", a.min_confidence)])
+                   for folder, found in results]
+
+    baseline_note = ""
+    if a.command == "baseline":
+        action = baseline_action
+        if action == "create":
+            path, n = baseline_store.save(root, results, a.baseline_file)
+            print(f"recorded {n} finding(s) in {path}")
+            print("From here `sqs.py check --baseline` fails on new findings only. The "
+                  "recorded ones stay\nin the file - it is a queue, not a bin.")
+            return 0
+        if action == "show":
+            data = baseline_store.load(root, a.baseline_file)
+            if not data:
+                print(f"no baseline at {baseline_store.path_for(root, a.baseline_file)}",
+                      file=sys.stderr)
+                return 2
+            print(f"{len(data['findings'])} finding(s) recorded {data.get('created', '?')}")
+            for entry in sorted(data["findings"].values(),
+                                key=lambda e: (e["code"], e["skill"], e["file"] or "")):
+                place = f" ({entry['file']})" if entry.get("file") else ""
+                print(f"  {entry['severity']:<8}{entry['code']}  {entry['skill']}"
+                      f"  {entry['message'][:70]}{place}")
+            return 0
+    if a.baseline:
+        data = baseline_store.load(root, a.baseline_file)
+        if data is None:
+            print(f"no baseline at {baseline_store.path_for(root, a.baseline_file)} - "
+                  f"`sqs.py baseline create` writes one", file=sys.stderr)
+            return 2
+        results, suppressed, fixed = baseline_store.split(results, data)
+        baseline_note = baseline_store.summary(suppressed, fixed, data)
+
     flat = [f for _, found in results for f in found]
     failures = sum(1 for f in flat
                    if f.severity == "error" or (a.strict and f.severity == "warning"))
 
     if a.format == "json":
-        print(render_json(results))
+        print(report.render_json(results))
+    elif a.format == "sarif":
+        print(report.render_sarif(results))
     elif a.format == "github":
-        out = render_github(results)
+        out = report.render_github(results)
         if out:
             print(out)
+    elif a.format == "board":
+        extras = stored_eval_rows(root, skills)
+        measured = {row[0] for row in extras}
+        if "TRIGGER" not in measured:
+            extras.append(("TRIGGER", "NOT RUN",
+                           "`sqs.py eval <skill> --trigger` runs the agent"))
+        if "RUNTIME" not in measured:
+            extras.append(("RUNTIME", "NOT RUN",
+                           "`sqs.py eval <skill> --runtime` runs the task set"))
+        extras.sort(key=lambda row: ("TRIGGER", "RUNTIME", "REGRESSION").index(row[0])
+                    if row[0] in ("TRIGGER", "RUNTIME", "REGRESSION") else 9)
+        print(report.render_board(results, set(modules), extras))
+        if baseline_note:
+            print("\n" + baseline_note)
+        if a.score:
+            print("\n" + report.render_score(results))
     elif not (a.quiet and not flat):
-        body = render_text(results, a.strict, show_clean=not a.quiet)
+        body = report.render_text(results, a.strict, show_clean=not a.quiet)
         if body:
             print(body)
+        if baseline_note:
+            print(("\n" if body else "") + baseline_note)
         if not a.quiet and skills:
             counts = {k: sum(1 for f in flat if f.severity == k)
                       for k in ("error", "warning", "info")}
@@ -623,6 +968,8 @@ def main(argv=None):
                   f"  ·  `sqs.py explain <CODE>` for any of them")
         elif not a.quiet and not flat:
             print("✅ routing clean")
+        if a.score:
+            print("\n" + report.render_score(results))
     return 1 if failures else 0
 
 

@@ -1,0 +1,8 @@
+{
+  "note": "The suite does not do routing itself - it delegates to the runner that owns it and carries the verdict back. The runner here is a stub that fails on purpose: what is under test is the wiring and the static/live split, not the routing.",
+  "command": "evals",
+  "args": [],
+  "expect": [
+    "EV001"
+  ]
+}

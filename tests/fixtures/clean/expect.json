@@ -1,0 +1,5 @@
+{
+  "note": "A skill with nothing wrong with it. Any finding here is a false positive, which is why this case is exact.",
+  "expect": [],
+  "exact": true
+}

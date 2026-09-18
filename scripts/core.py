@@ -8,11 +8,13 @@ modules would start disagreeing about what the skill says.
 Pure stdlib on purpose: the suite has to run from a git hook on a machine where
 nothing was installed.
 """
+import fnmatch
 import os
 import re
 import unicodedata
 
 SUBDIRS = ("references", "assets", "scripts", "templates")
+IGNORE_FILE = ".sqsignore"
 TEXT_EXT = (".md", ".txt")
 
 
@@ -23,13 +25,14 @@ class Finding:
     default when the engine knows the case is worse or milder than usual.
     """
 
-    __slots__ = ("code", "severity", "msg", "skill", "where", "line")
+    __slots__ = ("code", "severity", "msg", "skill", "root", "where", "line")
 
     def __init__(self, code, msg, severity=None, skill=None, where=None, line=None):
         self.code = code
         self.msg = msg
         self.severity = severity
-        self.skill = skill
+        self.skill = skill          # the folder name, for the report
+        self.root = None            # the folder's absolute path, for a real file URI
         self.where = where          # file inside the skill, if the finding has a place
         self.line = line
 
@@ -100,6 +103,23 @@ def parse_frontmatter(text):
     return raw, values, styles
 
 
+def read_ignores(root):
+    """Path globs from `.sqsignore` at the skill root, relative to it."""
+    path = os.path.join(root, IGNORE_FILE)
+    if not os.path.isfile(path):
+        return []
+    out = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip().lstrip("/")
+                if line:
+                    out.append(line.replace("\\", "/"))
+    except OSError:
+        return []
+    return out
+
+
 class Skill:
     """A skill on disk, read once."""
 
@@ -120,20 +140,43 @@ class Skill:
             self.body = self.text[self.text.find("\n---", 3) + 4:]
         self.name = self.fm.get("name", "")
         self.description = self.fm.get("description", "")
+        self.ignores = read_ignores(self.root)
 
     @property
     def slash_only(self):
         return self.fm.get("disable-model-invocation", "").lower() == "true"
 
+    def ignored(self, rel):
+        """Whether `.sqsignore` takes this path out of every engine's view.
+
+        For material that sits inside the skill folder and is not skill payload: a
+        test corpus, vendored third-party files, generated output. It is not a way to
+        silence a finding - that is what `sqs-allow` and the config are for. What is
+        listed here is not read at all, so nothing about it is checked and nothing
+        about it is claimed.
+        """
+        rel = rel.replace("\\", "/")
+        for pat in self.ignores:
+            if fnmatch.fnmatch(rel, pat) or rel == pat.rstrip("/"):
+                return True
+            head = pat.rstrip("/") + "/"
+            if rel.startswith(head) or fnmatch.fnmatch(rel, head + "*"):
+                return True
+        return False
+
     def walk(self):
         """(relative path, bytes size, is-text) for every file the skill carries."""
         for dirpath, dirnames, files in os.walk(self.root):
-            dirnames[:] = [d for d in dirnames if d != "__pycache__" and not d.startswith(".")]
+            dirnames[:] = [d for d in dirnames if d != "__pycache__" and not d.startswith(".")
+                           and not self.ignored(os.path.relpath(os.path.join(dirpath, d),
+                                                                self.root))]
             for fn in files:
                 if fn.startswith("."):
                     continue
                 full = os.path.join(dirpath, fn)
                 rel = os.path.relpath(full, self.root).replace("\\", "/")
+                if self.ignored(rel):
+                    continue
                 try:
                     size = os.path.getsize(full)
                 except OSError:

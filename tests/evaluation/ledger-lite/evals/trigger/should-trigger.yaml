@@ -1,0 +1,9 @@
+# Wordings that must reach ledger-lite.
+- prompt: "Log this receipt: 12.40 EUR at Bakery Nord"
+  expected: trigger
+- prompt: "I paid 30 euros for the taxi yesterday, put it in"
+  expected: trigger
+- prompt: "what is my balance right now"
+  expected: trigger
+- prompt: "add a payment of 5.00 to the ledger"
+  expected: trigger

@@ -1,0 +1,7 @@
+{
+  "note": "Two folders claiming one `name`. Only visible from above: one shadows the other and which one wins is not knowable in advance.",
+  "expect": [
+    "SP004",
+    "ST014"
+  ]
+}

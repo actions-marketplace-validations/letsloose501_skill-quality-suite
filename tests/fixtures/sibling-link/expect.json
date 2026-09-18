@@ -1,0 +1,6 @@
+{
+  "note": "A reference linking to a file beside it that is not there. The link resolves from the reference's own folder, which is why it needs its own rule.",
+  "expect": [
+    "ST002"
+  ]
+}

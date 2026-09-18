@@ -1,0 +1,22 @@
+{
+  "note": "Budgets and asset weight. The heavy files are generated at run time: a corpus that carries a megabyte of filler is a corpus nobody clones.",
+  "expect": [
+    "ST006",
+    "ST007",
+    "SP016"
+  ],
+  "generate": [
+    {
+      "path": "oversized/SKILL.md",
+      "pad_to": 16000
+    },
+    {
+      "path": "oversized/references/rules.md",
+      "pad_to": 40000
+    },
+    {
+      "path": "oversized/assets/diagram.png",
+      "bytes": 260000
+    }
+  ]
+}

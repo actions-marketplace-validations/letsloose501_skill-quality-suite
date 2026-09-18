@@ -1,0 +1,10 @@
+{
+  "note": "A name the specification does not allow, and a description that fires on wording the instructions below it never use - the skill grew and the pointer stayed where it was.",
+  "expect": [
+    "SP006",
+    "QL004"
+  ],
+  "reject": [
+    "SP004"
+  ]
+}

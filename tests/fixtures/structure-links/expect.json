@@ -1,0 +1,7 @@
+{
+  "note": "A link to a file that is not there, and a file no link reaches. Both are silent at runtime: the agent skips the step and the work just comes out thinner.",
+  "expect": [
+    "ST001",
+    "ST005"
+  ]
+}

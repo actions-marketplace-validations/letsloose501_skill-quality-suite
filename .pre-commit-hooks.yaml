@@ -1,0 +1,25 @@
+# Two hooks, because they fail at different moments and cost different amounts.
+#
+# `skill-quality-suite` is the everyday one: it checks only the skills the commit
+# touches, so a tree of two hundred skills does not pay for one edit.
+# `skill-quality-suite-security` is the one to reach for when a skill arrives from
+# somewhere else. Neither runs an agent, neither needs anything installed beyond
+# Python 3, and neither talks to the network.
+- id: skill-quality-suite
+  name: skill quality (changed skills)
+  description: Structure, spec, quality, compatibility and security over the skills this commit touches.
+  entry: scripts/sqs.py
+  args: [check, --changed, --quiet]
+  language: script
+  pass_filenames: false
+  files: (^|/)SKILL\.md$|(^|/)(references|scripts|assets|evals)/
+  require_serial: true
+
+- id: skill-quality-suite-security
+  name: skill security
+  description: Secrets, destructive commands, injection and hidden characters. Run it on a skill somebody else wrote, before the agent reads it for work.
+  entry: scripts/sqs.py
+  args: [security, --quiet]
+  language: script
+  pass_filenames: false
+  require_serial: true

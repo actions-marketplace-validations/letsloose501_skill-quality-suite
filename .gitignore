@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Evaluation runs and report artefacts: measurements of a version, not sources.
+.sqs/
+sqs.sarif
+sqs-findings.json

@@ -1,0 +1,43 @@
+name: quality
+
+# The suite, run on itself. A linter whose own repository does not pass it is a
+# linter nobody has read.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    name: golden corpus
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: every rule, positive and negative
+        run: python tests/run_tests.py
+      - name: no rule left unobserved
+        run: python tests/run_tests.py --coverage
+
+  self-check:
+    name: the suite on itself
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          path: .
+          command: all
+          harness: all
+          upload-sarif: "true"

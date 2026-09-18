@@ -1,0 +1,10 @@
+[
+  {
+    "query": "log this receipt",
+    "should_trigger": true
+  },
+  {
+    "query": "what is my balance",
+    "should_trigger": false
+  }
+]

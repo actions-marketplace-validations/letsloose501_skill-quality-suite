@@ -93,7 +93,7 @@ def check(skill, cfg=None):
         return out
     for e in entries:
         full = os.path.join(skill.root, e)
-        if e.startswith(".") or e == "__pycache__":
+        if e.startswith(".") or e == "__pycache__" or skill.ignored(e):
             continue
         if os.path.isdir(full):
             if e not in allowed:
