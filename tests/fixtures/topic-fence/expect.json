@@ -1,0 +1,6 @@
+{
+  "note": "A description that fences off a topic instead of a named skill: the clause rules out optimising code and tuning queries, so that vocabulary now sits in the one place the router reads. QL008 cannot see this shape - it needs a neighbour named and registered as user-invoked - and the body already carries the same boundary where it belongs.",
+  "expect": [
+    "QL013"
+  ]
+}

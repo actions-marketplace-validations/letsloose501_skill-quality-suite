@@ -40,6 +40,11 @@ for X. Negation does not reliably reverse a topic match. So:
 - A boundary belongs in the description **only when the neighbour can fire on its own**.
   Against a neighbour with `disable-model-invocation`, naming its topic is pure cost -
   it cannot intercept anything. `QL008` reports exactly that case.
+- **Fencing off a topic instead of a neighbour is the costly version**, and the common
+  one: "do not use for optimising code" puts *optimising code* into the one place the
+  router reads, and hands the work to nobody. `QL013` reports it. Where the boundary has
+  to stay, name the neighbour that would otherwise take the work: a name is a
+  destination, a topic is only bait.
 - Every other boundary goes in the **body**, which is read after activation and does
   not affect the choice.
 - "Never fire on your own" is `disable-model-invocation: true`, not a sentence asking

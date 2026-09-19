@@ -238,6 +238,16 @@ _ROWS = {
               "`npx eslint` resolves to whatever is newest today. The skill's behaviour then "
               "changes without the skill changing, which is the hardest kind of drift to "
               "trace.", "Pin the version: `npx eslint@9.0.0`.", False),
+    "QL013": ("info", "Description rules out a topic",
+              "A description is matched on topic, and a negation does not reverse a match. "
+              "Spelling out the work the skill will not take puts that work's vocabulary in "
+              "the one place the router reads, so the clause meant as a fence reads as one "
+              "more reason to fire. `QL008` is this same trap when a neighbouring skill is "
+              "named; this is the version with only a topic in it, which is the common one.",
+              "Move the boundary into the body, which is read after the skill has already "
+              "been chosen. Keep it in the description only when a model-invoked neighbour "
+              "would otherwise take the work, and then name that neighbour rather than its "
+              "topic.", False),
 
     # ---- CP: agent compatibility --------------------------------------------
     "CP001": ("warning", "Field value the runtime cannot read",
@@ -405,6 +415,7 @@ GRADES = {
     "QL010": ("medium", "low"),
     "QL011": ("medium", "medium"),
     "QL012": ("high", "low"),
+    "QL013": ("medium", "medium"),
 
     # compat: every verdict comes from an adapter's declared support table
     "CP001": ("high", "low"),    "CP002": ("high", "low"),

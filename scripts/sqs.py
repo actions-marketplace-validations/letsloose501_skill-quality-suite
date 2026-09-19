@@ -856,7 +856,13 @@ def main(argv=None):
             print(note, file=sys.stderr)
     for note in notes:
         print(note, file=sys.stderr)
-    skill_registry = {s.name or s.folder: s.slash_only for s in discover(root)}
+    # Neighbours are the installed skills plus the ones under examination. Building this
+    # from `root` alone was right only while the two were the same tree: `root` follows
+    # `--skills-dir`, not the positional target, so checking a directory somewhere else
+    # left every skill in it a stranger to the others and the neighbour-aware rules
+    # (`QL008`, `QL013`) read a named sibling as an unnamed topic.
+    skill_registry = {s.name or s.folder: s.slash_only
+                      for s in list(discover(root)) + list(skills)}
 
     # The compatibility report is a different view of the same analysis, not a
     # different analysis: per harness rather than per finding. `check --harness` still

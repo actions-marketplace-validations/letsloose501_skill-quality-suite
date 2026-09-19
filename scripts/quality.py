@@ -50,9 +50,49 @@ NEGATION_RE = re.compile(
 NEGATION_MIN = 10
 
 # A disclaimer in the description that names a neighbouring skill.
+#
+# Three shapes, and each of the first two used to be one expression that could not do
+# both jobs. `[`/]name[`\b]` looks like "a backtick or a word boundary" and is not: `\b`
+# inside a character class is a backspace, so the name had to be followed by a literal
+# backtick and `/mistake,` was invisible. Splitting them lets the slash form carry its
+# own guard - `(?<![\w/:])` keeps `https://host/docs` and `a/b` out, which a bare
+# boundary would have swept in as neighbours called `docs` and `b`.
+#
+# The lead-ins are case-insensitive because a description states them at the start of a
+# sentence: `Не подменяет konspekt` is how the phrase is actually written, and the
+# lower-case-only pattern could therefore never match a Russian one.
 NEIGHBOUR_RE = re.compile(
-    r"[`/]([a-z][a-z0-9-]{2,63})[`\b]|\b(?:не подменяет|not to be confused|instead of|"
-    r"это |а не )\s*`?([a-z][a-z0-9-]{2,63})`?")
+    r"`([a-z][a-z0-9-]{2,63})`"
+    r"|(?<![\w/:])/([a-z][a-z0-9-]{2,63})\b"
+    r"|(?i:\b(?:не подменяет|не путать с|not to be confused|instead of|это |а не ))"
+    r"\s*[`/]?([a-z][a-z0-9-]{2,63})`?")
+
+# A negative-scope clause in the description: the skill naming work it will not take.
+# The topic such a clause names is the whole problem - see QL013.
+# The verb has to be the one that selects a skill, and the negation has to attach to it.
+# A looser pattern read `commands that must never reach an agent unreviewed` as a scope
+# fence, when it was the subject the skill teaches - so `reach` only counts as `reach
+# for`, and a bare `not` is out: on its own it lands in the middle of ordinary prose.
+NEGATIVE_SCOPE_RE = re.compile(
+    r"(?:\b(?:do not|don't|never)\s+(?:use|trigger|fire|apply|invoke|reach\s+for)\b"
+    r"|\bnot\s+for\b|\bdoes\s+not\s+(?:handle|cover|do)\b"
+    r"|\bне\s+(?:использу|применя|срабат|для|берис|путат|подменя))"
+    r"[^.;·]{0,90}",
+    re.I)
+
+# Something named rather than described: a slash command or a backticked identifier.
+# A boundary that points at one of these is aimed at a thing, not spelling out a topic
+# for the router to match on, so it is outside QL013 even when the thing is not a skill
+# in this tree - `/mistake` and `/clean-memory` are commands, and naming them is the fix
+# the rule would otherwise ask for.
+NAMED_THING_RE = re.compile(r"[`/][a-z][a-z0-9-]{2,63}\b")
+
+# Polarity markers, for telling an opposite branch from a repeated one. Both halves of
+# `use when X` / `do not use when X` stem to the same set, because `stems()` keeps only
+# words of four letters or more and every negation below is shorter than that.
+POLARITY_RE = re.compile(
+    r"\b(?:not|don't|dont|never|avoid|except|unless)\b|\bне\b|\bнельзя\b|\bкроме\b",
+    re.I)
 
 # A description is an instruction to the agent about when to act. `This skill does X`
 # is a paragraph about itself, and first or second person does not fit the system prompt
@@ -103,12 +143,20 @@ def near_duplicates(desc, threshold=0.6):
     redundant one. What actually costs context is two phrases that overlap in meaning,
     so the rule compares the phrases instead of counting them - and can therefore print
     the pair, which is what makes the finding checkable.
+
+    Polarity is compared separately because the stems cannot carry it. `use when the
+    user says` and `do not use when the user says` are opposite branches, and every word
+    that distinguishes them is too short for `stems()` to keep - so by stems alone they
+    are identical, and the rule called one of the commonest description shapes a
+    duplicate. A pair whose two halves disagree about polarity is two branches.
     """
     segs = [s.strip(" -—:") for s in SEGMENT_RE.split(desc)]
-    known = [(s, stems(s)) for s in segs if len(s) > 8]
+    known = [(s, stems(s), bool(POLARITY_RE.search(s))) for s in segs if len(s) > 8]
     pairs = []
-    for i, (a, sa) in enumerate(known):
-        for b, sb in known[i + 1:]:
+    for i, (a, sa, na) in enumerate(known):
+        for b, sb, nb in known[i + 1:]:
+            if na != nb:
+                continue
             small = min(len(sa), len(sb))
             if small >= 3 and len(sa & sb) / small >= threshold:
                 pairs.append((a[:48], b[:48]))
@@ -160,6 +208,33 @@ def check(skill, cfg=None, registry=None):
             out.append(Finding("QL008", "names " + ", ".join(f"`{n}`" for n in harmless) +
                                         " - user-invoked, so it cannot intercept anything; the "
                                         "boundary belongs in the body", where="SKILL.md"))
+
+        # QL013 - the same trap as QL008 without a name to hang it on, which is the
+        # common shape: the description rules out a topic rather than a named skill.
+        # QL008 needs the neighbour to be named *and* registered as user-invoked, so a
+        # clause like "do not use for optimising code" is invisible to it - while being
+        # the version that actually costs, because the topic is spelled out for the
+        # router to match on and the negation does not reverse the match.
+        for m in NEGATIVE_SCOPE_RE.finditer(desc):
+            clause = " ".join(m.group(0).split())
+            # A clause that names a skill in this tree is QL008's case, reported by it
+            # or deliberately not. The check runs against the registry rather than
+            # `named`, because `NEIGHBOUR_RE` only sees a name in backticks or after one
+            # of its lead-ins in lower case - so `Не подменяет konspekt, razbor` slipped
+            # past it, and this rule then told an author who had named five neighbours
+            # to name the neighbour instead of the topic.
+            low = clause.casefold()
+            if any(n in low for n in named) or any(n.casefold() in low
+                                                   for n in registry if n != skill.folder):
+                continue
+            if NAMED_THING_RE.search(clause):
+                continue        # `/mistake` or `other-skill`: a name, not a bare topic
+            if len(stems(clause)) < 3:
+                continue        # no topic in it, so nothing for the router to match
+            out.append(Finding("QL013", f'"{clause[:60]}" names work this skill will not '
+                                        f'take - a description attracts on topic match and '
+                                        f'does not repel, so the topic belongs in the body',
+                               where="SKILL.md"))
 
         # QL004 - the description fires on wording the instructions never use
         d, b = stems(desc), stems(skill.body)

@@ -236,6 +236,23 @@ def unit_checks():
     if r.returncode != 0:
         out.append("`sqs.py rules --audit` fails: " + (r.stdout or r.stderr).strip()[:300])
 
+    # NEIGHBOUR_RE: what a fixture cannot reach. The rules it feeds only fire on a name
+    # *plus* a registry entry, so a name the pattern misses looks exactly like a skill
+    # with nothing to report - which is how `[`\b]` survived, read as "a backtick or a
+    # word boundary" when a character class makes `\b` a backspace. Nothing that was not
+    # backtick-delimited on both sides was ever seen as a neighbour.
+    import quality
+    for text, want in (
+            ("naming `receipt-sorter`, which does receipts", {"receipt-sorter"}),
+            ("Не путать с (/mistake, /clean-memory)", {"mistake", "clean-memory"}),
+            ("Не подменяет konspekt, razbor", {"konspekt"}),
+            ("не подменяет konspekt, razbor", {"konspekt"}),
+            ("see https://example.com/docs/guide", set()),
+            ("files under a/b and src/main", set())):
+        got = {g for m in quality.NEIGHBOUR_RE.finditer(text) for g in m.groups() if g}
+        if got != want:
+            out.append(f"NEIGHBOUR_RE on {text!r}: expected {sorted(want)}, got {sorted(got)}")
+
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when
     # the suite is installed as one, so the probe looks in both.
