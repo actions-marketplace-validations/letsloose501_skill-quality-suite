@@ -34,6 +34,12 @@ Creates `my-skill/SKILL.md` with the frontmatter and the three headings that mat
 a `references/` folder. The template's TODOs are there to be replaced, not filled in
 politely - `QL007` reports any that survive.
 
+**Add an optional frontmatter field only when it changes how the skill is reached or how
+it runs.** `name` and `description` are the whole requirement; everything else exists to
+alter behaviour, and a field that alters none is decoration that every reader has to
+parse and every harness has to tolerate. The test is a sentence: *what breaks if I delete
+this line*. No answer means delete it.
+
 ## Step 4 - write the rules out of the run
 
 Go back to the notes from step 1 and turn each decision into an instruction. Then apply
@@ -59,6 +65,14 @@ python scripts/sqs.py check my-skill --strict
 python scripts/sqs.py evals                        static routing invariants
 python scripts/sqs.py evals --live --skill my-skill    what the model actually does
 ```
+
+**A bundled helper is code, so it gets a test the way code does.** Anything under
+`scripts/` that the skill tells the agent to run needs one focused test of its own, and
+the ones you touched get run before you call the edit finished - not the whole suite, the
+touched ones. A helper is the part of a skill that fails silently and absolutely: prose
+that drifts still half-works, a script with a broken path does nothing and reports
+nothing. `QL011` catches the one failure mode a reader can see from the outside, a script
+that blocks waiting for input; everything else needs the test.
 
 A new skill changes the routing of every neighbour whose topic it touches - the
 description is a shop window, and a new window changes what the street looks like. The

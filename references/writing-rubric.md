@@ -23,6 +23,11 @@ not its target, decides when the agent reaches the material and how reliably.
   chance.
 - Is there one trigger per **branch**? A branch is a distinct case the skill handles.
   Synonyms that rename one branch are one branch written twice.
+- Does each branch know **what it produces and where that lands**? A branch is fully
+  specified by three things: the wording that reaches it, the outcome it owes, and the
+  place the outcome ends up - a file, a section, a reply, a commit. Branches with no
+  named destination are where output quietly evaporates, and the gap does not show in
+  the description at all: it shows later, as a skill that "ran fine" and left nothing.
 - Does the leading word come first? The front of the description is where it does its
   triggering work.
 - Is there identity the body already carries - the skill's own name, a restatement of
@@ -60,6 +65,16 @@ Ask: is this skill model-invoked because the agent must reach it on its own, or 
 that is the default? A skill that only ever fires by hand should be user-invoked and pay
 no context load at all.
 
+**That choice also changes who the description is written for**, and this is the half
+people miss. A model-discoverable skill needs triggers, because a model is matching
+wordings against it. A manual-only skill is read by a person picking from a list, and
+trigger phrasing does nothing for them: what they need is a one-line summary of what
+they are about to invoke. Writing a trigger list into a manual-only description is
+writing for a reader who is not there, and the reverse - a human-facing summary on a
+model-discoverable skill - is the description that never fires, which is `QL001` and
+`QL002`. Decide invocation first, then write the description to the reader it just
+acquired.
+
 ## 3. Where each piece sits
 
 Three rungs, ranked by how immediately the agent needs the material:
@@ -75,6 +90,11 @@ cleanest test is branching: inline what *every* branch needs, disclose what only
 branches reach. When a document has steps, in-file reference that should be disclosed
 buries them and turns attending to them into a coin-flip.
 
+- **The body starts with the work.** Routing conditions belong in the description and
+  nowhere else; by the time the body is read, the decision to read it has been made. A
+  body that opens by restating when to use the skill spends its most-attended lines on a
+  question already answered, and the restatement drifts out of sync with the description
+  it copies.
 - **Co-location**: the ladder decides how far down a piece sits; co-location decides
   what sits beside it. A concept's definition, rules and caveats belong under one
   heading. The test: the file should read like documentation written for the agent.
