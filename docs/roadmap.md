@@ -3,9 +3,11 @@ title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
   The planned layers of skill-quality-suite: semantic overlap between skills, routing
   analysis, capability manifests, static analysis of bundled scripts, a measured
-  description budget, version bumps on improvement, an optional LLM review layer, and
-  last of all cross-runtime work - evaluation across engines and porting a skill from one
-  harness to another - plus what was rejected and why.
+  description budget, version bumps on improvement, generating a skill's case set from what
+  you expect of it, from each improvement and from a stranger's promises, an optional LLM
+  review layer, and last of all cross-runtime work - evaluation across engines and porting
+  a skill from one harness to another - plus what Claude Code's own eval runner now covers,
+  and what was rejected and why.
 ---
 
 # Roadmap
@@ -38,6 +40,33 @@ The two rules the whole project runs on apply to everything below:
 - **every rule ships with a case that has been watched making it fire.** A new rule with
   no fixture in `tests/fixtures/` is not finished.
 
+## What the runtime now ships itself
+
+Claude Code added `claude plugin eval` in v2.1.269: cases with graders, a no-plugin arm on
+by default, an HTML report. It answers "does it fire" and "does it help" for a plugin on
+one engine, which is most of what the runtime half here does, and it does the authoring
+step better - `claude plugin eval init` interviews the author and writes the cases.
+
+Taken off this list as a result: any item that would have made the runtime half nicer to
+use. A vendor with the agent in-process will do that better, and an item that only adds a
+command was never admissible here anyway.
+
+Not taken off, and now the whole reason the runtime half stays:
+
+- **the regression gate.** It stores a run and diffs the next one against it. The official
+  runner has no equivalent, so "did my last edit make this worse" still has no answer
+  outside this repository;
+- **more than one engine.** A single-engine runner cannot say which model clears the bar
+  most cheaply, which is the goal named above and what P3 is for;
+- **item 15, the measured description budget.** The official runner's documented first
+  finding is a near-zero delta with the skill-activation grader failing - the same
+  diagnosis this project makes. It reports the symptom per case; it does not turn a run
+  into a threshold, which is the thing worth building.
+
+The practical consequence for an author is a choice, not a merge: the two case formats do
+not convert, and neither converts to the `evals/evals.json` the `skill-creator` plugin
+uses. Three formats, one per skill.
+
 ## P1
 
 | # | What | The question it answers |
@@ -48,6 +77,7 @@ The two rules the whole project runs on apply to everything below:
 | 10 | Capability manifest - `sqs.py capabilities` | what this skill can actually do to the machine |
 | 15 | Description budget, measured | how long a description can get before routing degrades |
 | 16 | Version bump on improvement | this skill changed, does its version still say what it is |
+| 17 | The suite writes the checks | this skill has no case set - what should be true of it, and is it |
 
 Notes on the harder ones.
 
@@ -87,6 +117,87 @@ here - `--changed --since` diffs skills against git and `fix --apply` already re
 frontmatter - so this is a rule plus a flag, not a layer. It reports rather than rewrites by
 default: a version is a claim about the skill and the author makes it.
 
+**The suite writes the checks (17)**. Two ways a skill wastes your time, and neither is
+caught by anything in this repository as it stands.
+
+**It passes every check and still does not deliver.** Intact, safe, well written, visibly
+doing *something* - and not the thing it advertised. That skill is worse than no skill: it
+occupies the routing slot, costs context on every turn, and the failure is silent, because
+nothing about it looks broken. There is no verdict here today that separates a skill that
+works from a skill that is merely well formed.
+
+**You improve it and the improvement is a downgrade.** It answers worse, or takes twice as
+long, or burns three times the tokens for the same answer. Without a set of checks underneath,
+the only detector is you noticing months later, and by then the change that did it is twenty
+commits back. Automated checks are what make an improvement safe to attempt, and their absence
+is why a good skill quietly rots: every edit is a gamble nobody grades.
+
+The machinery for the second one is already built, which is the frustrating part. `--save` and
+`--compare` diff two runs and watch task success, trigger precision and recall, wall time,
+tokens, cost and tool calls; quality falling fails the gate and cost rising is reported, with
+`--fail-on-cost` to move that line. It is a working gate with nothing under it. Every layer
+here assumes a case set that already exists: `--trigger` needs queries somebody wrote,
+`--runtime` needs a task set somebody wrote, the gate needs two runs of that set. A stranger's
+package has no `evals/` at all, and your own has whatever you had patience for on the first
+day. The set is the foundation for everything expensive in this repository, and nothing here
+helps you lay it.
+
+So: given a skill, produce the checks. Three sources for what ought to be true, and they are
+different sources, not three phrasings of one.
+
+- **What you expect of it.** You say in plain words what you want this skill to do for you,
+  and that becomes cases. It is the only source that survives the skill being wrong about
+  itself, and the only one that exists before the skill does - write the expectation first and
+  it is an acceptance test rather than a description of what already happened. For a skill you
+  are adopting, this is the question nobody asks: not "is it good" but "is it the one I need".
+- **Each improvement.** A capability the skill just gained is a thing no existing case
+  exercises, and it is also the cheapest moment to write one, because you still remember what
+  you changed and why. One check per improvement, kept for good. This is how the set accretes
+  instead of standing still: the alternative is the set you wrote on day one, and a regression
+  gate over a frozen set prints "no regression" about behaviour it has never sampled.
+- **What a stranger's skill promises.** The description is a promise - *use me when X, and I
+  will do Y* - and `X` is the only half anything tests today. Turn the description and body
+  into claims: produces a file of this kind, refuses in this situation, calls that tool, its
+  output carries these fields, finishes within this many steps. When you have neither the
+  author nor a written expectation, this is all there is.
+
+Those three disagreeing is the most useful thing the layer can print, and the reason it is one
+item rather than three:
+
+| expectation | promise | behaviour | what it means |
+|---|---|---|---|
+| ✓ | ✗ | - | wrong skill - it never claimed to do what you need |
+| ✓ | ✓ | ✗ | broken skill - or a description that oversold |
+| ✗ | ✓ | ✓ | fine skill, not for you |
+| - | ✗ | ✓ | undeclared capability - it does `Z` and says nothing about it |
+
+The last row is where this meets the capability manifest (10): that one says what a skill
+*can* do to the machine, this says what it *does* and never mentioned.
+
+Design constraints, all three learned from what is already here:
+
+- **Generated is not trusted.** The output is a case file a human reads and edits before it
+  counts. A set nobody can correct is a set nobody will believe, and it would be the same
+  mistake as a linter whose rules cannot be suppressed.
+- **Deterministic first, judged last, never circular.** Most claims reduce to an assertion -
+  file exists, tool called, string present, step count under the cap - and `evals.json` already
+  carries `files`, `assertions`, `forbidden_tools` and `max_tool_calls` for exactly that. A
+  judge only for what no assertion reaches. A model that invents a claim and then grades its
+  own claim has measured nothing, so judged claims are marked and kept apart in the report,
+  the way `DETERMINISTIC` and `LLM REVIEW` are in P2.
+- **Prose to claims needs a model, so it is an opt-in layer** beside `check`, never inside it.
+  The expectation source does not: a sentence you wrote is already the claim.
+
+What it must not become. Not a score - "78% honest" is unactionable and is the one-number
+headline this project already rejected. Not a gate that fails on a judged claim, because an
+opinion does not break a build. Not a case per edit either: a typo owes nobody a check; the
+trigger is a *capability* changing, not a file.
+
+Two fixtures prove it. A skill whose description promises a written file and whose body never
+writes one: it passes `--trigger`, passes a hand-written `--runtime` set, and fails here. And a
+skill that does exactly what it promised while the expectation written beside it asked for
+something else - the case that must be reported as *wrong skill* and not as a defect.
+
 ## P2
 
 - **LLM review as a separate optional layer** - clarity, gaps, contradictions, missing
@@ -96,6 +207,12 @@ default: a version is a claim about the skill and the author makes it.
 - **Version and changelog analysis** - evidence-based warnings only: a version bumped
   with no changelog entry, a breaking change with no major bump. Where the evidence is
   not there, no finding.
+- **Description written for the wrong reader** - a skill carrying
+  `disable-model-invocation: true` whose description is a list of trigger wordings, or the
+  reverse. Invocation mode decides the audience: a model matching wordings, or a person
+  reading a menu entry. The mismatch is mechanical to spot and is currently invisible -
+  `QL001` and `QL002` only look at the model-facing direction, so a manual-only skill
+  passes them while spending its description on a reader who never sees it.
 - **Ghost triggers, named as their own rule** - `QL004` reports that a description and a
   body barely overlap, which is a statistic and reads as vague. The specific defect worth
   its own code is narrower and checkable: a trigger phrase in the description that no

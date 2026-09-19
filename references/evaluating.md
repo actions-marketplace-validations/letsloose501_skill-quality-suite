@@ -9,6 +9,11 @@ Three different questions, often confused, measured separately:
 3. **Did the last edit make it worse?** Two stored runs, diffed. Without this, every
    description change is a guess with a good feeling attached.
 
+All three assume a case set exists, and writing one is the step people skip - a stranger's
+skill arrives with none at all. [Where the cases come from](#where-the-cases-come-from) is
+the three sources to build it from, including the question none of the three above asks:
+does the skill do what it says it does?
+
 The first two follow the official skill-creation guidance:
 [optimizing-descriptions](https://agentskills.io/skill-creation/optimizing-descriptions),
 [evaluating-skills](https://agentskills.io/skill-creation/evaluating-skills).
@@ -259,6 +264,94 @@ yourself; the guidance names three signals worth more than any score:
 The third is the most valuable, and the cheapest to act on. Feed failures, complaints
 and traces back into the skill, and **generalise the fixes**: a patch per failing case
 is how a skill turns into sediment.
+
+## Where the cases come from
+
+Everything above needs a set that already exists: `--trigger` needs queries somebody wrote,
+`--runtime` needs a task set somebody wrote, the gate needs two runs of that set. Writing the
+set is the step people skip, and a stranger's skill arrives with none of it at all.
+
+Skip it and two things go unnoticed, both expensive:
+
+- **a skill that is intact, safe, well written and does not deliver.** Nothing about it looks
+  broken, so nothing reports it. It holds a routing slot and costs context every turn for
+  work it never actually does;
+- **an improvement that is a downgrade.** Worse answers, or twice the wall time, or three
+  times the tokens for the same result. The gate would catch all of those - it watches task
+  success, trigger precision and recall, wall time, tokens, cost and tool calls - but only
+  between two runs of a set that exists. Without one, the detector is you noticing months
+  later, with the change that did it twenty commits back.
+
+The set is what makes an improvement safe to attempt. That is the reason to spend the twenty
+minutes below, not tidiness.
+
+Three sources, and they answer different questions. Use all three on a skill you are adopting
+and at least the first two on one you are writing. Generating them is
+[item 17](https://letsloose501.github.io/skill-quality-suite/roadmap); until that exists, this
+is the twenty minutes that makes the rest of the page worth running.
+
+**1. What you expect of it.** Write down, in plain sentences, what you want this skill to do
+*for you*. Do it before you read the skill closely, and if the skill does not exist yet, do it
+first - then it is an acceptance test instead of a description of whatever happened. This is
+the only source that survives the skill being wrong about itself, and the only one that
+answers "is this the skill I need", as opposed to "is this a good skill".
+
+**2. Each improvement.** A capability the skill just gained is a thing no existing case
+exercises. Write the case while you still remember what you changed and why, and keep it. This
+is how a set accretes rather than standing still, and it is what stops the gate from comparing
+two runs of a set frozen on day one: `--save` and `--compare` diff *the same set*, so over a
+frozen one the gate reports no regression about behaviour it has never sampled.
+
+**3. What a stranger's skill promises.** The description is a promise - *use me when X and I
+will do Y*. `X` is the half `--trigger` tests; `Y` is tested by nothing. Read the description
+and body and write the claims out as sentences you could be wrong about: *writes a `.csv`*,
+*refuses when the folder is empty*, *never calls the network*, *its output carries a total*.
+With no author to ask and no expectation written down, this is all you have.
+
+Turn each sentence into a case with an **assertion, not a rubric**: `files`, `assertions`,
+`forbidden_tools` and `max_tool_calls` in `evals.json` cover most of them deterministically,
+and the judge is for what no assertion reaches. Then run it and read what had no evidence.
+
+The three disagreeing is the useful part, and each disagreement means something different:
+
+| expectation | promise | behaviour | what it means |
+|---|---|---|---|
+| ✓ | ✗ | - | wrong skill - it never claimed to do what you need |
+| ✓ | ✓ | ✗ | broken skill, or a description that oversold |
+| ✗ | ✓ | ✓ | fine skill, not for you |
+| - | ✗ | ✓ | undeclared capability - it does something it never mentions |
+
+That last row is not a bonus. A capability nobody agreed to is the same finding whether it is
+useful or not, and the security pass is the other half of reading it. "Safe" and "works" are
+different verdicts, and installing a stranger's skill on one of them is how you get the other
+wrong - so run both in the same sitting.
+
+## The Claude Code alternative
+
+Claude Code ships its own eval runner, `claude plugin eval` (v2.1.269+). It answers the
+same first two questions this page does, so check it before extending anything here.
+It is **Claude Code only**: no other agent has it, which is why this suite keeps its own
+harness-agnostic runner.
+
+| | `claude plugin eval` | this suite |
+|---|---|---|
+| Unit under test | a plugin (needs `plugin.json`) | a skill directory |
+| No-skill arm | built in, on by default; `--ablation none` turns it off | `--all`, two arms |
+| Graders | `regex`, `tool_used`, `tool_order`, `file_exists`, `llm`, `baseline` | assertions plus a judge |
+| Case authoring | `claude plugin eval init` interviews you and writes them | you write the YAML |
+| Report | HTML plus `--json`, optionally published | terminal plus stored runs |
+| Regression diff | not built in | `--compare`, `--fail-on-cost` |
+| Agents supported | Claude Code | whatever the provider layer speaks |
+
+Its case format is its own; it does not read the `evals/` layout above, and it is separate
+again from the `evals/evals.json` that the `skill-creator` plugin uses. Three formats, no
+conversion between them: pick one per skill rather than maintaining two.
+
+Worth borrowing whatever you run: its documented first finding is a delta near zero with
+the `tool_used: Skill` grader failing, which means the description is what needs the edit,
+not the body. That is the same conclusion as [Revising the description](#revising-the-description).
+
+Source: [Test plugins with evals](https://code.claude.com/docs/en/plugin-evals).
 
 ## Testing the machinery without paying for it
 

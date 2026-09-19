@@ -18,6 +18,14 @@ questions that decide whether the skill is worth having:
    fires on a neighbour's work is worse, because it produces confident wrong work.
 2. **Does it help?** Compared against the same task run with no skill at all.
 
+Both assume a case set already exists, and writing one is the step people skip. A skill you
+installed rather than wrote arrives with none at all, no author to ask, and a description
+that is itself the thing in question - because nothing here tests the other half of the
+promise: **does it do what it says it does?** The three sources to build a set from - what
+you expect of it, each improvement as it lands, and a stranger's stated promises - are in
+[where the cases come from](https://github.com/letsloose501/skill-quality-suite/blob/main/references/evaluating.md#where-the-cases-come-from);
+generating them is [roadmap item 17](roadmap.md).
+
 Everything here runs an agent, so it costs money and minutes and needs one installed.
 Nothing runs unless you name it:
 
@@ -121,8 +129,23 @@ Quality falling fails the gate. Cost rising is reported and does not, because a 
 that got 18% more expensive and 20% more reliable is a trade somebody has to look at,
 not a build to break; `--fail-on-cost` moves the line when a budget depends on it.
 
+## If you only use Claude Code
+
+Claude Code ships `claude plugin eval` (v2.1.269+), which answers the first two questions
+above for a plugin: it runs each case with and without the plugin, grades the result with
+regex, tool-use, file and judge graders, and writes an HTML report. If Claude Code is the
+only agent you care about and your skill is packaged as a plugin, use it.
+
+Two things it does not do, and they are why this page exists. It has no regression gate:
+nothing stores a run and diffs the next one against it, so "did my last edit make this
+worse" stays unanswered. And it runs on one engine, so it cannot tell you which model does
+your task well enough to be worth sending the work to. The case formats do not convert
+between the two, so pick one per skill rather than keeping both.
+
 ## See also
 
+- [Test plugins with evals](https://code.claude.com/docs/en/plugin-evals) - Claude Code's
+  own runner, compared above
 - [`references/evaluating.md`](https://github.com/letsloose501/skill-quality-suite/blob/main/references/evaluating.md)
   - the working detail: writing queries, writing assertions, and the part that stays a
   human's job
