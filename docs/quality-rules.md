@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 76 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 79 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -21,6 +21,34 @@ Each rule carries two gradings that are about **the check**, not about the skill
 - **false positives** - when the thing *is* there, how often it is nonetheless intended. `README.md` inside a skill folder is a finding and also exactly what a repository-shaped skill does.
 
 `--min-confidence high` keeps the facts and drops the heuristics, which is the gate you can leave switched on in CI.
+
+## capabilities (CBxxx)
+
+
+
+| Code | Severity | Confidence | False positives | Autofix | What it is |
+|---|---|---|---|---|---|
+| `CB001` | info | medium | medium | no | Bundled script can reach the network |
+| `CB002` | info | high | low | no | Bundled script can spawn a process |
+| `CB003` | info | high | low | no | Bundled script can read the environment |
+
+### CB001 - Bundled script can reach the network
+
+**Why it matters.** An import or a command a bundled script carries - `requests`, `socket`, `curl` - gives it the ability to reach the network, independent of whether the specific call looks dangerous. `security` flags a call that is dangerous on its own; this names the capability so an installer can decide before reading every line.
+
+**Fix.** Not a defect - confirm the destination matches what the skill claims to do.
+
+### CB002 - Bundled script can spawn a process
+
+**Why it matters.** An import of `subprocess`/`multiprocessing`, or a call to `os.system`/`os.popen`/`os.exec*`, gives the script the ability to run another program with the permissions the agent has.
+
+**Fix.** Not a defect - confirm the process it spawns matches what the skill claims to do.
+
+### CB003 - Bundled script can read the environment
+
+**Why it matters.** `os.environ`/`os.getenv` gives a script access to whatever the process's environment carries, which commonly includes API keys and tokens set for other tools.
+
+**Fix.** Not a defect - confirm the script only reads the variables it names needing.
 
 ## compat (CPxxx)
 

@@ -21,6 +21,7 @@ a lookup:
     SE  security    secrets, dangerous commands, injection, hidden characters
     PB  publish     what has to be true before the skill leaves your machine
     EV  evals       whether the skill fires on the wording a human actually uses
+    CB  capabilities what a bundled script CAN do to the machine, described not forbidden
 
 sqs-allow-file: SE002
 Every rule row spells out the pattern it is about, so this file matches its own
@@ -35,6 +36,7 @@ MODULES = {
     "SE": "security",
     "PB": "publish",
     "EV": "evals",
+    "CB": "capabilities",
 }
 
 # code: (severity, title, why it matters, how to fix, fixable by `sqs.py fix`)
@@ -380,6 +382,28 @@ _ROWS = {
               "that ships its own routing runner.",
               "Read the two descriptions named in the finding; usually one needs to name the "
               "other and defer, the way `QL008` and `QL013` already ask for.", False),
+
+    # ---- CB: capabilities ------------------------------------------------------
+    "CB001": ("info", "Bundled script can reach the network",
+              "An import or a command a bundled script carries - `requests`, `socket`, "
+              "`curl` - gives it the ability to reach the network, independent of whether "
+              "the specific call looks dangerous. `security` flags a call that is dangerous "
+              "on its own; this names the capability so an installer can decide before "
+              "reading every line.",
+              "Not a defect - confirm the destination matches what the skill claims to do.",
+              False),
+    "CB002": ("info", "Bundled script can spawn a process",
+              "An import of `subprocess`/`multiprocessing`, or a call to `os.system`/"
+              "`os.popen`/`os.exec*`, gives the script the ability to run another program "
+              "with the permissions the agent has.",
+              "Not a defect - confirm the process it spawns matches what the skill claims "
+              "to do.", False),
+    "CB003": ("info", "Bundled script can read the environment",
+              "`os.environ`/`os.getenv` gives a script access to whatever the process's "
+              "environment carries, which commonly includes API keys and tokens set for "
+              "other tools.",
+              "Not a defect - confirm the script only reads the variables it names needing.",
+              False),
 }
 
 # ---- rule metadata ---------------------------------------------------------
@@ -463,6 +487,12 @@ GRADES = {
     "EV004": ("high", "low"),    "EV005": ("high", "low"),
     "EV006": ("high", "low"),
     "EV007": ("low", "high"),    # same stem-overlap heuristic as QL003, graded the same way
+
+    # capabilities: `ast` reads an import or a call exactly, CB002/CB003 only ever fire
+    # that way. CB001 also fires off a command-name regex for non-Python scripts, the
+    # same reliability `security`'s own DANGEROUS patterns are graded at (SE002), so its
+    # grade is the blend of the two paths, not the AST half alone.
+    "CB001": ("medium", "medium"), "CB002": ("high", "low"), "CB003": ("high", "low"),
 }
 
 CONFIDENCE_ORDER = ("unrated", "low", "medium", "high")

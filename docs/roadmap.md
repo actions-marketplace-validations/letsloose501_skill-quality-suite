@@ -1,12 +1,12 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: capability manifests, static analysis of
-  bundled scripts, a measured description budget, version bumps on improvement,
-  generating a skill's case set from what you expect of it, from each improvement and
-  from a stranger's promises, an optional LLM review layer, and last of all cross-runtime
-  work - evaluation across engines and porting a skill from one harness to another - plus
-  what Claude Code's own eval runner now covers, and what was rejected and why.
+  The planned layers of skill-quality-suite: a measured description budget, version
+  bumps on improvement, generating a skill's case set from what you expect of it, from
+  each improvement and from a stranger's promises, an optional LLM review layer, and
+  last of all cross-runtime work - evaluation across engines and porting a skill from
+  one harness to another - plus what Claude Code's own eval runner now covers, and what
+  was rejected and why.
 ---
 
 # Roadmap
@@ -70,8 +70,6 @@ uses. Three formats, one per skill.
 
 | # | What | The question it answers |
 |---|---|---|
-| 9 | Static analysis of bundled scripts | what `scripts/*.py` inside a skill does: network, subprocess, credentials |
-| 10 | Capability manifest - `sqs.py capabilities` | what this skill can actually do to the machine |
 | 15 | Description budget, measured | how long a description can get before routing degrades |
 | 16 | Version bump on improvement | this skill changed, does its version still say what it is |
 | 17 | The suite writes the checks | this skill has no case set - what should be true of it, and is it |
@@ -118,14 +116,37 @@ outscored the skill it was excluding the wording in favour of. No fixture in the
 corpus - `route` has no rule code and prints a ranking, not `findings` - so it is a unit
 check in `tests/run_tests.py` instead, against `tests/fixtures/branch-overlap`.
 
-Notes on the harder ones.
+Shipped: **static analysis of bundled scripts (9) and the capability manifest (10)** -
+the new `capabilities` module (`scripts/capabilities.py`, prefix `CB`), folded into
+`check`/`all` the way `security` already is, and `sqs.py capabilities <skill>` runs it
+alone through the same generic single-module dispatch every other module gets from
+`MODULES` - no second report format was built for item 10's "manifest": the findings
+list, read on its own, already answers "what can this skill do". `security`'s own
+discipline carries over unchanged: a finding names a capability - network, subprocess,
+reads the environment - and stops, leaving the decision where it belongs, so every
+`CB` code is `info` severity and never fails a build.
 
-**Capabilities (10)** and **script analysis (9)** are one layer seen from two ends: the
-first summarises, the second finds. Both describe capability rather than forbid it - the
-security module's discipline is that a finding explains what a skill *can* do and leaves
-the decision where it belongs. They are also the two items with a life outside this
-project: the question "what can this thing do to my machine" is the same one for an MCP
-server, a hook and a plugin script, and none of those is a `SKILL.md`.
+Python scripts are read with `ast`, which is exact: `CB002` (`subprocess`/
+`multiprocessing`, `os.system`/`os.popen`/`os.exec*`) and `CB003` (`os.environ`/
+`os.getenv`) only ever fire that way, and their grading says so (`high`/`low`). Every
+other extension has no stdlib parser, so `CB001`'s network signal falls back to a
+command-name regex for those - the same reliability `security`'s own `DANGEROUS`
+patterns are graded at - and `CB001`'s grading is the honest blend of the two paths
+(`medium`/`medium`), not the AST half's confidence claimed for both.
+
+One over-broad claim was caught by running this against the 29 skills actually
+installed here rather than only the fixture: `urllib.parse` (pure string parsing) and
+`urllib.error` (exception classes) were reading as "can reach the network" purely
+because the top-level package `urllib` was on the network list and only `urllib.request`
+actually opens a connection. `NETWORK_ROOTS` (a whole package is network-purposed,
+`requests`/`socket`/`paramiko`/...) and `NETWORK_EXACT` (one network-capable submodule
+inside an otherwise-inert package, `urllib.request`/`http.client`/`http.server`/
+`xmlrpc.client`/`xmlrpc.server`) are now two different sets rather than one root check,
+and both import forms - `import urllib.request` and `from urllib import request` - are
+checked against `NETWORK_EXACT` so the split does not silently create a false negative
+in place of the false positive. Fixture: `tests/fixtures/script-capabilities`.
+
+Notes on the harder ones.
 
 **Description budget (15)** is the gap the registry admits to. `QL001` fires when a
 description is too short to carry triggers and `SP008` fires at the specification's 1024

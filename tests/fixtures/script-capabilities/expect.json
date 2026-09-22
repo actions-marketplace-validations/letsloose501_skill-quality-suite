@@ -1,0 +1,8 @@
+{
+  "note": "A bundled Python script that imports `requests`, spawns a subprocess and reads an env var, plus a shell script that shells out to `curl` - the same three capabilities read two ways: an exact syntax tree for the Python half, a command-name regex for the one the AST cannot reach.",
+  "expect": [
+    "CB001",
+    "CB002",
+    "CB003"
+  ]
+}

@@ -41,7 +41,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 76 rules](docs/quality-rules.md)**
+📋 **[All 79 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|
@@ -73,6 +73,7 @@ sorts them by *when* they would have bitten:
 | `quality` | a description that never says *when*, vague bounds, placeholders | every run, a little |
 | `compat` | what will not survive a move to another agent | on somebody else's machine |
 | `security` | secrets, destructive commands, injection, hidden characters | when you install a stranger's skill |
+| `capabilities` | what a bundled script *can* do - network, subprocess, environment | when you install a stranger's skill |
 | `evals` | the eval files and the routing invariants | when a neighbour's description moves |
 | `eval` | does it fire, does it help, did the last edit make it worse | after every change, if you let it |
 | `publish` | personal paths, missing license, version drift | the moment it leaves your machine |

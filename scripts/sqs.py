@@ -3,7 +3,7 @@
 
     sqs.py check                     structure + spec + quality + compat + security
     sqs.py check my-skill --strict   one skill, warnings count as failures
-    sqs.py structure|spec|quality|compat|security|publish|evals|fix  one module
+    sqs.py structure|spec|quality|compat|security|capabilities|publish|evals|fix  one module
     sqs.py explain ST008             what a code means and how to fix it
     sqs.py rules --module quality    the registry
     sqs.py new my-skill              scaffold a skill that already passes
@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import baseline as baseline_store                               # noqa: E402
+import capabilities                                             # noqa: E402
 import compat                                                   # noqa: E402
 import evalcheck                                                # noqa: E402
 import fix as fixer                                             # noqa: E402
@@ -51,7 +52,7 @@ from rules import (MODULES, RULES, at_least, module_of,        # noqa: E402
 _CODES = r"([A-Z]{2}\d{3}(?:\s*,\s*[A-Z]{2}\d{3})*|\*)"
 SUPPRESS_RE = re.compile(r"sqs-allow:\s*" + _CODES)
 SUPPRESS_FILE_RE = re.compile(r"sqs-allow-file:\s*" + _CODES)
-CHECK_MODULES = ("structure", "spec", "quality", "compat", "security")
+CHECK_MODULES = ("structure", "spec", "quality", "compat", "security", "capabilities")
 
 
 def skills_dir(arg=None):
@@ -348,6 +349,8 @@ def collect(skill, modules, cfg, skill_registry, engine, world=None):
             out += compat.check(skill, cfg, world)
         elif name == "security":
             out += security.check(skill, cfg)
+        elif name == "capabilities":
+            out += capabilities.check(skill, cfg)
         elif name == "publish":
             out += publish.check(skill, cfg)
         elif name == "evals":
