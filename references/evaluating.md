@@ -130,8 +130,14 @@ carry positives and negatives, with a fixed seed so iterations compare like with
 - Stuck after several passes? Try a structurally different description rather than more
   tweaks. And check the length: descriptions grow during optimisation and the limit is
   1024 characters.
-- Five iterations is usually the point of diminishing returns. If nothing improves, the
-  queries may be the problem - too easy, too hard, or mislabelled.
+- One rewrite from the false positives and negatives is usually most of the gain: a
+  study of production descriptions found further iterations moved F1 by under half a
+  point, inside its own noise (arXiv 2606.30775). If that rewrite does not help, the
+  queries may be the problem - too easy, too hard, or mislabelled - or the two skills'
+  scopes genuinely overlap, which the report flags as a train-validation gap.
+- Run the neighbours as well: `--with-neighbours 2` puts the skills that share most words
+  with this description into the same pass, and `--compare` shows whether the edit took
+  their requests.
 - **Pick the iteration with the best validation numbers, not the last one.** Later ones
   often overfit.
 

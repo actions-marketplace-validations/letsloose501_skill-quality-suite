@@ -267,6 +267,10 @@ def evaluate(skill, provider, runs=3, model=None, use_split=True, seed=0, on_eve
             "cases": [{"prompt": q.text, "expected": "trigger" if q.want else "no-trigger",
                        "rate": rate, "runs": usable} for q, rate, usable in rows],
         }
+    if "train" in out["sets"]:
+        from . import regression                                  # noqa: PLC0415
+        gap = regression.split_gap(out)
+        out["split_gap"] = ({"lower": gap[0], "noise": gap[1]} if gap else None)
     return out, ""
 
 
@@ -308,6 +312,14 @@ def render(report):
             why = "did not fire" if c["expected"] == "trigger" else "fired when it should not"
             lines.append(f"      [{c['rate']:.2f}] {why}: {c['prompt'][:66]}")
         lines.append("")
+    gap = report.get("split_gap")
+    if gap and gap["lower"] > 0:
+        lines += [f"  Train F1 is above validation by more than the runs vary (at least "
+                  f"{gap['lower']:.0%}).",
+                  "  One study of production descriptions reads that as scopes that "
+                  "genuinely overlap -",
+                  "  a neighbour covers the same requests - which rewording does not "
+                  "fix: draw the boundary", "  between the two skills instead.", ""]
     lines += ["  F1 is printed, not scored: it treats a miss and a false fire as equally "
               "bad, and in a",
               "  tree of skills they are not. Tune the description against the train "

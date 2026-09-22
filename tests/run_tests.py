@@ -360,6 +360,8 @@ def unit_checks():
     out += dependency_checks()
     out += ranking_checks()
     out += work_checks()
+    out += noise_checks()
+    out += neighbour_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -793,6 +795,77 @@ def ranking_checks():
     return out
 
 
+def noise_checks():
+    """The trigger gate against its own noise, on runs whose answer is known.
+
+    Four shapes: a drop far outside the runs' spread must fail; the same drop measured
+    with one run per query cannot be judged and must say so; one query wobbling from 3/3
+    to 2/3 is noise; and no change is no regression.
+    """
+    from evaluation import regression
+
+    def run(rates, runs, label="all"):
+        cases = [{"prompt": f"q{i}", "expected": "trigger" if want else "no-trigger",
+                  "rate": r, "runs": runs} for i, (want, r) in enumerate(rates)]
+        seen = [c["rate"] for c in cases]
+        metrics = {m: regression._ratio(cases, seen, m) for m in ("precision", "recall")}
+        return {"trigger": {"sets": {label: {"cases": cases, "metrics": metrics}}}}
+
+    pos, neg = [True] * 10, [False] * 10
+    good = run([(w, 1.0) for w in pos] + [(w, 0.0) for w in neg], 5)
+    broken = run([(w, 0.0 if i < 6 else 1.0) for i, w in enumerate(pos)]
+                 + [(w, 0.0) for w in neg], 5)
+    wobble = run([(w, 2 / 3 if i == 0 else 1.0) for i, w in enumerate(pos)]
+                 + [(w, 0.0) for w in neg], 3)
+    good3 = run([(w, 1.0) for w in pos] + [(w, 0.0) for w in neg], 3)
+    once_a = run([(w, 1.0) for w in pos] + [(w, 0.0) for w in neg], 1)
+    once_b = run([(w, 0.0 if i < 6 else 1.0) for i, w in enumerate(pos)]
+                 + [(w, 0.0) for w in neg], 1)
+    out = []
+    got = regression.noise_drop(good, broken, "all", "recall")
+    if not got or got[0] <= 0:
+        out.append(f"recall 100% -> 40% over 5 runs a query was read as noise: {got}")
+    if regression.noise_drop(once_a, once_b, "all", "recall") is not None:
+        out.append("one run per query claimed a noise estimate it cannot have")
+    got = regression.noise_drop(good3, wobble, "all", "recall")
+    if got and got[0] > 0:
+        out.append(f"one query going 3/3 -> 2/3 failed the gate: {got}")
+    got = regression.noise_drop(good, good, "all", "recall")
+    if got and got[0] > 0:
+        out.append(f"an unchanged run failed the gate against itself: {got}")
+    # every query agreed with itself 5 times out of 5; that is not a rate of exactly 1,
+    # and a noise estimate of zero would make any single flip a regression
+    if not got or got[1] <= 0:
+        out.append(f"runs that all agreed with themselves claimed no noise: {got}")
+    # and through `compare`, which is what `--compare` prints and gates on
+    diff = regression.compare(good, broken)
+    rows = {r[0]: r for r in diff["quality"]}
+    if "trigger recall" not in rows or not rows["trigger recall"][4] \
+            or "noise" not in rows["trigger recall"][3]:
+        out.append(f"compare did not judge recall against its noise: {diff['quality']}")
+
+    # The train-validation gap, printed only when it is larger than the runs vary.
+    from collections import namedtuple
+    from evaluation import triggers
+    q = namedtuple("Q", "want")
+
+    def block(payload):
+        cases = payload["trigger"]["sets"]["all"]["cases"]
+        rows = [(q(c["expected"] == "trigger"), c["rate"], c["runs"]) for c in cases]
+        return {"cases": cases, "metrics": triggers.confusion(rows)}
+
+    for label, valid, want in (("a real gap", broken, True), ("no gap", good, False)):
+        report = {"skill": "s", "provider": "fake", "runs_per_query": 5, "queries": 40,
+                  "positive": 20, "negative": 20, "threshold": 0.5,
+                  "sets": {"train": block(good), "validation": block(valid)}}
+        gap = regression.split_gap(report)
+        report["split_gap"] = {"lower": gap[0], "noise": gap[1]} if gap else None
+        shown = "scopes that genuinely overlap" in triggers.render(report)
+        if shown != want:
+            out.append(f"train-validation gap note on {label}: shown={shown}, gap={gap}")
+    return out
+
+
 def work_checks():
     """`improve`'s "where the work went" against two sessions built to cross every rule.
 
@@ -956,6 +1029,63 @@ def history_checks():
     if got["skipped_named"] != 1:
         out.append(f"history: the prompt naming the skill was not set aside "
                    f"({got['skipped_named']})")
+    return out
+
+
+def neighbour_checks():
+    """`eval --trigger --with-neighbours` end to end, on the scripted provider.
+
+    An edit to `ledger-lite` takes the requests of a neighbour that has its own trigger
+    set: in v1 the neighbour's queries load the neighbour, in v2 they load `ledger-lite`.
+    Measured on `ledger-lite` alone the edit looks harmless; the neighbour's recall is
+    where it shows. A third skill shares words but has no trigger set, and must not join.
+    """
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = os.path.join(tmp, "evaluation")
+        shutil.copytree(os.path.join(HERE, "evaluation"), tree)
+        desc = ("Files a receipt in the archive and finds an archived receipt. Use when a "
+                "receipt has to be archived or the user asks for an old receipt.")
+        for name, queries in (("receipt-archive", True), ("receipt-notes", False)):
+            root = os.path.join(tree, name)
+            os.makedirs(os.path.join(root, "evals"))
+            with open(os.path.join(root, "SKILL.md"), "w", encoding="utf-8") as f:
+                f.write(f"---\nname: {name}\ndescription: {desc}\n---\n\n# {name}\n")
+            if queries:
+                qs = [{"query": f"archive receipt number {i} from march", "should_trigger": True}
+                      for i in range(4)]
+                qs += [{"query": f"plan a trip to city {i}", "should_trigger": False}
+                       for i in range(4)]
+                with open(os.path.join(root, "evals", "eval_queries.json"), "w",
+                          encoding="utf-8") as f:
+                    json.dump(qs, f)
+        with open(os.path.join(tree, "script-v1.json"), encoding="utf-8") as f:
+            base = json.load(f)
+        for label, winner in (("v1", "receipt-archive"), ("v2", "ledger-lite")):
+            script = dict(base, rules=[{"contains": "archive receipt", "bare": False,
+                                        "run": {"skills": [winner], "text": "ok"}}]
+                                       + base["rules"])
+            with open(os.path.join(tree, f"script-n{label}.json"), "w", encoding="utf-8") as f:
+                json.dump(script, f)
+
+        def run(script, *extra):
+            env = dict(os.environ, PYTHONIOENCODING="utf-8",
+                       SQS_FAKE_RUNS=os.path.join(tree, script))
+            return subprocess.run([sys.executable, SQS, "eval", "ledger-lite", "--skills-dir",
+                                   tree, "--provider", "fake"] + list(extra),
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", env=env, cwd=REPO)
+
+        r = run("script-nv1.json", "--trigger", "--with-neighbours", "2", "--runs", "3",
+                "--no-split", "--save", "n1")
+        if "`receipt-archive` joins" not in r.stderr or "receipt-notes" in r.stderr:
+            out.append(f"--with-neighbours picked the wrong neighbours: {r.stderr[-300:]!r}")
+        run("script-nv2.json", "--trigger", "--with-neighbours", "2", "--runs", "3",
+            "--no-split", "--save", "n2")
+        r = run("script-nv2.json", "--with-neighbours", "2", "--compare", "n1", "n2")
+        if r.returncode != 1 or r.stdout.count("REGRESSION DETECTED") != 1:
+            out.append(f"the neighbour's lost requests did not fail the gate exactly once: "
+                       f"exit {r.returncode}, {r.stdout[-400:]!r}")
     return out
 
 

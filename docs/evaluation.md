@@ -229,8 +229,10 @@ reported in flight cannot drift apart.
 REGRESSION DETECTED   v1 → v2
 
   ! task success          100% → 50%
-  ! trigger precision     100% → 67%
+    trigger precision     100% → 67%   (noise ±25%)
+    trigger recall        100% → 100%   (noise ±50%)
   ! token usage           1960 → 2810   +43%
+  ! cost                  0.051 → 0.081   +59%
 
   tasks that got worse:
     ledger-02               100% → 0%
@@ -242,6 +244,35 @@ REGRESSION DETECTED   v1 → v2
 Quality falling fails the gate. Cost rising is reported and does not, because a skill
 that got 18% more expensive and 20% more reliable is a trade somebody has to look at,
 not a build to break; `--fail-on-cost` moves the line when a budget depends on it.
+
+**A trigger drop has to be larger than the runs' own noise.** Each query was run several
+times, and how often it fired is kept; the gate redraws every query's runs a couple of
+thousand times from what they showed and fails only when the drop survives in 95% of the
+redraws. In the example, precision fell from 100% to 67% on one flipped case in a small
+set measured three times a query - inside the noise, so the flip is listed and the gate
+does not fire on it. With one run per query there is no spread to read, and the row says
+`noise not measured` and falls back to a fixed five points. Task success has no such
+redraw yet and uses the fixed line.
+
+**An edit can take a neighbour's requests.** A description rewritten to fire more often
+loses nothing on its own trigger set and quietly wins the requests of the skill beside
+it - so measure the neighbours too:
+
+```
+sqs.py eval ./my-skill --trigger --with-neighbours 2 --save before
+... edit the description ...
+sqs.py eval ./my-skill --trigger --with-neighbours 2 --save after
+sqs.py eval ./my-skill --with-neighbours 2 --compare before after
+```
+
+The neighbours are the skills whose descriptions share most words with this one and
+that have a trigger set of their own; each prints its own block, and a neighbour whose
+recall fell is the edit's regression. They join the trigger pass only - their tasks were
+not edited.
+
+When a trigger run is split, the report also says when train F1 sits above validation by
+more than the runs vary. One study of production skill descriptions reads that gap as
+scopes that genuinely overlap, which rewording does not fix (arXiv 2606.30775).
 
 ## If you only use Claude Code
 

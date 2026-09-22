@@ -877,16 +877,26 @@ of these is built. Each carries what it rests on and what has to happen first.
   directories are inputs by location. Eight mutations, one per rule, all caught against
   a two-session transcript built so that each rule has one call that must count and one
   that must not.
-- **Description optimisation, done where it is missing.** Not a rewrite loop - the
-  `skill-creator` plugin already runs one with a blinded 60/40 holdout, and a production
-  study found a single rewrite from the false positives and negatives captures most of
-  the gain, with iteration count moving F1 by under 0.5% against a 0.78% multi-seed noise
-  floor (arXiv 2606.30775). What nothing checks is the neighbours: a description tuned to
-  fire more takes requests from the skills beside it, which is the attacks above done in
-  good faith. So: re-run the nearest neighbours' trigger sets after an edit and fail on
-  their recall dropping; repeat runs for a noise floor, so "better" inside it reads as no
-  change; and report a large train-validation gap as the study's own diagnosis - scopes
-  that genuinely overlap, which wording cannot fix. The code is free, the runs are paid.
+- Shipped, the code; the live runs stay paid and unrun: **description optimisation where
+  it is missing**. Not a rewrite loop - the `skill-creator` plugin already runs one with a
+  blinded 60/40 holdout, and a production study found a single rewrite from the false
+  positives and negatives captures most of the gain, iteration count moving F1 by under
+  0.5% against a 0.78% multi-seed noise floor (arXiv 2606.30775). Three pieces instead,
+  all in `scripts/evaluation/`: *the gate against the runs' own noise* - `--compare` no
+  longer fails a trigger metric on a fixed five-point drop (a number chosen by feel, and
+  said so in its own comment) but when the drop survives 95% of a couple of thousand
+  redraws of each query's runs, smoothed so that three identical runs do not read as a
+  rate of exactly 1; one run per query cannot be judged and says so. *The neighbours* -
+  `--with-neighbours N` puts into the trigger pass the skills whose descriptions share
+  most words with this one and have a trigger set, so a description that took their
+  requests shows as their recall falling; watched on the scripted provider, the edited
+  skill reads `no regression` and the neighbour 100% -> 0% with its four lost queries
+  named. *The split gap* - a note when train F1 sits above validation by more than the
+  runs vary, the study's own diagnosis for scopes that overlap. Found on the way: with
+  neighbours there were two unlabelled blocks in `--compare`, so each now carries the
+  skill's name. Eight mutations caught - one survived first (the smoothing), and the
+  claim it exists for is now a test of its own. What no fixture can show is how wide the
+  noise is on a real tree; that is one paid `--trigger --runs 3` away.
 
 ## P3 - cross-runtime
 

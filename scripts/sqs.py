@@ -695,8 +695,12 @@ def cmd_eval(skills, root, a, cfg):
                 rc = max(rc, 2)
                 continue
             diff = regression.compare(before, after)
+            diff["skill"] = name
+            # with neighbours in the run there is more than one block, and an unnamed one
+            # says a recall fell without saying whose
+            head = f"{name}\n" if len(skills) > 1 else ""
             print(json.dumps(diff, ensure_ascii=False, indent=2) if fmt_json
-                  else regression.render(diff, a.fail_on_cost))
+                  else head + regression.render(diff, a.fail_on_cost))
             if regression.failed(diff, a.fail_on_cost):
                 rc = max(rc, 1)
         return rc
@@ -750,7 +754,8 @@ def cmd_eval(skills, root, a, cfg):
                     if m["false_positive"] or m["false_negative"]:
                         rc = max(rc, 1)
 
-        if want_runtime:
+        # a neighbour is here for its trigger set; its tasks are not what was edited
+        if want_runtime and s.root not in getattr(a, "neighbour_roots", ()):
             note(f"{name}: runtime pass, {a.runs} run(s) per task"
                  + (" x 2 sides" if not a.no_baseline else "") + " - this costs money")
             report, problem = runtime.evaluate(
@@ -804,6 +809,29 @@ def cmd_harnesses(world, verbose=False):
 ROUTE_CAVEAT = ("offline reasoning over descriptions, not a live run - `eval --trigger` "
                 "is the thing that actually sends the wording to the agent and can "
                 "disagree with this")
+
+
+def nearest_neighbours(skill, tree, n):
+    """[(score, skill)] - the `n` skills whose descriptions share most with this one's.
+
+    Only skills with a trigger set of their own count: a neighbour is here to be
+    measured, and one without queries cannot be. The comparison is `route`'s, run with
+    this description standing in for the prompt - the requests a widened description
+    would take are the ones worded like it.
+    """
+    from evaluation import triggers                                 # noqa: PLC0415
+    own = quality.stems(skill.description or "")
+    rows = []
+    for s in tree:
+        if s.root == skill.root or not s.ok or s.slash_only or not s.description:
+            continue
+        if triggers.load(s.root)[1]:
+            continue
+        score, _ = quality.prompt_match(s.description, own)
+        if score > 0:
+            rows.append((score, s))
+    rows.sort(key=lambda r: -r[0])
+    return rows[:n]
 
 
 def cmd_route(skills, prompt, fmt="text"):
@@ -1108,6 +1136,10 @@ def main(argv=None):
                     help="eval: runs per query or per task; the model is not deterministic")
     ap.add_argument("--no-split", action="store_true",
                     help="eval --trigger: measure one set instead of train/validation")
+    ap.add_argument("--with-neighbours", type=int, default=0, metavar="N",
+                    help="eval --trigger: also run the N skills whose descriptions share "
+                         "most with this one, so --compare shows whether an edit took "
+                         "their requests")
     ap.add_argument("--live", action="store_true", help="evals: ask the model, not the invariants")
     ap.add_argument("--apply", action="store_true", help="fix: write the repairs")
     ap.add_argument("--module", help="rules: only this module")
@@ -1169,6 +1201,23 @@ def main(argv=None):
         picked_skills, notes = resolve_targets(names, root)
         for note in notes:
             print(note, file=sys.stderr)
+        a.neighbour_roots = set()
+        if a.with_neighbours and names:
+            have = {s.root for s in picked_skills}
+            for s in list(picked_skills):
+                for score, n in nearest_neighbours(s, discover(root), a.with_neighbours):
+                    if n.root in have:
+                        continue
+                    have.add(n.root)
+                    a.neighbour_roots.add(n.root)
+                    picked_skills.append(n)
+                    print(f"{s.folder}: neighbour `{n.folder}` joins the trigger pass "
+                          f"(description overlap {score:.2f}) - its recall across your edit "
+                          f"is what says whether this description took its requests; it "
+                          f"adds its own queries x runs to the cost", file=sys.stderr)
+            if not a.neighbour_roots:
+                print("no neighbour with a trigger set of its own shares words with this "
+                      "description - nothing to measure it against", file=sys.stderr)
         return cmd_eval(picked_skills, root, a, cfg)
 
     if a.command == "route":
