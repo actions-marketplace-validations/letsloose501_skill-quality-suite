@@ -1,10 +1,10 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: a measured description budget, an optional
-  LLM review layer, and last of all cross-runtime work - evaluation across engines and
-  porting a skill from one harness to another - plus what Claude Code's own eval runner
-  now covers, and what was rejected and why.
+  The planned layers of skill-quality-suite: a measured description budget, trigger
+  boundary geometry, declared-against-actual permissions, version changes read as
+  threats, an optional LLM review layer, and last of all cross-runtime work - plus what
+  Claude Code's own eval runner now covers, and what was rejected and why.
 ---
 
 # Roadmap
@@ -69,6 +69,10 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
+| 19 | Trigger boundary geometry | is the line between *fire* and *do not fire* sharp enough to hold |
+| 20 | Declared against actual | does the skill ask for the permissions its own code needs, and no more |
+| 21 | What changed between versions, read as a threat | did this update quietly gain reach it did not have |
+| 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
 
 Shipped: **the suite writes the checks (17)** - the `cases` module (`scripts/cases.py`,
 prefix `CS`) in every `check` run, plus `sqs.py cases <skill> --generate [--apply]`,
@@ -228,6 +232,131 @@ inside an otherwise-inert package, `urllib.request`/`http.client`/`http.server`/
 and both import forms - `import urllib.request` and `from urllib import request` - are
 checked against `NETWORK_EXACT` so the split does not silently create a false negative
 in place of the false positive. Fixture: `tests/fixtures/script-capabilities`.
+
+### Where items 19-22 came from
+
+Items 15-18 were reasoned out from this repository's own corpus. Items 19-22 are an
+intake from published work on agent skills - a security-lifecycle taxonomy, two
+evaluation harnesses, and a diagnostic self-refinement framework, all 2026. They are
+recorded here with what each one rests on, because an item admitted on somebody else's
+evidence has to say whose evidence it is; an item this page cannot attribute is an item
+nobody can check.
+
+The single most useful thing taken is not a rule but a frame: **a skill has a lifecycle,
+and each stage is a separate trust boundary** - authoring, storage, retrieval, selection
+by the planner, execution, and evolution. Laid over this suite, the modules cover
+authoring (`spec`, `structure`, `quality`), storage and execution (`security`,
+`capabilities`, `publish`) and, since item 16, evolution. Retrieval is covered thinly by
+`EV007` and `route`. **Selection is not covered at all**, although the attacks on it are
+exactly the kind this project can already see offline. That gap is why three of the four
+items below exist.
+
+**19. Trigger boundary geometry.** One framework scores a description's trigger by three
+geometric quantities over its positive and negative phrases: how far apart the positives
+spread (a trigger too narrow to catch its own work), how far each negative sits from the
+nearest positive (an exclusion that does not exclude), and - the one that matters most -
+the *minimum* distance between any positive and any negative. Their argument is that a
+single ambiguous pair causes catastrophic misrouting even when everything else separates
+cleanly.
+
+This repository already computes that comparison and then throws away the interesting
+half: `near_duplicates` skips every pair whose polarity differs (`if na != nb: continue`),
+because it was built to find a branch written twice, and an opposite branch is not a
+duplicate. Read as a boundary rather than as a duplicate, that skipped pair is the
+finding. Lands in `scripts/quality.py` beside `QL003`, on `POLARITY_RE`,
+`branch_segments` and `stems` - no new dependency, and embeddings are not needed for a
+comparison this suite already makes with stems.
+
+**20. Declared against actual.** Two independent sources converge on the same check:
+compare what a skill *declares* against what its code *does*, over a shared capability
+taxonomy, and require a quoted source span for every declared capability so the declared
+side cannot be invented. One names the failure on the selection stage - *permission
+deception*, a skill declaring fewer permissions than its workflow needs; the other builds
+the declared/actual comparison as its central contribution.
+
+Both halves already exist here and have never been compared: `model.py` parses
+`allowed-tools`, and `capabilities.py` reads what the bundled scripts actually reach for.
+A skill whose frontmatter allows `Read` while its script spawns a process is the case.
+The quoted-span discipline is this suite's own habit already - a finding names the clause
+- so it carries over unchanged. Lands in `scripts/capabilities.py`, which is where both
+sides meet.
+
+Worth recording for calibration: the same source splits its analysis exactly the way
+`capabilities.py` split it independently - an exact parse for Python, pattern matching
+for everything else - and grades the two differently. Convergence, not inspiration.
+
+**21. What changed between versions, read as a threat.** The lifecycle taxonomy's last
+stage is the one nobody instruments: a skill keeps the trust it earned on publication
+while its content moves underneath. Named threats there are *permission escalation* (a
+later version asks for network or shell it never had), *tool substitution* (a benign tool
+swapped for a privileged one), *instruction injection* (the body changes while the
+description stays put, so nothing visible moved) and *version rollback* (a patched skill
+replaced by an older signed one). A second source names the live version of the same
+thing: a poisoned run that rewrites the skill's saved content so the payload fires on a
+later reuse.
+
+Item 16 built the machinery for all of this and pointed it at a different question.
+`--since` already produces the diff and `cases.gained_capabilities` already computes which
+capability is new - it just feeds the case generator instead of the report. Three specific
+inversions to make: `PB011` watches `allowed-tools` *shrink*, because that breaks a caller,
+while the threat is it *growing*; a gained `CB001`/`CB002` is a finding, not only a reason
+to write a test; and `PB010` declined to judge a version moving backwards on the grounds
+that inventing a meaning for it would be a guess - rollback is now a named threat, so the
+meaning is no longer invented. Lands in `scripts/publish.py` and `scripts/cases.py`.
+
+**22. The paid layer's two missing gates.** One harness gates its utility score on
+*invocation*: if the skill was not actually loaded, the task earns nothing, because the
+model's own ability would otherwise be credited to the skill. `eval --trigger` here
+observes activation; `eval --runtime` does not, so its treatment arm can win a task
+without the skill ever loading, and the delta is then attributed to the skill. The
+detector is the same `Skill`-call reading the trigger pass already uses.
+
+The same harness checks a task set for *evaluability before spending anything*: every case
+must carry an objective, an expected outcome, a decidable pass criterion, and must be
+runnable in both arms. This suite discovers the equivalent after the fact, as `ungraded`
+in the report - which is honest but is found only once the money is gone. A pre-flight
+gate is offline, costs nothing, and sits naturally on what `cases --generate` already
+writes. Lands in `scripts/evaluation/runtime.py` and `scripts/evalcheck.py`.
+
+### Admitted to P2 rather than P1
+
+- **Fake trust indicators in a description** - "certified", "verified", "100% safe",
+  "trusted by", fabricated badges and endorsements. A named selection-stage attack, and a
+  regex plus an `info` severity is the whole implementation. It is also this project's own
+  principle stated by somebody else: a badge is a claim to verify, not a fact to trust.
+- **Keyword stuffing** - a description padded with domain keywords to win semantic
+  retrieval it does not deserve. Measurable offline as stem-repetition density against the
+  median of the tree, but the threshold is a guess until a corpus says otherwise, which is
+  the same trap item 15 is parked on.
+- **Edit budget per revision** - one source treats an unbounded rewrite as the mechanism by
+  which skills drift and quietly degrade, and caps how much a single revision may change.
+  `--since` gives the percentage for free. Parked because "how much is too much" is another
+  unmeasured threshold.
+
+### What this changes in the prose, not in the code
+
+Three measured findings worth carrying into the front page and `docs/`, because they
+replace things this project currently asserts without a number:
+
+- skills raise **execution reliability, not answer quality**. In one controlled comparison
+  the pass rate among tasks that produced any output was identical with and without skills
+  (57.1% both), while the share of tasks producing output at all went from 46.7% to 72.7%.
+  The whole gain was coverage. That is a sharper answer to "what is a skill for" than this
+  project gives today;
+- **skills written by a model gave no measurable gain**; human-authored ones gave +16.2
+  percentage points on the same benchmark. That is the argument for this repository
+  existing, and it is measured rather than asserted;
+- ecosystem scale and defect rate: one audit found 26.1% of community skills carrying at
+  least one vulnerability; another found 534 critical and 1,467 total defects across 3,984
+  public skills, with 76 confirmed malicious payloads; a marketplace census counted 40,285
+  listings. The `security` module's reason for existing is currently argued from first
+  principles here and could be argued from these instead.
+
+One more number, for item 15 whenever it is revisited: an optimization study reports a
+median final skill length of roughly 920 tokens, with only one to four edits accepted into
+the final file. Not a description budget - a *body* budget, and the first figure this
+project has seen on that question that was measured rather than guessed. `ST006` currently
+budgets 15,000 bytes for `SKILL.md` on reasoning alone.
 
 The one note left, and it now has a price on it.
 
