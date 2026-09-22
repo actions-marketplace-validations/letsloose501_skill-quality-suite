@@ -7,6 +7,7 @@
     sqs.py explain ST008             what a code means and how to fix it
     sqs.py rules --module quality    the registry
     sqs.py new my-skill              scaffold a skill that already passes
+    sqs.py route --prompt "..."      which skill this wording resembles, offline
 
 The modules are separate because they fail at different moments. Structure breaks
 today, silently. Spec breaks on publication. Compat breaks on somebody else's machine.
@@ -678,6 +679,77 @@ def cmd_harnesses(world, verbose=False):
     return 0
 
 
+ROUTE_CAVEAT = ("offline reasoning over descriptions, not a live run - `eval --trigger` "
+                "is the thing that actually sends the wording to the agent and can "
+                "disagree with this")
+
+
+def cmd_route(skills, prompt, fmt="text"):
+    """`sqs.py route --prompt "..."` - the offline, weaker sibling of `eval --trigger`.
+
+    `eval --trigger` runs the agent and observes which skill it actually reaches for.
+    This reasons about the descriptions instead: the same stem-overlap comparison `EV007`
+    runs between two skills, run here between the prompt and every sentence of each
+    skill's description, keeping the best-matching sentence per skill so the report can
+    name it - a score with nothing to point at is unactionable, the same complaint that
+    shaped `EV007`. It is cheaper and it can be wrong in a way the live pass would not
+    be, so `ROUTE_CAVEAT` prints in every render rather than once in a docstring nobody
+    reads at the terminal.
+
+    `stems()`, not `EV007`'s `content_stems()`: that six-letter floor exists to drop
+    scaffolding two DESCRIPTIONS share by house-style construction ("Срабатывай"/"use
+    when"), which a real user prompt does not normally contain. Reusing it here instead
+    dropped short topic nouns - `видео` is five letters - and every skill that happened
+    to share one leftover long word scored the same, so the ranking degenerated into an
+    alphabetical tie-break. Watched doing exactly that against the real skill tree before
+    this comment existed.
+    """
+    prompt_stems = quality.stems(prompt)
+    rows = []
+    for s in skills:
+        if not s.ok or s.slash_only or not s.description:
+            continue
+        best_score, best_sentence = 0.0, None
+        for sent in quality.SENTENCE_RE.split(s.description):
+            sent = sent.strip(" -—:*")
+            # A sentence that fences work out ("НЕ запускайся на рутине...", "not for
+            # X") is not a route into the skill for that wording - it is the opposite
+            # claim, and counting it as a match is how a genuine exclusion clause,
+            # watched happening against the real skill tree, outscored the skill it
+            # was excluding the wording in favour of.
+            if len(sent) <= 8 or quality.POLARITY_RE.search(sent):
+                continue
+            st = quality.stems(sent)
+            small = min(len(st), len(prompt_stems))
+            if not small:
+                continue
+            score = len(st & prompt_stems) / small
+            if score > best_score:
+                best_score, best_sentence = score, sent
+        rows.append((s.name or s.folder, best_score, best_sentence))
+    rows.sort(key=lambda r: r[1], reverse=True)
+
+    if fmt == "json":
+        print(json.dumps({"prompt": prompt, "caveat": ROUTE_CAVEAT,
+                          "ranking": [{"skill": n, "score": round(sc, 3), "matched": sent}
+                                     for n, sc, sent in rows]},
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    print(f'route: "{prompt}"')
+    print(f"({ROUTE_CAVEAT})\n")
+    scored = [r for r in rows if r[1] > 0]
+    if not scored:
+        print("no skill's description shares enough wording with this prompt to rank.")
+        return 0
+    for i, (name, score, sentence) in enumerate(scored[:10], 1):
+        print(f"{i}. {name:<28}{score:.2f}  \"{sentence[:70]}\"")
+    if len(scored) > 1:
+        margin = scored[0][1] - scored[1][1]
+        print(f"\n`{scored[0][0]}` wins by {margin:.2f} over `{scored[1][0]}`")
+    return 0
+
+
 def cmd_compat_report(skills, world, names, fmt):
     """The compatibility report: the one view that is per harness, not per finding."""
     adapters, missing = world.select(names)
@@ -739,7 +811,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sqs.py", add_help=True,
                                  description="quality suite for Agent Skills")
     ap.add_argument("command", help="check | all | " + " | ".join(sorted(MODULES.values()))
-                    + " | fix | eval | baseline | explain | rules | harnesses | new")
+                    + " | fix | eval | baseline | explain | rules | harnesses | new | route")
     ap.add_argument("args", nargs="*", help="skill names, a rule code, or a new skill's name")
     ap.add_argument("--skills-dir")
     ap.add_argument("--trust-target", action="store_true",
@@ -793,6 +865,7 @@ def main(argv=None):
     ap.add_argument("--apply", action="store_true", help="fix: write the repairs")
     ap.add_argument("--module", help="rules: only this module")
     ap.add_argument("--audit", action="store_true", help="rules: registry against the engines")
+    ap.add_argument("--prompt", help="route: the wording to reason about")
     a = ap.parse_args(argv)
 
     if a.command == "explain":
@@ -825,6 +898,16 @@ def main(argv=None):
         for note in notes:
             print(note, file=sys.stderr)
         return cmd_eval(picked_skills, root, a, cfg)
+
+    if a.command == "route":
+        if not a.prompt:
+            print("route needs --prompt \"...\"", file=sys.stderr)
+            return 2
+        names = [n for n in a.args if n not in set(cfg.get("ignore", []))]
+        picked_skills, notes = resolve_targets(names, root)
+        for note in notes:
+            print(note, file=sys.stderr)
+        return cmd_route(picked_skills, a.prompt, a.format)
 
     if a.command == "check":
         modules = list(CHECK_MODULES)

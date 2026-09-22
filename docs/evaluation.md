@@ -37,6 +37,33 @@ sqs.py eval ./my-skill --all --save v1
 sqs.py eval ./my-skill --compare v1 v2
 ```
 
+## Routing analysis (offline)
+
+`sqs.py route --prompt "..."` is `eval --trigger`'s free, weaker sibling: no agent, no
+cost, no `evals/` directory required. It is exactly the "where would this wording route"
+judgement the next section says is not the same thing as observing activation - it reasons
+about descriptions instead of running one - and ranks every skill under `--skills-dir` by
+how much of the prompt's wording its description shares, naming the sentence that matched
+so the ranking can be checked rather than trusted:
+
+```bash
+sqs.py route --skills-dir tests/fixtures/branch-overlap \
+  --prompt "list the pull requests merged since the last release tag"
+```
+
+```
+1. release-notes               0.57  "Drafts release notes from merged pull requests"
+2. changelog-writer            0.43  "Use when the user asks you to summarize what changed since the last re"
+
+`release-notes` wins by 0.14 over `changelog-writer`
+```
+
+Use it to sanity-check a description before spending on `--trigger`, or for a quick read
+on a tree you did not write and have no `evals/` for at all. It cannot be wrong the way a
+live run can - it never executes anything - and for the same reason it can never see what
+a live run would: a skill whose description undersells what it actually does looks like a
+worse match here than it is in practice.
+
 ## Trigger evaluation
 
 The query set lives inside the skill:

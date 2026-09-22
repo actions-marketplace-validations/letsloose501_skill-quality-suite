@@ -421,6 +421,29 @@ def unit_checks():
         if placeless:
             out.append(f"SARIF results with no location in {case_name}, which makes code "
                        f"scanning reject the whole file: " + ", ".join(placeless))
+
+    # `sqs.py route --prompt` has no rule code, so it cannot live in the golden corpus
+    # (that harness reads `findings`; `route` prints a ranking). Reuses the
+    # `branch-overlap` fixture, whose two skills were written to share wording, so an
+    # unambiguous prompt naming one of them must still pick that one over its lookalike.
+    case = os.path.join(FIXTURES, "branch-overlap")
+    r = subprocess.run(
+        [sys.executable, SQS, "route", "--skills-dir", case,
+         "--prompt", "drafts release notes from merged pull requests", "--format", "json"],
+        capture_output=True, text=True, encoding="utf-8",
+        env=dict(os.environ, CLAUDE_SKILLS_DIR=case, PYTHONIOENCODING="utf-8"), cwd=REPO)
+    try:
+        payload = json.loads(r.stdout)
+        ranking = payload["ranking"]
+    except (ValueError, KeyError) as e:
+        out.append(f"`route --format json` did not parse: {e}")
+        ranking = []
+    if not ranking or ranking[0]["skill"] != "release-notes":
+        out.append("`route` did not rank `release-notes` first for a prompt naming its "
+                   f"own branch: {ranking}")
+    if ranking and "eval --trigger" not in payload.get("caveat", ""):
+        out.append("`route`'s JSON output dropped the eval --trigger caveat")
+
     return out
 
 

@@ -1,13 +1,12 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: routing analysis, capability manifests,
-  static analysis of bundled scripts, a measured description budget, version bumps on
-  improvement, generating a skill's case set from what you expect of it, from each
-  improvement and from a stranger's promises, an optional LLM review layer, and last of
-  all cross-runtime work - evaluation across engines and porting a skill from one harness
-  to another - plus what Claude Code's own eval runner now covers, and what was rejected
-  and why.
+  The planned layers of skill-quality-suite: capability manifests, static analysis of
+  bundled scripts, a measured description budget, version bumps on improvement,
+  generating a skill's case set from what you expect of it, from each improvement and
+  from a stranger's promises, an optional LLM review layer, and last of all cross-runtime
+  work - evaluation across engines and porting a skill from one harness to another - plus
+  what Claude Code's own eval runner now covers, and what was rejected and why.
 ---
 
 # Roadmap
@@ -71,7 +70,6 @@ uses. Three formats, one per skill.
 
 | # | What | The question it answers |
 |---|---|---|
-| 6 | Routing analysis - `sqs.py route --prompt "..."` | which skill wins this prompt, and by how much |
 | 9 | Static analysis of bundled scripts | what `scripts/*.py` inside a skill does: network, subprocess, credentials |
 | 10 | Capability manifest - `sqs.py capabilities` | what this skill can actually do to the machine |
 | 15 | Description budget, measured | how long a description can get before routing degrades |
@@ -103,12 +101,24 @@ disambiguation question read as a collision over that question, which is a fair 
 of "low confidence, high false-positive risk" and not a case worth another round of
 patching one example at a time. Fixture: `tests/fixtures/branch-overlap`.
 
-Notes on the harder ones.
+Shipped: **routing analysis (6)** - `sqs.py route --prompt "..."` (`cmd_route` in
+`scripts/sqs.py`), the offline sibling of `eval --trigger`. The trigger pass runs the
+agent and observes activation; `route` reasons about the descriptions instead - the same
+stem-overlap test as `EV007`, run between the prompt and every sentence of each skill's
+description, keeping the best-matching sentence so the ranking names what it matched
+rather than asking to be trusted. The caveat that it is cheaper and weaker prints in
+every render, not once in a docstring. Two differences from `EV007` that a straight
+reuse got wrong before they were watched happening against the real skill tree:
+`content_stems`'s six-letter floor exists to drop scaffolding two *descriptions* share by
+house-style construction, and a real prompt does not normally contain that scaffolding,
+so reusing it here instead dropped short topic nouns (`видео` is five letters) and
+degenerated the ranking into an alphabetical tie-break; and a sentence that fences work
+out ("do not use for X") had to be excluded from matching, or the exclusion clause itself
+outscored the skill it was excluding the wording in favour of. No fixture in the golden
+corpus - `route` has no rule code and prints a ranking, not `findings` - so it is a unit
+check in `tests/run_tests.py` instead, against `tests/fixtures/branch-overlap`.
 
-**Routing analysis (6)** is the offline sibling of `eval --trigger`. The trigger pass
-runs the agent and observes activation; `route` reasons about the descriptions and says
-which one a wording most resembles. It is cheaper and weaker, and the report must say so
-in the same breath, or the two get confused.
+Notes on the harder ones.
 
 **Capabilities (10)** and **script analysis (9)** are one layer seen from two ends: the
 first summarises, the second finds. Both describe capability rather than forbid it - the

@@ -50,6 +50,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 | Is it safe to install? | `security` |
 | Is it portable? | `compat` |
 | Does it fire? | `eval --trigger` |
+| Which skill wins this wording, offline? | `route --prompt "..."` |
 | Does it actually help? | `eval --runtime` |
 | Did the last change make it worse? | `eval --compare v1 v2` |
 | Can it be published? | `publish` |
