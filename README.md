@@ -7,21 +7,30 @@
 [![skills.sh](https://skills.sh/b/letsloose501/skill-quality-suite)](https://skills.sh/letsloose501/skill-quality-suite)
 [![GitHub Marketplace](https://img.shields.io/badge/marketplace-skill--quality--suite-2ea44f?logo=github&logoColor=white)](https://github.com/marketplace/actions/skill-quality-suite)
 
-**A quality, linting, security and validation toolkit for AI Agent Skills.** It
-validates a `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification),
-lints the instructions an agent will actually follow, scans a skill for secrets and
-prompt injection before you install it, checks whether it will work on another agent,
-and measures whether it improves the agent's work at all.
+**A quality, linting, security and validation toolkit for AI Agent Skills - and the
+one that tells you what to change, from the requests you actually typed.** It validates
+a `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification),
+lints the instructions an agent will actually follow, reads a skill for danger before
+you trust it - including the commands it runs the moment it loads - checks whether it
+will work on another agent, and measures whether it improves the agent's work at all.
+
+What sets it apart is where the evidence comes from. A trigger set an author writes tends
+to restate the description; the suite reads your own Claude Code transcripts instead -
+locally, read-only - and turns the prompts that really reached a skill, and the ones a
+neighbour won, into the cases and the improvement report.
 
 No dependencies: the static half is Python standard library only, offline and
-deterministic. The evaluation half runs an agent, costs money, and never runs unless you
-name it.
+deterministic. The evaluation half runs an agent and costs money, so it is **never
+started for you**: the skill offers it, says what a run costs (about $0.21, measured),
+and says it pays off only when you keep measuring across edits.
 
 ```bash
 python scripts/sqs.py check    ./my-skill                # skill lint: the everyday five
 python scripts/sqs.py security ./my-skill                # before you install a stranger's skill
 python scripts/sqs.py compat   ./my-skill --harness all  # will it work anywhere else
-python scripts/sqs.py eval     ./my-skill --trigger      # does it actually fire
+python scripts/sqs.py improve  ./my-skill                # what to change, and why
+python scripts/sqs.py cases    ./my-skill --from-history # trigger cases in your own words
+python scripts/sqs.py eval     ./my-skill --trigger      # does it actually fire (paid)
 python scripts/sqs.py explain  ST008                     # what a finding means, and the fix
 ```
 
@@ -34,7 +43,9 @@ Use it when:
 - you **renamed** a file, a heading or a skill, and something now points at nothing;
 - you are about to **publish** a skill and need the personal paths, the licence and the
   version drift caught before it leaves;
-- you changed a description and want to know whether the skill got **better or worse**.
+- you changed a description and want to know whether the skill got **better or worse**;
+- you want to know **what to change** in a skill, or whether a new skill you are about to
+  write would only **collide** with one you already have.
 
 Harnesses it classifies portability for: **Claude Code, OpenAI Codex, Cursor, Gemini
 CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
@@ -54,6 +65,9 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 | Does it actually help? | `eval --runtime` |
 | Did the last change make it worse? | `eval --compare v1 v2` |
 | What should be true of it, and is it? | `cases` |
+| What do people actually type to reach it? | `cases --from-history` |
+| What should I change in it? | `improve` |
+| Would a new skill just collide with an old one? | `new <name> --seed WORD` |
 | Can it be published? | `publish` |
 
 ## Why
@@ -74,12 +88,28 @@ sorts them by *when* they would have bitten:
 | `quality` | a description that never says *when*, vague bounds, placeholders | every run, a little |
 | `compat` | what will not survive a move to another agent | on somebody else's machine |
 | `security` | secrets, destructive commands, injection, hidden characters | when you install a stranger's skill |
-| `capabilities` | what a bundled script *can* do - network, subprocess, environment | when you install a stranger's skill |
+| `capabilities` | what a bundled script *can* do - network, subprocess, environment - and the commands the skill runs the moment it loads | when you install a stranger's skill |
 | `cases` | a promise with no step behind it, an expectation it never claimed, a capability it never announced | the first time you rely on it |
-| `evals` | the eval files and the routing invariants | when a neighbour's description moves |
+| `evals` | the eval files, the routing invariants, a case set that cannot run or only restates the description | when a neighbour's description moves |
 | `eval` | does it fire, does it help, did the last edit make it worse | after every change, if you let it |
-| `publish` | personal paths, missing license, version drift | the moment it leaves your machine |
+| `publish` | personal paths, missing license, version drift, an update that quietly gained reach, a README installing from the wrong owner | the moment it leaves your machine |
 | `fix` | the repairs with exactly one correct answer | - |
+
+Every rule was run against real skills before it shipped, and several of them found
+something the first time:
+
+- 37 of 105 positive cases in one real routing set repeat their skill's description
+  word for word, so they pass by string match (`EV010`);
+- a guide to the load-time command syntax in a public marketplace runs its own 14
+  examples on load - a plain code block does not stop them, watched on a live run
+  (`CB004`);
+- a README in the same marketplace tells readers to install a plugin from a marketplace
+  that does not list it (`PB014`);
+- the trigger pass's own test fixture had been passing its treatment arm without the
+  skill ever loading, which is the case the invocation gate now refuses to credit.
+
+What did not hold up is written down too: rules that were measured and deferred, and why,
+are in the [roadmap](docs/roadmap.md).
 
 ## Install
 
