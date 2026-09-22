@@ -609,6 +609,56 @@ def cmd_cases(skills, cfg, since, apply_it, fmt="text"):
     return rc
 
 
+def cmd_cases_history(skills, history_dir, apply_it, fmt="text"):
+    """`sqs.py cases <skill> --from-history` - trigger queries in the user's own words.
+
+    A trigger set the author writes tends to restate the description; the phrasings that
+    test it are the ones people typed. This drafts `evals/eval_queries.json` out of the
+    local transcripts - see `evaluation/history.py` for what counts as a routing
+    decision - prints it for review, and writes it only with `--apply`, only where the
+    skill has no trigger set yet. What it prints is private: the user's own prompts.
+    """
+    from evaluation import history, triggers  # noqa: PLC0415
+    rc = 0
+    results = {}
+    for s in skills:
+        if not s.ok:
+            continue
+        h = history.harvest(s, history_dir)
+        results[s.folder] = h
+        if fmt == "json":
+            continue
+        print(f"\n{s.folder}: {len(h['positive'])} prompt(s) that loaded it first, "
+              f"{len(h['near_miss'])} near miss(es) a neighbour won "
+              f"({h['transcripts']} transcripts read)")
+        for p in h["positive"]:
+            print(f"  +  {' '.join(p.split())[:90]}")
+        for n in h["near_miss"]:
+            print(f"  -  {' '.join(n['query'].split())[:70]}   -> {n['went_to']}")
+        target = os.path.join(s.root, "evals", "eval_queries.json")
+        existing = [q for q in (target, os.path.join(s.root, triggers.TRIGGER_DIR))
+                    if os.path.exists(q)]
+        if not h["positive"] and not h["near_miss"]:
+            continue
+        if not apply_it:
+            print("  would write evals/eval_queries.json (pass --apply) - these are your own "
+                  "words; read them before they go anywhere")
+            rc = 1
+            continue
+        if existing:
+            print(f"  a trigger set already exists ({os.path.relpath(existing[0], s.root)}) "
+                  f"- left alone; merge by hand")
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(history.as_query_set(h), f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        print("  wrote evals/eval_queries.json")
+    if fmt == "json":
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    return rc
+
+
 def cmd_eval(skills, root, a, cfg):
     """The layer that runs an agent: triggering, task success, and the diff between runs.
 
@@ -925,6 +975,11 @@ def main(argv=None):
     ap.add_argument("--prompt", help="route: the wording to reason about")
     ap.add_argument("--generate", action="store_true",
                     help="cases: draft the case set instead of reporting on it")
+    ap.add_argument("--from-history", action="store_true",
+                    help="cases: draft trigger queries from your own Claude Code transcripts "
+                         "- prompts that loaded the skill, and near misses a neighbour won")
+    ap.add_argument("--history-dir", help="cases --from-history: where the transcripts are "
+                                          "(default ~/.claude/projects)")
     a = ap.parse_args(argv)
 
     if a.command == "explain":
@@ -1021,6 +1076,8 @@ def main(argv=None):
     cfg["descriptions"] = {s.name or s.folder: s.description for s in neighbours}
 
     # `cases --generate` writes the set the rules would otherwise only report on.
+    if a.command == "cases" and a.from_history:
+        return cmd_cases_history(skills, a.history_dir, a.apply, a.format)
     if a.command == "cases" and a.generate:
         return cmd_cases(skills, cfg, cfg.get("since"), a.apply, a.format)
 

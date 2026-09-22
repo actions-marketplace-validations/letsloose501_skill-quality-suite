@@ -333,6 +333,7 @@ def unit_checks():
     # SE007: a skill vouching for itself, against the same words used honestly. The
     # second half is lifted from real skills, where these words occur 217 times as what
     # the skill does or where a neighbour came from - and must never read as a badge.
+    out += history_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -607,6 +608,72 @@ def unit_checks():
     if ranking and "eval --trigger" not in payload.get("caveat", ""):
         out.append("`route`'s JSON output dropped the eval --trigger caveat")
 
+    return out
+
+
+def history_checks():
+    """`cases --from-history` against a transcript built to cross every filter once.
+
+    Each record shape is one a real transcript carries: an assistant turn split into a
+    record per block, a tool result arriving as a `user` record, a typed command, a
+    subagent's sidechain. Only the first prompt and the near miss may survive.
+    """
+    from core import Skill
+    from evaluation import history
+    out = []
+
+    def user(text, **kw):
+        return dict({"type": "user", "message": {"content": text}}, **kw)
+
+    def tool(name, **inp):
+        return {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": name, "input": inp}]}}
+
+    def text(t):
+        return {"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}}
+
+    result = {"type": "user", "message": {"content": [
+        {"type": "tool_result", "content": "ok"}]}}
+    records = [
+        user("reconcile the march bank export against my books"),   # positive
+        text("On it."), tool("Skill", skill="statement-check"),
+        user("look at ledger.csv and tell me the totals"),         # load after work: no
+        tool("Read", file_path="ledger.csv"), result, tool("Skill", skill="statement-check"),
+        user("<command-name>/statement-check</command-name>"),      # typed command: no
+        tool("Skill", skill="statement-check"),
+        user("use statement-check on the april file"),              # named: no
+        tool("Skill", skill="statement-check"),
+        user("my bank export has duplicate rows, clean them up"),   # near miss
+        tool("Skill", skill="csv-cleaner"),
+        user("reconcile everything in the sidechain", isSidechain=True),
+        tool("Skill", skill="statement-check"),
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        proj = os.path.join(tmp, "history", "some-project")
+        os.makedirs(proj)
+        with open(os.path.join(proj, "session.jsonl"), "w", encoding="utf-8") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+        skill = Skill(os.path.join(FIXTURES, "restated-cases", "statement-check"))
+        got = history.harvest(skill, os.path.join(tmp, "history"))
+        # Checked at this level too: `harvest` keeps the first occurrence of a prompt,
+        # which by itself hides a later load in the same turn - so a broken first-tool
+        # rule passed the check above when it was the only one.
+        pairs = history.routing_decisions(os.path.join(proj, "session.jsonl"))
+    want_pairs = [("reconcile the march bank export against my books", "statement-check"),
+                  ("look at ledger.csv and tell me the totals", None),
+                  ("use statement-check on the april file", "statement-check"),
+                  ("my bank export has duplicate rows, clean them up", "csv-cleaner")]
+    if pairs != want_pairs:
+        out.append(f"history routing decisions: expected {want_pairs}, got {pairs}")
+    if got["positive"] != ["reconcile the march bank export against my books"]:
+        out.append(f"history positives: expected only the first prompt, got {got['positive']}")
+    near = [n["query"] for n in got["near_miss"]]
+    if near != ["my bank export has duplicate rows, clean them up"]:
+        out.append(f"history near misses: expected the csv-cleaner prompt, got {near}")
+    if got["skipped_named"] != 1:
+        out.append(f"history: the prompt naming the skill was not set aside "
+                   f"({got['skipped_named']})")
     return out
 
 

@@ -505,6 +505,32 @@ same idea - `$ARGUMENTS` and `!` as Claude-only syntax in `compat` - was not bui
 other runtimes' pages on it were not checked, and an adapter row nobody checked is how
 `cursor.py` once invented an incompatibility.
 
+Shipped from the second intake: **trigger queries from the user's own history** -
+`sqs.py cases <skill> --from-history`, in `scripts/evaluation/history.py`. One of the ten
+tools harvests past sessions to replay recurring tasks; the same transcripts hold what a
+trigger set lacks, the phrasings people actually used. On this machine: 528 transcripts,
+318 skill loads. Three rounds of calibration on them, each a defect watched happening:
+
+- a prompt that named the skill it loaded ("давай /trener на сегодня", "дай konspekt
+  дописать") is a lookup, not routing, and ranked as a near miss for neighbours it never
+  competed with - set aside now, on both sides;
+- a one-word reply ("добавляй") scored a perfect overlap, because `prompt_match` divides
+  by the shorter side; a near miss now needs three stems;
+- paths and attachments (`@"C:\Users\...\Downloads\..."`) put one prompt at the top of
+  three skills' lists on `users`, the account name and `downl`; links, paths and `@` references are
+  stripped before comparing, and the ranking is by share, not by count.
+
+What the calibration also showed, and why it shipped as a draft: the positives for the
+busiest skill restated its description 0 times in 38, against 35% in the hand-written
+set, and the near misses for the video skill came out as its fork with the neighbour it
+shares "разбери" with. The unit check builds a transcript that crosses every filter once;
+it first passed with the first-tool rule removed, because keeping each prompt's first
+occurrence hid the second load - the rule is now checked where it lives.
+
+Found on the way and fixed on its own: the trigger set's YAML parser cut every line at
+the first `#`, so `"fix issue #12"` read as `"fix issue` with a stray quote and `C#` as
+`C`, with no error - the silent misreading its own docstring says it exists to refuse.
+
 ### Admitted to P2 rather than P1
 
 - **Keyword stuffing** - a description padded with domain keywords to win semantic

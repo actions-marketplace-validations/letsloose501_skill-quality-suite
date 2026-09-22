@@ -15,6 +15,7 @@ the one that helps you write it.*
 python scripts/sqs.py cases ./my-skill                      # the three disagreements
 python scripts/sqs.py cases ./my-skill --generate           # the draft case file
 python scripts/sqs.py cases ./my-skill --generate --apply   # write it
+python scripts/sqs.py cases ./my-skill --from-history       # trigger queries you typed
 ```
 
 ## Why this comes first
@@ -115,6 +116,35 @@ file stays `ungraded` in every report.
 `--apply` never overwrites an existing `evals/evals.json`. Generated is not trusted: a
 set nobody can correct is a set nobody will believe, which is the same mistake as a
 linter whose rules cannot be suppressed.
+
+## Trigger queries in your own words
+
+A trigger set the author writes tends to restate the description - `EV010` counts how
+often, and on one real routing set it was 37 of 105 positives. The phrasings that test a
+description are the ones people actually typed, and Claude Code already keeps them: a
+JSONL transcript per session under `~/.claude/projects/`. `--from-history` reads those,
+locally and read-only, and drafts `evals/eval_queries.json`:
+
+- a **positive** is a prompt whose *first* tool call loaded this skill. The first call is
+  the routing decision; a skill loaded after other work in the same turn was the agent's
+  choice about its task;
+- a **near miss** is a prompt whose first call loaded a neighbour, ranked by how much of
+  it this skill's description also covers - the wording a neighbour won and this skill
+  could plausibly have claimed;
+- left out: a typed `/command`, a prompt that names the skill it loaded (that is a
+  lookup, not routing), a subagent's sidechain, and anything over 400 characters, which is
+  a pasted document rather than a wording.
+
+On the transcripts of one real machine the positives restated their skill's description
+far less often than the hand-written set did (0 of 38 for the busiest skill), and the
+near misses for a video skill came out as exactly the fork with its neighbour: "разбери
+видео как творчество" went to the neighbour, as it should. The history also turned up a
+real misroute - a link with "разгрузи видео" whose first load was a notes skill.
+
+It is a draft, and more so than the others: a reply like "yes, go ahead" can be the
+prompt a skill loaded after, and out of context it is not a wording. Everything it prints
+is your own words, so it is printed for review and written only with `--apply`, and only
+where the skill has no trigger set yet.
 
 ## What this is not
 

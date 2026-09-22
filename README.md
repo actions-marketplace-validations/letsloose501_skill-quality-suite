@@ -179,6 +179,7 @@ sqs.py harnesses [--show]    the harness adapters and their sources
 sqs.py new <name>            scaffold a skill that already passes
 sqs.py evals . --init        scaffold the eval files
 sqs.py cases ./s --generate  draft the case set out of the skill's own sources
+sqs.py cases ./s --from-history   trigger queries from your own transcripts
 sqs.py eval ./s --trigger    does it fire, and only when it should
 sqs.py eval ./s --runtime    the task set, with the skill and without it
 sqs.py eval ./s --compare v1 v2    what the last edit moved
