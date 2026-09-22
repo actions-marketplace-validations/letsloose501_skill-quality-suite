@@ -119,6 +119,7 @@ UNPINNED_RE = re.compile(
 SCRIPT_EXT = (".py", ".sh", ".bash", ".ps1", ".js", ".ts", ".rb")
 
 WORD_RE = re.compile(r"[^\W\d_]{4,}", re.U)
+WORD_RE_LONG = re.compile(r"[^\W\d_]{6,}", re.U)
 
 
 def stems(text):
@@ -130,6 +131,37 @@ def stems(text):
     """
     return {unicodedata.normalize("NFC", w).casefold()[:5]
             for w in WORD_RE.findall(text)}
+
+
+# The stems of `TRIGGER_RE`'s own lead-in words, read out of that pattern rather than
+# copied by hand so the two cannot drift apart. `срабатывай`/`триггер`/`вызывай` and
+# `trigger`/`invoke` are all six letters or longer, so they survive `content_stems`'s
+# length floor - and, being the literal words every skill in this house style opens its
+# trigger clause with, they are shared by construction between any two skills that use
+# it. Watched turning into a false `EV007` between two otherwise unrelated skills before
+# this set existed: both open with "Срабатывай", and that one shared scaffolding word
+# was most of what crossed the threshold.
+TRIGGER_LEAD_STEMS = {unicodedata.normalize("NFC", w).casefold()[:6]
+                      for w in WORD_RE_LONG.findall(TRIGGER_RE.pattern)}
+
+
+def content_stems(text):
+    """Stems of words carrying topical weight - short scaffolding words dropped.
+
+    `stems()`'s four-letter floor is right for comparing segments of ONE description:
+    the topic word is what differs there, and connective scaffolding - "when", "user",
+    "asks", "where" - repeats identically across every segment of that same skill and
+    cancels out of the comparison. Between two DIFFERENT skills the scaffolding is what
+    repeats - it is the shared house style of writing a trigger clause - and the topic
+    word is what would actually prove a collision. Watched on this project's own test
+    fixtures: an invoice skill and a downloads skill, both phrased "use when ... or when
+    the user asks where ... went", cleared the four-letter threshold on `when`/`user`/
+    `asks`/`where`/`went` alone with no topic word shared at all. Six letters is short
+    enough to keep real topic words in both languages and long enough to drop those;
+    `TRIGGER_LEAD_STEMS` catches the lead-in words long enough to survive that floor too.
+    """
+    return ({unicodedata.normalize("NFC", w).casefold()[:6]
+            for w in WORD_RE_LONG.findall(text)} - TRIGGER_LEAD_STEMS)
 
 
 SEGMENT_RE = re.compile(r"[,;·]|\.\s|«|»|\"")
@@ -161,6 +193,78 @@ def near_duplicates(desc, threshold=0.6):
             if small >= 3 and len(sa & sb) / small >= threshold:
                 pairs.append((a[:48], b[:48]))
     return pairs
+
+
+SENTENCE_RE = re.compile(r"[.;]\s+|\n")
+
+
+def branch_segments(desc):
+    """(sentence, content stems, has-negation) for the trigger-branch part of a description.
+
+    House style - the `TEMPLATE` in `sqs.py` states it directly - is one sentence on
+    what the skill is, then the branches that should trigger it. `TRIGGER_RE` finds the
+    lead-in into that second part; everything before it is the topic sentence and stays
+    out of the comparison, because two skills sharing a topic word is not a collision
+    and two skills whose *branches* cover one wording is.
+
+    Split at sentence boundaries, not `near_duplicates`' comma-level ones: a real corpus
+    of skills that name their own neighbours (`⚠️ Not this, see `other-skill``)
+    keeps that whole disclaimer in one sentence, and `NAMED_THING_RE` then drops the
+    sentence entirely. Splitting on commas instead cut a disclaimer like `X - see
+    `konspekt`, and not this` into a bare quoted trigger phrase in one fragment and the
+    neighbour's name in the next, which is how the first version of this function turned
+    every skill that disambiguates against a neighbour into a false collision with that
+    neighbour - watched happening on the 28 skills actually installed here.
+    """
+    m = TRIGGER_RE.search(desc)
+    if not m:
+        return []
+    zone = desc[m.start():]
+    out = []
+    for s in SENTENCE_RE.split(zone):
+        s = s.strip(" -—:*")
+        if len(s) <= 8 or NAMED_THING_RE.search(s):
+            continue
+        out.append((s, content_stems(s), bool(POLARITY_RE.search(s))))
+    return out
+
+
+def cross_overlap(skills, threshold=0.6):
+    """EV007 - pairs of skills whose trigger branches claim the same wording.
+
+    The within-one-description version of this comparison is `QL003`/`near_duplicates`;
+    this runs the identical stem-overlap-with-polarity test between the branch segments
+    of every pair of *different* skills instead of between segments of one description.
+    A skill compares against itself constantly by construction (every segment shares
+    stems with the rest of its own list) - `na == nb` is what keeps that out.
+    """
+    entries = []
+    for s in skills:
+        if not s.ok or s.slash_only or not s.description:
+            continue
+        name = s.name or s.folder
+        for seg, st, neg in branch_segments(s.description):
+            entries.append((name, s.folder, s.root, seg, st, neg))
+    out, seen = [], set()
+    for i, (na, fa, ra, sa, sta, nega) in enumerate(entries):
+        for nb, fb, rb, sb, stb, negb in entries[i + 1:]:
+            if na == nb or nega != negb:
+                continue
+            small = min(len(sta), len(stb))
+            if small < 3 or len(sta & stb) / small < threshold:
+                continue
+            pair = tuple(sorted((na, nb)))
+            key = pair + (sa[:48], sb[:48])
+            if key in seen:
+                continue
+            seen.add(key)
+            f = Finding("EV007",
+                       f"`{na}` \"{sa[:48]}\" and `{nb}` \"{sb[:48]}\" claim the same "
+                       f"wording - only one can win", severity="warning",
+                       where="SKILL.md", skill=fa)
+            f.root = ra
+            out.append(f)
+    return out
 
 
 def lines_of(pattern, text, limit=3):

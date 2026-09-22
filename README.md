@@ -41,7 +41,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 75 rules](docs/quality-rules.md)**
+📋 **[All 76 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|

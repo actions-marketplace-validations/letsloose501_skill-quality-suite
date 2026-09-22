@@ -1,0 +1,6 @@
+{
+  "note": "Two skills about different things - release notes and a wiki changelog - whose trigger branches nonetheless cover the same wording. Static, offline: EV001's claim without executing the tree's own run_evals.py.",
+  "expect": [
+    "EV007"
+  ]
+}

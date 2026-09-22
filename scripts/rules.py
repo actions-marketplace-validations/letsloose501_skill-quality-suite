@@ -373,6 +373,13 @@ _ROWS = {
               "avoid.",
               "If the tree is yours, pass `--trust-target`. If it is not, a missing "
               "routing report is the correct outcome.", False),
+    "EV007": ("warning", "Semantic overlap between two skills",
+              "Two skills' trigger branches cover the same wording, so only one of them can "
+              "win a request that names it - this is `EV001`'s claim made without executing "
+              "the tree's own `run_evals.py`, so it works on any skill tree, not only one "
+              "that ships its own routing runner.",
+              "Read the two descriptions named in the finding; usually one needs to name the "
+              "other and defer, the way `QL008` and `QL013` already ask for.", False),
 }
 
 # ---- rule metadata ---------------------------------------------------------
@@ -455,6 +462,7 @@ GRADES = {
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),
     "EV004": ("high", "low"),    "EV005": ("high", "low"),
     "EV006": ("high", "low"),
+    "EV007": ("low", "high"),    # same stem-overlap heuristic as QL003, graded the same way
 }
 
 CONFIDENCE_ORDER = ("unrated", "low", "medium", "high")

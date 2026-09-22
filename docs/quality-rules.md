@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 75 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 76 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -83,6 +83,7 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 | `EV004` | warning | high | low | no | Malformed evals |
 | `EV005` | info | high | low | no | Thin trigger set |
 | `EV006` | info | high | low | no | Routing runner in the tree was not executed |
+| `EV007` | warning | low | high | no | Semantic overlap between two skills |
 
 ### EV001 - Routing invariant broken
 
@@ -119,6 +120,12 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 **Why it matters.** The routing report comes from a script that lives in the tree being checked. Running it would mean executing code out of the directory the suite was handed to read, which is the thing reading it was meant to avoid.
 
 **Fix.** If the tree is yours, pass `--trust-target`. If it is not, a missing routing report is the correct outcome.
+
+### EV007 - Semantic overlap between two skills
+
+**Why it matters.** Two skills' trigger branches cover the same wording, so only one of them can win a request that names it - this is `EV001`'s claim made without executing the tree's own `run_evals.py`, so it works on any skill tree, not only one that ships its own routing runner.
+
+**Fix.** Read the two descriptions named in the finding; usually one needs to name the other and defer, the way `QL008` and `QL013` already ask for.
 
 ## publish (PBxxx)
 

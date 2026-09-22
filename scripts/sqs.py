@@ -926,8 +926,33 @@ def main(argv=None):
         # a CI annotation - has somewhere to put it
         f.skill, f.root = d[0], by_folder.get(d[0])
         dupes.append(f)
-    if dupes or eval_findings:
-        results.append(("(all skills)", dupes + eval_findings))
+
+    # EV007 - the static sibling of EV001: two skills' trigger branches cover the same
+    # wording, found by comparing descriptions instead of executing the tree's own
+    # `run_evals.py`. Runs unconditionally, the way ST014 above does - it is a property
+    # of the skills being checked together, not of one module.
+    overlaps = quality.cross_overlap(skills)
+
+    # Whole-tree findings never passed through `collect()`, so the config's `rules: {off
+    # | severity}` and a line's `sqs-allow` waived every per-skill finding and silently
+    # did nothing for these three - the escape hatch a "high false-positive risk" rule
+    # like EV007 depends on. `suppressed()` needs the actual `Skill` the finding is
+    # attached to, to read the line it names; `skills_by_folder` is that lookup.
+    overrides = cfg.get("rules", {})
+    skills_by_folder = {s.folder: s for s in skills}
+    whole_tree = []
+    for f in dupes + eval_findings + overlaps:
+        if overrides.get(f.code) == "off":
+            continue
+        owner = skills_by_folder.get(f.skill)
+        if owner and suppressed(owner, f):
+            continue
+        if f.code in overrides:
+            f.severity = overrides[f.code]
+        whole_tree.append(f)
+
+    if whole_tree:
+        results.append(("(all skills)", whole_tree))
 
     # A confidence floor filters by how much of the judgement is the machine's. It is
     # not a severity filter: `--min-confidence high` keeps the facts and drops the
@@ -966,8 +991,11 @@ def main(argv=None):
             print(f"no baseline at {baseline_store.path_for(root, a.baseline_file)} - "
                   f"`sqs.py baseline create` writes one", file=sys.stderr)
             return 2
-        results, suppressed, fixed = baseline_store.split(results, data)
-        baseline_note = baseline_store.summary(suppressed, fixed, data)
+        # Not named `suppressed`: that name is the module-level line-waiver function,
+        # and any local assignment to it anywhere in `main()` would shadow the function
+        # for the whole body, including the call above this baseline branch.
+        results, baseline_waived, fixed = baseline_store.split(results, data)
+        baseline_note = baseline_store.summary(baseline_waived, fixed, data)
 
     flat = [f for _, found in results for f in found]
     failures = sum(1 for f in flat

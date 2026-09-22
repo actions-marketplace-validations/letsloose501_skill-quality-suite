@@ -1,13 +1,13 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: semantic overlap between skills, routing
-  analysis, capability manifests, static analysis of bundled scripts, a measured
-  description budget, version bumps on improvement, generating a skill's case set from what
-  you expect of it, from each improvement and from a stranger's promises, an optional LLM
-  review layer, and last of all cross-runtime work - evaluation across engines and porting
-  a skill from one harness to another - plus what Claude Code's own eval runner now covers,
-  and what was rejected and why.
+  The planned layers of skill-quality-suite: routing analysis, capability manifests,
+  static analysis of bundled scripts, a measured description budget, version bumps on
+  improvement, generating a skill's case set from what you expect of it, from each
+  improvement and from a stranger's promises, an optional LLM review layer, and last of
+  all cross-runtime work - evaluation across engines and porting a skill from one harness
+  to another - plus what Claude Code's own eval runner now covers, and what was rejected
+  and why.
 ---
 
 # Roadmap
@@ -71,7 +71,6 @@ uses. Three formats, one per skill.
 
 | # | What | The question it answers |
 |---|---|---|
-| 5 | Semantic overlap / skill collision | two skills claim the same wording, and only one can win |
 | 6 | Routing analysis - `sqs.py route --prompt "..."` | which skill wins this prompt, and by how much |
 | 9 | Static analysis of bundled scripts | what `scripts/*.py` inside a skill does: network, subprocess, credentials |
 | 10 | Capability manifest - `sqs.py capabilities` | what this skill can actually do to the machine |
@@ -87,12 +86,24 @@ through `${CLAUDE_PLUGIN_ROOT}` or a `../` into a sibling `commands/`, `agents/`
 marketplace entry's `source`, when it names a remote checkout rather than a local path).
 Fixtures: `tests/fixtures/plugin-hooks`, `plugin-sibling`, `plugin-origin`.
 
-Notes on the harder ones.
+Shipped: **semantic overlap / skill collision (5)** - `EV007` in `scripts/quality.py`
+(`cross_overlap`), folded into every `check`/`all` run the way `ST014` already is.
+Compares the trigger-branch sentences of every pair of skills with the same
+stem-overlap-with-polarity test `QL003` runs inside one description, restricted to the
+part of the description after `TRIGGER_RE`'s lead-in so two skills sharing a topic word
+do not read as a collision. Needed three rounds of calibration against the 28 skills
+actually installed here before it held: comma-level segments cut a disclaimer's quoted
+phrase away from the neighbour's name it was deferring to, four-letter stems let generic
+scaffolding ("when the user asks where ... went") stand in for a real topic match, and
+the lead-in verb itself ("Срабатывай"/"trigger") is long enough to survive a six-letter
+floor and is shared by every skill in the house style by construction - `content_stems`
+drops it by name, read out of `TRIGGER_RE` rather than copied so the two cannot drift.
+One residual case remains on that corpus: two skills that deliberately share a
+disambiguation question read as a collision over that question, which is a fair reading
+of "low confidence, high false-positive risk" and not a case worth another round of
+patching one example at a time. Fixture: `tests/fixtures/branch-overlap`.
 
-**Semantic overlap (5)** must not declare a collision on shared words. Two skills about
-invoices are not a collision; two skills whose *trigger branches* cover one wording are.
-The output has to name the pair of phrases, the way `QL003` already names the pair inside
-one description, or it is unactionable.
+Notes on the harder ones.
 
 **Routing analysis (6)** is the offline sibling of `eval --trigger`. The trigger pass
 runs the agent and observes activation; `route` reasons about the descriptions and says
