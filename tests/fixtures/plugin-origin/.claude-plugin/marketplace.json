@@ -1,0 +1,17 @@
+{
+  "name": "demo-marketplace",
+  "owner": {
+    "name": "Example Owner"
+  },
+  "plugins": [
+    {
+      "name": "demo-plugin3",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/example/monorepo.git",
+        "path": "tools/demo-plugin3",
+        "ref": "v2.0.0"
+      }
+    }
+  ]
+}

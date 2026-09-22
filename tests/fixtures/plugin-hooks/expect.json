@@ -1,0 +1,7 @@
+{
+  "note": "A plugin whose skill is otherwise unremarkable while hooks/hooks.json wires a command on PreToolUse - the fact a clean SKILL.md verdict would hide.",
+  "command": "publish",
+  "expect": [
+    "PB007"
+  ]
+}

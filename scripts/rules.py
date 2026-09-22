@@ -326,6 +326,22 @@ _ROWS = {
     "PB006": ("info", "Private material in a skill about to be published",
               "A path into a personal vault, a private repository name, an email address.",
               "Strip it, or keep the skill unpublished.", False),
+    "PB007": ("info", "Package wires hooks beside this skill",
+              "`hooks/hooks.json` runs a command on its event whether or not the model ever "
+              "routes to this skill. A clean verdict on SKILL.md next to an unread hooks/ "
+              "directory is the most convincing wrong answer the suite can give.",
+              "Not a defect - read hooks/hooks.json before trusting the package, the way you "
+              "would read a script this skill calls.", False),
+    "PB008": ("warning", "Skill points at a package sibling",
+              "A command, agent or script one directory above `skills/<name>/`, or a path "
+              "through `${CLAUDE_PLUGIN_ROOT}`. The structure rules only resolve pointers "
+              "inside the skill, so this one is invisible to them and breaks in silence the "
+              "moment the skill is copied out of the plugin.",
+              "Declare the dependency in prose, or bring what it needs inside the skill.", False),
+    "PB009": ("info", "Package installed from an unreviewed checkout",
+              "The marketplace entry's `source` names a remote repository, archive or command "
+              "- the files under review may be a checkout nobody has looked at.",
+              "Not a defect - a fact about where the package came from.", False),
 
     # ---- EV: evals -----------------------------------------------------------
     "EV001": ("error", "Routing invariant broken",
@@ -431,6 +447,9 @@ GRADES = {
     # publish: half of these are correct-and-intended for a skill that stays home
     "PB001": ("high", "low"),    "PB002": ("high", "low"),    "PB003": ("high", "low"),
     "PB004": ("high", "medium"), "PB005": ("high", "low"),    "PB006": ("medium", "medium"),
+    "PB007": ("high", "low"),    # hooks.json is read, not inferred
+    "PB008": ("medium", "medium"),  # a sibling path can be prose about the pattern, not a use of it
+    "PB009": ("high", "low"),    # the source shape is read straight off the manifest
 
     # evals: file parsing and a delegated runner
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),

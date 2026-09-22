@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 72 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 75 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -132,6 +132,9 @@ What has to be true before the skill leaves the machine it was written on. Half 
 | `PB004` | warning | high | medium | no | Text not in the declared publication language |
 | `PB005` | warning | high | low | no | Version drift |
 | `PB006` | info | medium | medium | no | Private material in a skill about to be published |
+| `PB007` | info | high | low | no | Package wires hooks beside this skill |
+| `PB008` | warning | medium | medium | no | Skill points at a package sibling |
+| `PB009` | info | high | low | no | Package installed from an unreviewed checkout |
 
 ### PB001 - No license
 
@@ -168,6 +171,24 @@ What has to be true before the skill leaves the machine it was written on. Half 
 **Why it matters.** A path into a personal vault, a private repository name, an email address.
 
 **Fix.** Strip it, or keep the skill unpublished.
+
+### PB007 - Package wires hooks beside this skill
+
+**Why it matters.** `hooks/hooks.json` runs a command on its event whether or not the model ever routes to this skill. A clean verdict on SKILL.md next to an unread hooks/ directory is the most convincing wrong answer the suite can give.
+
+**Fix.** Not a defect - read hooks/hooks.json before trusting the package, the way you would read a script this skill calls.
+
+### PB008 - Skill points at a package sibling
+
+**Why it matters.** A command, agent or script one directory above `skills/<name>/`, or a path through `${CLAUDE_PLUGIN_ROOT}`. The structure rules only resolve pointers inside the skill, so this one is invisible to them and breaks in silence the moment the skill is copied out of the plugin.
+
+**Fix.** Declare the dependency in prose, or bring what it needs inside the skill.
+
+### PB009 - Package installed from an unreviewed checkout
+
+**Why it matters.** The marketplace entry's `source` names a remote repository, archive or command - the files under review may be a checkout nobody has looked at.
+
+**Fix.** Not a defect - a fact about where the package came from.
 
 ## quality (QLxxx)
 
