@@ -105,9 +105,11 @@ EXFIL = re.compile(
     r"(?:curl|wget)[^\n]{0,200}?(?:--data-binary|--data|-d|-F|--upload-file|-T)\s+[\"']?[@<][^\s\"']+"
     r"|Invoke-RestMethod[^\n]{0,200}-InFile", re.I)
 
-# An absolute path that names whoever wrote the skill.
+# An absolute path that names whoever wrote the skill. The name needs one character that
+# is not a dot: `C:\Users\...\Downloads` is the ordinary way documentation elides an
+# account, and reading `...` as the account's name was a finding against every such page.
 PERSONAL = re.compile(
-    r"(?:[A-Za-z]:\\Users\\|/home/|/Users/)([A-Za-z0-9._-]+)")
+    r"(?:[A-Za-z]:\\Users\\|/home/|/Users/)([A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*)")
 PERSONAL_GENERIC = {"user", "username", "you", "youruser", "runner", "root", "me", "name",
                     "administrator", "public", "default", "shared"}
 

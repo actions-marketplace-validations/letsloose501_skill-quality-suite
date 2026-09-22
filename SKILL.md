@@ -25,14 +25,35 @@ agent installed, so nothing in it runs unless you ask for it by name.
 Everything lives in `scripts/sqs.py`. The static half is standard library only and works
 offline; it finds the skills folder on its own, or takes `--skills-dir`.
 
+## Paid layers: offer, warn, never start
+
+`sqs.py eval` in every form, and any check a model has to read or judge, spends the
+user's money or the usage window of their subscription. The rule for all of it:
+
+1. **Never run a paid layer on your own initiative**, however well it fits the task. Run
+   it only after the user said yes to that run in this conversation.
+2. **When a paid layer would help, offer it - and say, every time, that it is paid** and
+   what one run costs: a capped trigger run measured at about $0.21 (23.09.2026); a
+   trigger set of twenty queries at three runs each is sixty of those.
+3. **Say that it pays off only over time.** One run of a model that answers differently
+   each time is an anecdote. The value is a measurement repeated across edits - the
+   regression gate comparing this version with the last one - not a single number today.
+4. **Offer the free step first**: `check`, `route --prompt`, `evals`, `cases
+   --from-history`. Most "does it fire" questions are answered there.
+
+Plain wording that works: "This would need `eval --trigger`, which is paid - about $0.21
+per run, sixty runs for a proper set - and only pays off if you keep measuring across
+edits. The free checks say X. Run it?"
+
 ## Start here
 
 | The situation | Run |
 |---|---|
 | Just edited a skill, want it intact | `sqs.py check <skill>` |
-| A skill does not fire, or half-works | `sqs.py check <skill>`, then `sqs.py eval <skill> --trigger` |
-| Does the skill actually help | `sqs.py eval <skill> --runtime` - the task with it and without it |
-| Did my last edit break it | `sqs.py eval <skill> --all --save v2`, then `--compare v1 v2` |
+| A skill does not fire, or half-works | `sqs.py check <skill>` and `sqs.py route --prompt "..."`; `eval --trigger` is **paid - ask first** |
+| Does the skill actually help | `sqs.py eval <skill> --runtime` - **paid, ask first**: the task with it and without it |
+| Did my last edit break it | `sqs.py eval <skill> --all --save v2`, then `--compare v1 v2` - **paid, ask first** |
+| What do people actually type to reach it | `sqs.py cases <skill> --from-history` - free, reads local transcripts |
 | Switching the gate on over an old tree | `sqs.py baseline create`, then `check --baseline` |
 | One line per layer, for a decision | `sqs.py check <skill> --format board` |
 | Writing a new skill | `sqs.py new <name>`, then [creating-a-skill.md](references/creating-a-skill.md) |
@@ -179,52 +200,9 @@ un-silenced by the next person who reads the file, including you.
 
 ## Editing this suite
 
-The rule codes are the join key of the whole thing: `rules.py` is the single place a code
-is defined, and every engine emits codes from it. After adding or changing a rule:
-
-```
-python scripts/sqs.py rules --audit     registry against the engines, and against the corpus
-python tests/run_tests.py               every case, then the unit checks
-```
-
-`rules --audit` fails when an engine emits a code the registry does not carry, when the
-registry carries a row nothing emits, or when a rule has no confidence and
-false-positive grading. It also reports how many rules the corpus has ever observed
-firing.
-
-Two pages are generated rather than written, because a hand-written page about a tool
-is a snapshot of what the tool did the day somebody wrote it:
-
-```
-python scripts/build_docs.py            docs/quality-rules.md and examples/README.md
-python scripts/build_docs.py --check    fails when either has gone stale
-```
-
-`tests/fixtures/` is that corpus: small skills trees with an `expect.json` beside each,
-listing the codes the suite must report and the codes it must not. A new rule needs a
-**positive** case there - a rule nobody has watched fire is not a rule that works - and
-the two cases that matter most are `clean/` and `escape-hatches/`, which must report
-**nothing at all**. A linter is judged by what it stays quiet about.
-
-The evaluation layer has its own fixture, `tests/evaluation/`, driven by the `fake`
-provider: it replays canned runs so the confusion matrix, the two arms and the
-regression diff are tested without a model in the loop.
-
-The structure module is `scripts/check_skills.py`, imported rather than shelled out to.
-It also runs standalone, and as a `PostToolUse` + `Stop` hook pair. Parsing its printed
-output back into findings would be a second, drifting source of truth, so it carries the
-rule codes itself.
-
-A new harness is one file in `scripts/harnesses/` and nothing above it changes: the
-registry finds it, the engine classifies through it, the report prints it. Its
-declarations come from that project's own documentation, and what the documentation
-does not state is left out - an empty `limits` means unchecked, which is not the same
-as passed.
-
-New heuristics earn their place by being **checkable**: a rule that cannot name a file
-and a line does not belong in a linter - it belongs in the reading pass, where a human
-applies judgement. A linter that cries wolf stops being read, and then the real findings
-go unread with it.
+Changing a rule, a harness or the evaluation layer of this suite itself: read
+[editing-this-suite.md](references/editing-this-suite.md) first - the audit, the
+golden corpus and the generated pages all have to agree before a change is done.
 
 ## The references
 
@@ -242,3 +220,6 @@ go unread with it.
   that already fires, and before the first `sqs.py eval`.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the machine,
   and what the publish module cannot see.
+- [editing-this-suite.md](references/editing-this-suite.md) - the audit, the golden
+  corpus and the generated pages. Open it before changing a rule, a harness or the
+  evaluation layer of this suite itself.

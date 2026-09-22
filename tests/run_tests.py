@@ -304,6 +304,18 @@ def unit_checks():
         if got != want:
             out.append(f"SP020 on {folder}: expected {want}, got {got}")
 
+    # SE006: an elided account is not an account. `C:\Users\...\Downloads` used to report
+    # an account called `...`, which is how documentation writes a path it is hiding.
+    import security as sec
+    bs = chr(92)
+    for text, want in (("C:" + bs + "Users" + bs + "..." + bs + "Downloads", False),
+                       ("/home/.../notes", False),
+                       ("C:" + bs + "Users" + bs + "alexeyivanov" + bs + "AppData", True),
+                       ("/home/j.doe/notes", True)):
+        got = any(code == "SE006" for code, _ in sec.scan_line(text))
+        if got != want:
+            out.append(f"SE006 on {text!r}: expected {want}, got {got}")
+
     # CB004: what counts as a load-time command, against the documented rules - inline
     # only at a line start or after whitespace, every line of a ```! block, and an
     # ordinary fence tracked apart rather than guessed about.
