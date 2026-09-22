@@ -809,16 +809,36 @@ of these is built. Each carries what it rests on and what has to happen first.
   word about `pyyaml`, and a skill of the user's that never says to install `sympy`.
   Eleven mutations caught. Fixtures `script-undeclared` (the three colliding words) and
   `script-declared` (exact, every legitimate way to declare).
-- **An install command not pinned to a commit or a tag**, beside `PB014`. No installer
-  checks a signature today (an open feature request in Claude Code), and the one integrity
-  mechanism that works now is pinning, which is how an attested marketplace in the wild
-  does it. Free.
-- **The trigger surface widened on update.** A description that gained trigger wordings, or
-  words such as "best" and "always", between `--since` and now - a static continuation of
-  `PB012`/`PB013`. Rests on two attack papers: rewriting a tool's description moved its
-  selection rate from about 20% to 81% (ToolTweak, arXiv 2510.02554), and an implicit
-  version moved a skill's from 15.2% to 63.5% while human reviewers caught 2.9% of it
-  (ISM, arXiv 2609.02035). Free; the word list has to be calibrated on real diffs.
+- Not built, on three findings: **an install command not pinned to a commit or a tag**.
+  The README half cannot be fixed by its author - neither `npx skills add` for GitHub nor
+  `/plugin marketplace add` documents a way to name a ref (the plugin-marketplaces page:
+  a marketplace source in settings takes `ref` but not `sha`), so a finding there asks for
+  something the installer does not do. The half that can be pinned is a plugin `source`
+  in `marketplace.json`, whose `sha` is "the effective pin" by the same page - and the one
+  real catalogue here already pins all 240 of its remote sources, so the rule would fire
+  on nothing. And the suite's unit is a skill: pointed at a marketplace root it finds none,
+  so checking a catalogue's own entries is a mode of its own, not a rule beside `PB014`.
+  Worth building if a second catalogue ever shows up unpinned.
+- Half shipped, half not, on measurement: **the trigger surface widened on update**.
+  Calibrated on the 28 description changes in the user's skills history. *Shipped:* a
+  description that ranks the skill above its neighbours, as `SE007`'s router half in
+  `scripts/security.py` (`RANK_RE`) - the ToolTweak shape, which moved a tool's selection
+  rate from about 20% to 81% (arXiv 2510.02554). It turned out not to need `--since` at
+  all: a description claiming "the best tool" is bait whether it is new or old. Read in
+  the description only - the loose word list matched 61 times in skill bodies, the tight
+  one 4 times in 324 texts, every one about the subject ("truly the best option", "Best
+  choice for local tools"), and the router never sees a body. "best practices" is a
+  topic, and 4 marketplace descriptions carry it; the tight pattern leaves them alone.
+  0 matches over the 57 current descriptions and 200 earlier versions in git; the
+  positive side exists only in unit rows, the same footing `SE007` shipped on; three
+  mutations caught. *Not built:* the widening itself. 16 of the 28 changes gained trigger
+  sentences with new stems, and much of that is inventory ("10 режимов: ...") and
+  deferral to a neighbour, which narrows; the real widenings are indistinguishable from
+  an attack by construction - ISM moved a skill's selection from 15.2% to 63.5% by
+  broadening its coverage, and human reviewers caught 2.9% (arXiv 2609.02035). A rule
+  that cannot tell the two apart would only restate `git diff`. "always" and "whenever"
+  were left out of the bait on purpose: the skill-creation guidance itself recommends a
+  slightly pushy description.
 - **A description that retells the procedure.** One reported case: a description that
   summarised the workflow ("code review between tasks") was followed instead of the body,
   so the agent ran one review where the body asked for two; with the description cut back

@@ -337,9 +337,13 @@ _ROWS = {
               "trust it, or an invitation to skip review. Nothing in a skill can certify the "
               "skill: whoever wrote the files wrote the badge too. It is aimed at the router "
               "choosing between skills and at the person deciding whether to install, and it "
-              "asks both to take on faith what they should check.",
+              "asks both to take on faith what they should check. The router's half is a "
+              "description that ranks the skill above its neighbours (\"the best tool\", "
+              "\"better than any other\"): rewriting a tool's description that way moved its "
+              "selection rate from about 20% to 81% in one published attack.",
               "Remove the claim, or replace it with something a reader can verify - a link to "
-              "an audit, a test suite, a repository with history.", False),
+              "an audit, a test suite, a repository with history. In a description, say when "
+              "the skill applies, not how it compares.", False),
     "SE008": ("error", "Code decoded before it runs",
               "A script or an instruction decodes text - base64, hex, a compressed or "
               "marshalled blob - and executes the result: a decoder piped into a shell, "

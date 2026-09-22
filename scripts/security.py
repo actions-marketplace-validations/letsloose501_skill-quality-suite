@@ -212,6 +212,29 @@ def _py_decode_exec(text):
     return out
 
 
+# The description ranking the skill above the others it competes with. The same claim as
+# TRUST_RE's, aimed at the router rather than the installer: rewriting a tool's name and
+# description moved its selection rate from about 20% to 81% (ToolTweak, arXiv 2510.02554),
+# and "best" is the word the preference-manipulation work found models reward.
+#
+# Read in the description only. The router sees nothing else when it chooses, and the
+# bodies are full of the same words about their subject - measured over 324 skill texts,
+# "truly the best option", "Best choice for local tools", "| Best Tool |": four matches,
+# none of them a skill praising itself. Over the 57 descriptions here and 200 earlier
+# versions of them in git: none. "best practices" is a topic, not a ranking, and does not
+# match.
+RANK_RE = re.compile(
+    r"\b(?:the\s+)?(?:best|most\s+(?:powerful|capable|reliable|accurate|advanced))\s+"
+    r"(?:skill|tool|plugin|choice|option|agent)s?\b"
+    r"|\bbetter\s+than\s+(?:any|all|every|other|the\s+other)\b"
+    r"|\bthe\s+only\s+(?:skill|tool|plugin)\b"
+    r"|\bprefer\s+this\s+(?:skill|tool|plugin)\b"
+    r"|\binstead\s+of\s+(?:any|all|other)\s+(?:other\s+)?(?:skill|tool|plugin)s?\b"
+    r"|\bлучш(?:ий|ая|ее)\s+(?:скилл|инструмент|выбор|плагин)\w*"
+    r"|\bвместо\s+(?:любого|любых|других|остальных)\s+(?:скилл|инструмент|плагин)\w*"
+    r"|\bединственн\w+\s+(?:скилл|инструмент|плагин)\w*", re.I)
+
+
 QUOTED_RE = re.compile(r"«[^»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|'[^'\n]{4,}'")
 
 
@@ -290,4 +313,18 @@ def check(skill, cfg=None):
                     continue
                 seen.add((code, msg))
                 out.append(Finding(code, msg, where=rel, line=n))
-    return out
+    return out + _self_ranking(skill)
+
+
+def _self_ranking(skill):
+    """SE007, the router's half - the description placing this skill above the others."""
+    desc = skill.description or ""
+    spans = quoted_spans(desc)
+    m = next((m for m in RANK_RE.finditer(desc)
+              if not any(a <= m.start() and m.end() <= b for a, b in spans)), None)
+    if not m:
+        return []
+    line = next((n for n, l in enumerate(skill.text.split("\n"), 1)
+                 if l.lstrip().startswith("description")), None)
+    return [Finding("SE007", f"\"{m.group(0)}\" - the description ranks the skill above "
+                             f"the ones it competes with", where="SKILL.md", line=line)]

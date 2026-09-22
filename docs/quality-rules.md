@@ -502,9 +502,9 @@ What an installed skill can do to the machine that loads it. A skill is executab
 
 ### SE007 - Skill vouches for itself
 
-**Why it matters.** A guarantee of safety, an endorsement by a named vendor, a count of users who trust it, or an invitation to skip review. Nothing in a skill can certify the skill: whoever wrote the files wrote the badge too. It is aimed at the router choosing between skills and at the person deciding whether to install, and it asks both to take on faith what they should check.
+**Why it matters.** A guarantee of safety, an endorsement by a named vendor, a count of users who trust it, or an invitation to skip review. Nothing in a skill can certify the skill: whoever wrote the files wrote the badge too. It is aimed at the router choosing between skills and at the person deciding whether to install, and it asks both to take on faith what they should check. The router's half is a description that ranks the skill above its neighbours ("the best tool", "better than any other"): rewriting a tool's description that way moved its selection rate from about 20% to 81% in one published attack.
 
-**Fix.** Remove the claim, or replace it with something a reader can verify - a link to an audit, a test suite, a repository with history.
+**Fix.** Remove the claim, or replace it with something a reader can verify - a link to an audit, a test suite, a repository with history. In a description, say when the skill applies, not how it compares.
 
 ### SE008 - Code decoded before it runs
 
