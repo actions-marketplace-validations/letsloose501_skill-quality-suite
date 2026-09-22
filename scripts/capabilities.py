@@ -158,9 +158,12 @@ FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(!?)")
 def _injections(skill):
     """[(line number, command, inside an ordinary code block)] from SKILL.md's body.
 
-    An ordinary fence is tracked rather than skipped: the documentation says nothing
-    about whether an inline injection inside one runs, and a rule that quietly assumed
-    it does not would be making the claim the page declines to make.
+    An ordinary fence does not stop an injection. The documentation does not say either
+    way, so it was watched: a probe skill with `!`echo RAN_FENCED`` inside a plain code
+    block came back to the model as `RAN_FENCED` (Claude Code 2.1.280, 23.09.2026). The
+    fence is still recorded, because a command that sits in a code block reads as an
+    example to the author who put it there - which is exactly how a guide to the syntax
+    ends up running its own examples on load.
     """
     lines = skill.text.split("\n")
     start = 0
@@ -211,20 +214,18 @@ def load_time_commands(skill):
     if not found:
         return []
     raw = skill.fm.get("allowed-tools") or ""
-    live = [f for f in found if not f[2]]
-    fenced = len(found) - len(live)
-    line, cmd, _ = (live or found)[0]
-    parts = []
-    if live:
-        approved = sum(1 for _, c, _ in live if _preapproved(c, raw))
-        parts.append(f"{len(live)} command(s) run when the skill loads, before the model "
-                     f"reads it, without asking - first `{cmd[:60]}`")
-        if approved:
-            parts.append(f"{approved} of them pre-approved by its own `allowed-tools`, so "
-                         f"nothing stops them")
+    fenced = sum(1 for f in found if f[2])
+    approved = sum(1 for _, c, _ in found if _preapproved(c, raw))
+    line, cmd, _ = found[0]
+    parts = [f"{len(found)} command(s) run when the skill loads, before the model reads "
+             f"it, without asking - first `{cmd[:60]}`"]
     if fenced:
-        parts.append(f"{fenced}{' more' if live else ''} inside ordinary code blocks, where "
-                     f"the documentation "
-                     f"does not say whether they run"
-                     + ("" if live else f" - first `{cmd[:60]}`"))
+        parts.append(f"{fenced} of them sit in ordinary code blocks, which read as examples "
+                     f"and run anyway")
+    if approved:
+        parts.append(f"{approved} pre-approved by its own `allowed-tools`, so nothing stops "
+                     f"them")
+    if approved < len(found):
+        parts.append(f"{len(found) - approved} not pre-approved: unless your own permission "
+                     f"rules allow them, loading the skill aborts outside auto mode")
     return [Finding("CB004", "; ".join(parts), severity="info", where="SKILL.md", line=line)]

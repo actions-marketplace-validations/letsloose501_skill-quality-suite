@@ -498,7 +498,8 @@ _ROWS = {
               "placeholder. It never prompts: a permission rule or the skill's own "
               "`allowed-tools` lets it through, or the invocation aborts. A skill that "
               "pre-approves its own injected commands runs them silently on every load, "
-              "before anything in it has been read.",
+              "before anything in it has been read. A plain code block does not stop "
+              "it: watched, an injection inside one ran like any other.",
               "Read each command as you would a hook. If the skill pre-approves them in "
               "`allowed-tools`, that approval is the author's, not yours.", False),
     "CB003": ("info", "Bundled script can read the environment",

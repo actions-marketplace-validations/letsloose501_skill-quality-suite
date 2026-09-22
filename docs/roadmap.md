@@ -499,8 +499,11 @@ rule or the skill's own `allowed-tools` allows. The static half had no view of i
 57 real skills here it fires on two, both from the official marketplace: one runs `date`
 and `find` on every load, each pre-approved by its own `allowed-tools`; the other is a
 guide to the syntax whose 14 injections all sit inside ordinary code blocks. Whether
-those run is the one question the documentation leaves open, so the finding counts them
-apart and says so; finding out takes a live load, which costs. The porting half of the
+those run was the one question the documentation left open, and one live load settled
+it: a probe with `` !`echo RAN_FENCED` `` in a plain code block came back as
+`RAN_FENCED`. So that guide runs `npm test $1`, `gh pr view $1` and a set of build
+scripts on load, pre-approves none of them, and by the documented rule aborts outside
+auto mode unless the user's own permissions allow each one. The porting half of the
 same idea - `$ARGUMENTS` and `!` as Claude-only syntax in `compat` - was not built: the
 other runtimes' pages on it were not checked, and an adapter row nobody checked is how
 `cursor.py` once invented an incompatibility.
@@ -601,6 +604,21 @@ this page's own rule about one example being an anecdote puts a defensible thres
 two or three skills - 500 to 700 runs. On a subscription the dollars are notional and
 the real currency is the usage window: six runs moved a five-hour window by about seven
 points, so the sweep is several windows, on the same account the author is working in.
+
+**Cheaper per run was measured too, and it is not.** One of the published description
+optimisers decides at the first `tool_use` in the stream and kills the process there,
+which looked like a way to cut the price. Three live runs of one query, 23.09.2026: the
+capped run as the pass does it today cost $0.2118 over three turns; the same with
+`--max-turns 1` cost $0.2114; the early kill reached the same decision in 5.0 s instead
+of 5.8 s, inside a first turn that alone costs the $0.21. The price is the first turn:
+about 25,000 tokens written to a one-hour prompt cache - the system prompt with the
+skill list - and it was written afresh on each of the three consecutive runs from one
+directory. Stopping after the decision saves hundredths of a cent. The one lever left
+is that cache write repeating, which suggests something in the prompt changes between
+runs; that is a hypothesis, not checked. Also found: `RUN_BUDGET_USD = 0.12` is below
+the cost of the first turn, so the cap always fires right after the decision - harmless,
+but the ceiling was never what bounded a run. Four live runs moved the five-hour window
+by one point.
 
 **So the item stays unbuilt, and the reason is now a finding rather than a shrug.** The
 threshold it would produce is measured against one corpus, in one house style, in one

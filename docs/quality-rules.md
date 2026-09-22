@@ -53,7 +53,7 @@ Each rule carries two gradings that are about **the check**, not about the skill
 
 ### CB004 - Commands run when the skill loads
 
-**Why it matters.** `!`command`` in the body, and every line of a block opened with ```!, runs on the machine before the model is sent the skill - the output replaces the placeholder. It never prompts: a permission rule or the skill's own `allowed-tools` lets it through, or the invocation aborts. A skill that pre-approves its own injected commands runs them silently on every load, before anything in it has been read.
+**Why it matters.** `!`command`` in the body, and every line of a block opened with ```!, runs on the machine before the model is sent the skill - the output replaces the placeholder. It never prompts: a permission rule or the skill's own `allowed-tools` lets it through, or the invocation aborts. A skill that pre-approves its own injected commands runs them silently on every load, before anything in it has been read. A plain code block does not stop it: watched, an injection inside one ran like any other.
 
 **Fix.** Read each command as you would a hook. If the skill pre-approves them in `allowed-tools`, that approval is the author's, not yours.
 

@@ -91,8 +91,12 @@ the count the finding leads with.
 
 Reported from the `capabilities` module - `sqs.py capabilities` or any `check`, not
 `sqs.py security` - at `info`, one finding per skill: a skill that
-documents the syntax carries dozens of examples. An injection inside an ordinary code
-block is counted apart, because the documentation does not say whether it runs there;
+documents the syntax carries dozens of examples. **A plain code block does not stop an
+injection.** The documentation does not say so either way, so it was watched: a probe
+skill with `` !`echo RAN_FENCED` `` inside an ordinary code block came back to the model
+as `RAN_FENCED`. The finding still says how many sit in code blocks, because those read
+as examples to whoever wrote them - and a command without permission aborts the load
+outside auto mode, so a guide to the syntax can fail to load on its own examples;
 `KEY=!`cmd`` is not counted at all, because the documentation says the inline form
 counts only at a line start or after whitespace.
 
