@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 98 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 99 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -33,6 +33,7 @@ Each rule carries two gradings that are about **the check**, not about the skill
 | `CB003` | info | high | low | no | Bundled script can read the environment |
 | `CB004` | info | high | low | no | Commands run when the skill loads |
 | `CB005` | warning | high | low | no | Bundled script's capabilities cannot be read |
+| `CB006` | warning | high | low | no | Bundled script needs a package the skill never names |
 
 ### CB001 - Bundled script can reach the network
 
@@ -63,6 +64,12 @@ Each rule carries two gradings that are about **the check**, not about the skill
 **Why it matters.** The script imports a module by a name it computes, reaches into `os`, `subprocess` or `builtins` by a computed attribute name, or passes code built at run time to `exec`/`eval`. Whatever that line does is decided by data, not by the file, so the other capability rules stay silent about it - and a silent manifest reads as "can do nothing". The same indirection written with constants is followed and reported as the capability it spells.
 
 **Fix.** Write the import or the call out plainly. If the name really has to come from data, check it against a fixed list first, and say in the skill what the list is.
+
+### CB006 - Bundled script needs a package the skill never names
+
+**Why it matters.** A script imports a package outside the standard library, outside `try: ... except ImportError`, and neither the skill's text, a requirements file nor the script's inline PEP 723 block names it. The agent finds out halfway through the task, as a traceback, on every machine that does not happen to have it - and the author's machine always does.
+
+**Fix.** Name the package where the agent reads before running the script - a line in SKILL.md ("needs `pymupdf`: `pip install pymupdf`"), a requirements file, or a PEP 723 block the script runs under with `uv run`. If the script can do without it, import it inside `try`/`except ImportError`.
 
 ## cases (CSxxx)
 

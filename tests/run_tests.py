@@ -357,6 +357,7 @@ def unit_checks():
     # the skill does or where a neighbour came from - and must never read as a badge.
     out += history_checks()
     out += indirection_checks()
+    out += dependency_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -707,6 +708,48 @@ def indirection_checks():
         if any(c == "SE008" for c, _ in security.scan_line(line, python=True)):
             out.append(f"SE008 pattern fired on a .py line, where the syntax tree reads it: "
                        f"{line!r}")
+    return out
+
+
+def dependency_checks():
+    """CB006 against an environment inside the skill folder, which no fixture can carry.
+
+    A `.venv` beside `SKILL.md` with the package installed is how a script works on the
+    author's machine; it is not the skill declaring anything. A package of the skill's own
+    code, on the other hand, is local and needs nothing installed.
+    """
+    import capabilities
+    from core import Skill
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "probe")
+        for d in ("scripts", os.path.join(".venv", "Lib", "site-packages", "numpy"),
+                  os.path.join("scripts", "helpers")):
+            os.makedirs(os.path.join(root, d))
+        files = {
+            "SKILL.md": "---\nname: probe\ndescription: Sums a table. Use when the user "
+                        "asks for a total.\n---\n\nRun `scripts/total.py`.\n",
+            os.path.join(".venv", "pyvenv.cfg"): "home = /usr/bin\n",
+            os.path.join(".venv", "Lib", "site-packages", "numpy", "__init__.py"): "",
+            os.path.join("scripts", "helpers", "__init__.py"): "",
+            os.path.join("scripts", "total.py"): "import helpers\nimport numpy\n",
+        }
+        for rel, body in files.items():
+            with open(os.path.join(root, rel), "w", encoding="utf-8") as f:
+                f.write(body)
+        found = [f.msg for f in capabilities.check(Skill(root)) if f.code == "CB006"]
+        if len(found) != 1 or "`numpy`" not in found[0] or "helpers" in found[0]:
+            out.append(f"CB006 with a .venv in the skill folder: {found} - expected numpy "
+                       f"alone, the environment not counting as the skill's own code and "
+                       f"`helpers` counting")
+    # The corpus sees the code; the colliding words have to be seen in the message. With
+    # prose read word by word, "YAML" and "requests" would declare two of the three and
+    # the code would still fire on the third.
+    skill = Skill(os.path.join(FIXTURES, "script-undeclared", "sheet-export"))
+    msg = " ".join(f.msg for f in capabilities.check(skill) if f.code == "CB006")
+    for name in ("`openpyxl`", "`requests`", "`yaml`"):
+        if name not in msg:
+            out.append(f"CB006 on script-undeclared does not name {name}: {msg!r}")
     return out
 
 

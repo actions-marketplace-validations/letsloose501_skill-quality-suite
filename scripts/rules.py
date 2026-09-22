@@ -541,6 +541,16 @@ _ROWS = {
               "Write the import or the call out plainly. If the name really has to come from "
               "data, check it against a fixed list first, and say in the skill what the list "
               "is.", False),
+    "CB006": ("warning", "Bundled script needs a package the skill never names",
+              "A script imports a package outside the standard library, outside `try: ... "
+              "except ImportError`, and neither the skill's text, a requirements file nor the "
+              "script's inline PEP 723 block names it. The agent finds out halfway through the "
+              "task, as a traceback, on every machine that does not happen to have it - and "
+              "the author's machine always does.",
+              "Name the package where the agent reads before running the script - a line in "
+              "SKILL.md (\"needs `pymupdf`: `pip install pymupdf`\"), a requirements file, or "
+              "a PEP 723 block the script runs under with `uv run`. If the script can do "
+              "without it, import it inside `try`/`except ImportError`.", False),
 
     # ---- CS: the case set, and where its three sources disagree ---------------
     "CS001": ("warning", "Promise with no instruction behind it",
@@ -689,6 +699,7 @@ GRADES = {
     "CB001": ("medium", "medium"), "CB002": ("high", "low"), "CB003": ("high", "low"),
     "CB004": ("high", "low"),    # the documented syntax, read exactly; the fence question is stated, not guessed
     "CB005": ("high", "low"),    # a computed name or code string, read off the tree; limited to capability-bearing modules
+    "CB006": ("high", "low"),    # imports read exactly; "named" is any word in the skill's text, generous by design
 
     # cases: a promise clause and a production verb are both matched by pattern, and a
     # body with no production verb anywhere is a strong signal - but "the description

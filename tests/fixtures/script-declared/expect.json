@@ -1,0 +1,5 @@
+{
+  "note": "The silent side of CB006: every way a skill can say what its script needs. An install line in SKILL.md (including `pyyaml` for `import yaml`), the frontmatter's `compatibility`, a requirements.txt, an import line in a reference, an inline PEP 723 block, a module of the skill's own, and an import guarded by `except ImportError`. Exact, so any finding is a false positive.",
+  "expect": [],
+  "exact": true
+}

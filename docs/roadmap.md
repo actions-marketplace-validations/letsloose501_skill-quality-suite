@@ -789,12 +789,26 @@ Found while reading two published projects - a skill framework and a security sc
 and the research on description optimisation; the projects stay unnamed, as before. None
 of these is built. Each carries what it rests on and what has to happen first.
 
-- **A script imports a package nothing declares.** Measured: the 19 real skill trees here
-  carry no dependency manifest at all, and their scripts import numpy, requests, PIL,
-  pymupdf, openpyxl, yaml and more. So a skill half-works on any machine missing one of
-  them, and an SBOM built from manifests would be empty. Offline and stdlib-only via
-  `sys.stdlib_module_names`, which exists from Python 3.10 - older interpreters need a
-  decision before this ships. Free.
+- Shipped: **a script imports a package nothing declares** - `CB006` in
+  `scripts/capabilities.py`. The standard library is data, `scripts/stdlib_modules.py`:
+  the union of `sys.stdlib_module_names` from CPython 3.11 and 3.14 plus the four modules
+  3.9 still had, because the attribute does not exist on 3.9 and the answer must not
+  depend on which interpreter runs the check. Declared means a manifest, the frontmatter's
+  `compatibility`, a PEP 723 block, or a prose line that installs or imports the package;
+  an import under `except ImportError` is optional. Four rounds of calibration on the 19
+  real trees (159 Python files), each a wrong answer watched happening: zero findings,
+  because any word in the prose counted and `yaml` (the frontmatter format), `docx` (the
+  file format) and `requests` (the English word) all read as declarations - so words in
+  code were tried, and `yaml` still matched inside a code block that drew a directory
+  tree, which is why only a line that installs or imports counts; `run_tests` read as
+  third-party because the local-module list came from `skill.walk()`, which `.sqsignore`
+  narrows, so locality is read off the disk; and then `sympy` went silent because a real
+  skill carries its own `.venv` with the package installed, which is the author's machine
+  and not the skill, so environments are pruned. Two findings remain and both were read
+  by hand and are real: an official marketplace validator that imports `yaml` without a
+  word about `pyyaml`, and a skill of the user's that never says to install `sympy`.
+  Eleven mutations caught. Fixtures `script-undeclared` (the three colliding words) and
+  `script-declared` (exact, every legitimate way to declare).
 - **An install command not pinned to a commit or a tag**, beside `PB014`. No installer
   checks a signature today (an open feature request in Claude Code), and the one integrity
   mechanism that works now is pinning, which is how an attested marketplace in the wild

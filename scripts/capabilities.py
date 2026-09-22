@@ -272,10 +272,163 @@ def _other_capabilities(text):
     return out
 
 
+# The import name and the name it is installed under, where the two differ - a skill that
+# says "pip install pymupdf" has declared what `import fitz` needs.
+PIP_NAMES = {
+    "PIL": "pillow", "fitz": "pymupdf", "yaml": "pyyaml", "docx": "python-docx",
+    "pptx": "python-pptx", "cv2": "opencv-python", "sklearn": "scikit-learn",
+    "bs4": "beautifulsoup4", "dateutil": "python-dateutil", "dotenv": "python-dotenv",
+    "win32api": "pywin32", "win32com": "pywin32", "win32con": "pywin32",
+    "Crypto": "pycryptodome", "jwt": "pyjwt", "serial": "pyserial",
+    "magic": "python-magic", "OpenSSL": "pyopenssl", "attr": "attrs",
+}
+PEP723_RE = re.compile(r"^# /// script\s*$(.*?)^# ///\s*$", re.M | re.S)
+_IMPORT_ERRORS = {"ImportError", "ModuleNotFoundError", "Exception", "BaseException"}
+
+
+def _catches_import_error(handler):
+    t = handler.type
+    if t is None:
+        return True
+    names = t.elts if isinstance(t, ast.Tuple) else [t]
+    return any(isinstance(n, ast.Name) and n.id in _IMPORT_ERRORS for n in names)
+
+
+def _required_imports(tree):
+    """{root name: first line} - absolute imports the script cannot run without.
+
+    An import inside `try:` whose handler catches `ImportError` is optional by the script's
+    own say-so, and one under `if TYPE_CHECKING:` never runs; neither is a requirement.
+    """
+    found = {}
+
+    def visit(node, optional):
+        if isinstance(node, ast.Try) or type(node).__name__ == "TryStar":
+            guarded = optional or any(_catches_import_error(h) for h in node.handlers)
+            for child in node.body:
+                visit(child, guarded)
+            for child in node.handlers + node.orelse + node.finalbody:
+                visit(child, optional)
+            return
+        if isinstance(node, ast.If):
+            t = node.test
+            if ((isinstance(t, ast.Name) and t.id == "TYPE_CHECKING")
+                    or (isinstance(t, ast.Attribute) and t.attr == "TYPE_CHECKING")):
+                for child in node.orelse:
+                    visit(child, optional)
+                return
+        if not optional:
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    found.setdefault(_root(a.name), node.lineno)
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                found.setdefault(_root(node.module), node.lineno)
+        for child in ast.iter_child_nodes(node):
+            visit(child, optional)
+
+    visit(tree, False)
+    return found
+
+
+# Files whose whole job is to list what a project needs: every name in them is a
+# declaration. Matched on the file name, not the extension - a `.yaml` trigger set or a
+# `.txt` note is prose.
+MANIFEST_RE = re.compile(r"(?:^|/)(?:requirements[\w.-]*\.(?:txt|in)|constraints[\w.-]*\.txt"
+                         r"|pyproject\.toml|setup\.cfg|Pipfile|environment\.ya?ml)$", re.I)
+PROSE_EXT = (".md", ".markdown", ".txt", ".rst")
+# Directories that hold an installation, not the skill's own code.
+ENV_DIRS = {"site-packages", "dist-packages", "node_modules", "__pycache__", "venv", "env"}
+# A line that says how to get a package, or shows it being imported.
+REQUIREMENT_LINE_RE = re.compile(
+    r"\b(?:pip3?|pipx|uv\s+pip|python3?\s+-m\s+pip|poetry|conda|mamba)\s+(?:install|add)\b"
+    r"|\buv\s+add\b|--with(?:-requirements)?\b|^\s*(?:import|from)\s+[A-Za-z_]", re.M)
+
+
+def _requirement_lines(text):
+    """The lines of a prose file that tell the reader a package is needed.
+
+    In prose a package name is a word like any other, and the words collide: `yaml` is also
+    the format of every frontmatter, `docx` of every Word file, `requests` of every English
+    sentence about asking. Measured on the real skills here, all three were read as
+    declarations and none was one - `yaml` even inside a code block, where it labelled a
+    directory tree. The collision is in the word, not in where it sits, so only a line that
+    installs the package or imports it counts: `pip install pymupdf` does, "counted by
+    SymPy" does not.
+    """
+    return "\n".join(line for line in text.split("\n") if REQUIREMENT_LINE_RE.search(line))
+
+
+def _undeclared(skill, scripts):
+    """CB006 - a package a bundled script cannot run without, named nowhere in the skill.
+
+    Named means: anywhere in a manifest (`requirements.txt`, `pyproject.toml` and kin), in
+    the frontmatter's `compatibility` - the specification's own place for environment
+    requirements - or in the script's inline PEP 723 block; and in prose only on a line
+    that installs or imports it. Under its import name or the name it installs as. The
+    finding is for the skill that never says, where the agent meets the missing package
+    as a traceback halfway through the task.
+
+    What is local is read off the disk, not off `skill.walk()`: a module `.sqsignore`
+    hides from the checks is still a file the import finds. An environment is not local,
+    though - a `.venv` inside the skill folder with the package installed is how it works
+    on the author's machine and exactly what the next machine does not have (watched: a
+    real skill's own `.venv` held `sympy`, and the finding went silent).
+    """
+    import os                                                      # noqa: PLC0415
+    from stdlib_modules import STDLIB                              # noqa: PLC0415
+    local, declared = set(), [str(skill.fm.get("compatibility", ""))]
+    for dirpath, dirnames, files in os.walk(skill.root):
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d not in ENV_DIRS
+                       and not os.path.isfile(os.path.join(dirpath, d, "pyvenv.cfg"))]
+        local |= set(dirnames)
+        local |= {f[:-3] for f in files if f.endswith(".py")}
+    for rel, size, _ in skill.walk():
+        rel = rel.replace("\\", "/")
+        if rel.endswith(".py"):
+            continue
+        manifest = MANIFEST_RE.search(rel)
+        if size > 2_000_000 or not (manifest or rel.lower().endswith(PROSE_EXT)):
+            continue
+        try:
+            with open(f"{skill.root}/{rel}", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        declared.append(text if manifest else _requirement_lines(text))
+    prose = "\n".join(declared).lower()
+    out = []
+    for rel, text in scripts:
+        try:
+            tree = ast.parse(text)
+        except (SyntaxError, ValueError):
+            continue
+        own = "\n".join(m.group(1) for m in PEP723_RE.finditer(text)).lower()
+        missing = []
+        for name, line in sorted(_required_imports(tree).items(), key=lambda kv: kv[1]):
+            if name in STDLIB or name in local or name == "__future__":
+                continue
+            spelled = {name.lower(), PIP_NAMES.get(name, name).lower()}
+            if any(re.search(r"(?<![\w.-])" + re.escape(s) + r"(?![\w-])", prose + own)
+                   for s in spelled):
+                continue
+            missing.append((name, line))
+        if missing:
+            names = ", ".join(f"`{n}`" + (f" ({PIP_NAMES[n]})" if n in PIP_NAMES else "")
+                              for n, _ in missing)
+            out.append(Finding("CB006", f"imports {names} - nothing in the skill names "
+                                        f"{'it' if len(missing) == 1 else 'them'}, so the "
+                                        f"script fails wherever "
+                                        f"{'it is' if len(missing) == 1 else 'they are'} "
+                                        f"not installed", where=rel, line=missing[0][1]))
+    return out
+
+
 def check(skill, cfg=None):
     out = []
     if not skill.ok:
         return out
+    python = []
     for rel, size, _ in sorted(skill.walk()):
         if not rel.lower().endswith(SCRIPT_EXT) or size > 2_000_000:
             continue
@@ -284,6 +437,8 @@ def check(skill, cfg=None):
                 text = f.read()
         except OSError:
             continue
+        if rel.lower().endswith(".py"):
+            python.append((rel, text))
         found = (_py_capabilities(text) if rel.lower().endswith(".py")
                 else _other_capabilities(text))
         seen = set()
@@ -294,6 +449,7 @@ def check(skill, cfg=None):
                 continue
             seen.add((code, msg))
             out.append(Finding(code, msg, where=rel, line=line))   # registry default
+    out += _undeclared(skill, python)
     out += load_time_commands(skill)
     return out
 
