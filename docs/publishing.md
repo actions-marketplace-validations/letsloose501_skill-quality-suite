@@ -2,8 +2,8 @@
 title: "Publishing an Agent Skill - the gate before it leaves your machine"
 description: >-
   What has to be true before an AI Agent Skill is published: personal paths, private
-  material, licensing, version drift, documentation language, and what the publish
-  check cannot see.
+  material, licensing, version drift, whether the version still describes the content,
+  documentation language, and what the publish check cannot see.
 ---
 
 # Publishing
@@ -29,6 +29,43 @@ correct-and-intended for a skill that stays private.
 | `PB002` | no README: `SKILL.md` talks to the agent, and nothing talks to the human deciding whether to install |
 | `PB005` | the manifest and the skill disagree about which version this is |
 | `PB004` | documentation in a language the repository does not declare |
+
+## Does the version still say what this is
+
+`PB005` above catches two files contradicting each other. The failure nobody notices is
+the opposite one: the instructions moved, the number did not, and nothing in the
+repository contradicts anything. A skill that was improved and still carries its old
+version cannot be told apart from the one somebody already installed, and that stays
+true until they read the diff - which is what a version number exists to save them.
+
+Two rules, both opt-in behind `--since`, because a comparison needs a stated *before*:
+
+| Rule | What it catches |
+|---|---|
+| `PB010` | files under the skill changed since `--since` and the declared version did not move |
+| `PB011` | `name`, the invocation mode or `allowed-tools` changed, and only the patch digit moved |
+
+```bash
+sqs.py publish ./my-skill --since v1.3.0            # a git ref: since the last release
+sqs.py publish ./my-skill --since ~/.claude/skills  # a directory: the copy already installed
+```
+
+The directory form is the one worth knowing about. Git answers *did I bump it since the
+last tag*; a directory answers *the copy I ship and the copy I edit have drifted - which
+one is `1.2.0`*, and that is the question a version number was invented for. A relative
+path is looked for beside the skills directory first, so it can live in a config.
+
+Neither rule rewrites anything, and `fix --apply` will not touch a version either. The
+number is a claim about your own work, and a tool that makes the claim on your behalf has
+told your users something you never said. The convention the rules assume is the usual
+one: instructions change, bump the patch `0.0.1` at a time; the way the skill is called
+changes, bump more than that.
+
+Three things they deliberately stay quiet about. A skill that did not exist at `--since`
+- there is no claim yet to go stale. A skill that declares no version at all - there is
+no claim to go stale either, and inventing one is the author's decision, not a lint
+finding. And a file hidden by `.sqsignore` is not a change, the same way it is not
+anything else: what the suite does not read, it makes no claim about.
 
 Plus, from the other modules and worth re-reading before a release:
 

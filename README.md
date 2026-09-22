@@ -41,7 +41,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 79 rules](docs/quality-rules.md)**
+📋 **[All 81 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|
@@ -207,8 +207,10 @@ checking `plugin.json`, hooks, commands and agents is a different tool's job, an
 half-done version of it would imply the rest had been looked at.
 
 Flags: `--format text|json|github|sarif|board`, `--strict` (warnings count as failures),
-`--quiet`, `--changed` (only what the diff touched), `--baseline`, `--min-confidence`,
-`--score`, `--skills-dir`, `--config`, `--trust-target`.
+`--quiet`, `--changed` (only what the diff touched), `--since` (the earlier state to
+compare against: a git ref, or a directory holding an earlier copy of the tree),
+`--baseline`, `--min-confidence`, `--score`, `--skills-dir`, `--config`,
+`--trust-target`.
 
 **The suite does not run the tree it is reading.** A skills directory can carry its
 own `check_skills.py` and its own `evals/run_evals.py`, and both are Python the suite

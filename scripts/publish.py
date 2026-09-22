@@ -12,8 +12,9 @@ its findings are correct-and-intended for a private skill.
 import json
 import os
 import re
+import subprocess
 
-from core import Finding
+from core import Finding, Skill, parse_frontmatter
 from security import PERSONAL, PERSONAL_GENERIC
 
 LICENSE_NAMES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")
@@ -160,6 +161,191 @@ def origin_finding(root, plugin_name):
                              + (f" ({detail})" if detail else ""))]
 
 
+# ---- the version as a claim about the content ---------------------------------------
+
+SEMVER_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+# `version` is not one of the specification's frontmatter fields - it belongs under
+# `metadata:`, which `compat.py` already records. The frontmatter parser is flat by
+# design, so a nested block arrives as one string under its parent key and the nested
+# spelling has to be read back out of it. Without this, half the skills in the wild
+# declare a version this module cannot see.
+META_VERSION_RE = re.compile(r"\bversion:\s*['\"]?([^\s'\",}]+)")
+# Frontmatter fields that decide how a skill is called, rather than what it says. A
+# change to one of these is a change a caller can trip over, which is the line the
+# specification's own "breaking change" wording draws.
+SURFACE_FIELDS = ("name", "disable-model-invocation", "allowed-tools")
+
+
+def declared_version(fm):
+    """The version a skill claims - top level or under `metadata:` - or None."""
+    own = (fm.get("version") or "").strip().strip("'\"")
+    if own:
+        return own
+    m = META_VERSION_RE.search(fm.get("metadata") or "")
+    return m.group(1) if m else None
+
+
+def _git(root, *args):
+    """(ok, stdout) for a git command run inside the skill's own directory.
+
+    `-C` puts git's idea of "here" on the skill, which is what makes `--relative` and
+    `<ref>:./<path>` resolve against the skill rather than against the repository root.
+    """
+    try:
+        r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+    except OSError:
+        return False, ""
+    return r.returncode == 0, r.stdout
+
+
+def resolve_since(since, root):
+    """(comparison spec, note) for `--since`, or (None, why not).
+
+    `--since` names the earlier state the version number is a claim against, and it
+    takes two spellings because the two questions people actually ask are different.
+    A git ref answers *did I bump it since the last release*. A directory answers
+    *the copy I installed and the copy I edit disagree - which one is 1.2.0*, which
+    is the case a version number exists for and the one git cannot see at all.
+
+    A relative directory is looked for beside the skills directory first, so the flag
+    can be written in a config or a fixture without an absolute path. Ambiguity is
+    resolved towards the directory and said out loud in the note, because a ref and a
+    folder sharing a name is rare and silence about which one won would not be.
+    """
+    if not since:
+        return None, ""
+    for cand in (since, os.path.join(root, since)):
+        if os.path.isdir(cand):
+            return ({"kind": "tree", "root": os.path.abspath(cand)},
+                    f"--since: comparing against the copy in {os.path.abspath(cand)}")
+    ok, _ = _git(root, "rev-parse", "--verify", since + "^{commit}")
+    if not ok:
+        return None, (f"--since {since!r} is neither a directory nor a commit this "
+                      f"checkout knows - the version rules (PB010, PB011) did not run")
+    return {"kind": "git", "ref": since}, f"--since: comparing against git {since}"
+
+
+def _previous_from_git(skill, ref):
+    """(changed paths, previous frontmatter) for a skill as of a commit, or None."""
+    ok, text = _git(skill.root, "show", f"{ref}:./SKILL.md")
+    if not ok:
+        return None                      # the skill did not exist then: nothing to bump
+    changed = set()
+    for cmd in (("diff", "--name-only", "--relative", ref, "--", "."),
+                ("diff", "--name-only", "--relative", "--cached", ref, "--", "."),
+                ("ls-files", "--others", "--exclude-standard", "--", ".")):
+        ok, out = _git(skill.root, *cmd)
+        if not ok:
+            return None
+        changed |= {ln.strip().replace("\\", "/") for ln in out.splitlines() if ln.strip()}
+    _, fm, _ = parse_frontmatter(text)
+    return sorted(p for p in changed if not skill.ignored(p)), fm
+
+
+def _previous_from_tree(skill, tree):
+    """(changed paths, previous frontmatter) for a skill as an earlier copy, or None."""
+    for cand in (os.path.join(tree, skill.folder), tree):
+        if os.path.isfile(os.path.join(cand, "SKILL.md")):
+            old = Skill(cand)
+            break
+    else:
+        return None
+    def payload(s):
+        return {rel: os.path.join(s.root, rel.replace("/", os.sep))
+                for rel, _, _ in s.walk()}
+    before, after = payload(old), payload(skill)
+    changed = set(before) ^ set(after)
+    for rel in set(before) & set(after):
+        if _bytes(before[rel]) != _bytes(after[rel]):
+            changed.add(rel)
+    return sorted(changed), old.fm
+
+
+def _bytes(path):
+    """File contents with line endings flattened.
+
+    Two checkouts of the same file on Windows differ by `\\r` alone whenever
+    `core.autocrlf` is on, and a rule that reported that as an improvement would fire
+    on every skill on half the machines that run it.
+    """
+    try:
+        with open(path, "rb") as f:
+            return f.read().replace(b"\r\n", b"\n")
+    except OSError:
+        return None
+
+
+def surface_changes(old_fm, new_fm):
+    """Plain-language names for the ways the skill is now called differently."""
+    out = []
+    for field in SURFACE_FIELDS:
+        before = (old_fm.get(field) or "").strip()
+        after = (new_fm.get(field) or "").strip()
+        if before == after:
+            continue
+        if field == "allowed-tools":
+            # Gaining a tool widens what the skill may do and breaks no caller;
+            # losing one is the half that does.
+            lost = _tools(before) - _tools(after)
+            if lost:
+                out.append(f"`allowed-tools` no longer carries {', '.join(sorted(lost))}")
+            continue
+        out.append(f"`{field}` changed from `{before or '(absent)'}` to "
+                   f"`{after or '(absent)'}`")
+    return out
+
+
+def _tools(raw):
+    return {t.strip().strip("[]\"'") for t in raw.split(",") if t.strip().strip("[]\"'")}
+
+
+def version_findings(skill, spec):
+    """PB010 / PB011 - the content moved, and what the version number did about it.
+
+    `PB005` catches a manifest and a skill disagreeing with each other; this catches a
+    version that agrees with everything and describes nothing, which is the failure
+    nobody notices because no two files contradict. It reports and never rewrites: the
+    number is the author's claim about their own work, and a tool that bumps it on
+    their behalf has made the claim for them.
+    """
+    prev = (_previous_from_git(skill, spec["ref"]) if spec["kind"] == "git"
+            else _previous_from_tree(skill, spec["root"]))
+    if prev is None:
+        return []
+    changed, old_fm = prev
+    if not changed:
+        return []
+    old, new = declared_version(old_fm), declared_version(skill.fm)
+    if not old and not new:
+        return []                        # nothing claims a version; nothing went stale
+    surface = surface_changes(old_fm, skill.fm)
+    shown = ", ".join(changed[:3]) + (f" and {len(changed) - 3} more" if len(changed) > 3
+                                      else "")
+
+    if old and not new:
+        return [Finding("PB010", f"{len(changed)} file(s) changed ({shown}) and the "
+                                 f"`version: {old}` that was here is gone")]
+    if not old:
+        return []                        # a version appeared where there was none: a bump
+    if old == new:
+        tail = (" - and " + "; ".join(surface) + ", which is more than a patch"
+                if surface else "")
+        return [Finding("PB010", f"{len(changed)} file(s) changed ({shown}) and "
+                                 f"`version: {old}` did not move{tail}")]
+
+    # The version moved. The only thing left to judge is whether it moved far enough,
+    # and that is only answerable when both numbers parse and the call surface moved.
+    if not surface:
+        return []
+    a, b = SEMVER_RE.match(old), SEMVER_RE.match(new)
+    if not a or not b:
+        return []                        # unparseable: no opinion rather than a guess
+    if a.group(1, 2) == b.group(1, 2):
+        return [Finding("PB011", f"`{old}` -> `{new}` is a patch, but " + "; ".join(surface))]
+    return []
+
+
 def check(skill, cfg=None):
     cfg = cfg or {}
     lang = cfg.get("lang")
@@ -180,7 +366,7 @@ def check(skill, cfg=None):
 
     # PB005 - the manifest and the skill disagree about which version this is
     version, mpath = manifest_version(skill)
-    own = skill.fm.get("version")
+    own = declared_version(skill.fm)
     if version and own and version != own:
         out.append(Finding("PB005", f"`version: {own}` in SKILL.md, `{version}` in "
                                     f"{os.path.relpath(mpath, parent)}"))
@@ -223,4 +409,12 @@ def check(skill, cfg=None):
         manifest = _load_json(os.path.join(root, ".claude-plugin", "plugin.json"))
         plugin_name = manifest.get("name") if isinstance(manifest, dict) else None
         out += origin_finding(root, plugin_name or skill.name or skill.folder)
+
+    # PB010 / PB011 - opt-in, because a comparison needs a stated "before". `--since`
+    # resolves to one in `sqs.py`, which is also where the note about a `--since` that
+    # resolved to nothing gets printed: a rule that quietly did not run is the one
+    # failure mode a gate cannot afford.
+    since = cfg.get("since")
+    if since:
+        out += version_findings(skill, since)
     return out

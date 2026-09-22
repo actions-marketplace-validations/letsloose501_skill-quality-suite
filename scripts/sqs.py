@@ -833,7 +833,11 @@ def main(argv=None):
     ap.add_argument("--baseline-file", help="where the baseline lives (default .sqs-baseline.json)")
     ap.add_argument("--changed", action="store_true",
                     help="only skills touched by the git diff against --since")
-    ap.add_argument("--since", default="HEAD", help="--changed: what to diff against")
+    ap.add_argument("--since", help="the earlier state to compare against: a git ref, or a "
+                                    "directory holding an earlier copy of the tree. Selects "
+                                    "the skills for --changed, and is what PB010/PB011 read "
+                                    "the previous version off (default HEAD for --changed, "
+                                    "and PB010/PB011 stay off until it is given)")
     ap.add_argument("--strict", action="store_true", help="warnings count as failures")
     ap.add_argument("--quiet", action="store_true", help="print nothing when clean")
     ap.add_argument("--harness", action="append", default=[],
@@ -894,6 +898,16 @@ def main(argv=None):
         cfg["harnesses"] = picked
     if a.lang:
         cfg["lang"] = a.lang
+    # `--since` is resolved once, here, because the interesting half of the answer is
+    # the failure: a ref nobody can find would otherwise leave PB010/PB011 silently
+    # not running, and a rule that quietly did not run reads exactly like a rule that
+    # found nothing.
+    if a.since:
+        spec, note = publish.resolve_since(a.since, root)
+        if spec:
+            cfg["since"] = spec
+        if note and not a.quiet:
+            print(note, file=sys.stderr)
 
     if a.command == "eval":
         names = [n for n in a.args if n not in set(cfg.get("ignore", []))]
@@ -937,7 +951,7 @@ def main(argv=None):
     skills, notes = resolve_targets(names, root)
     skills = [s for s in skills if s.folder not in ignore]
     if a.changed:
-        skills, note = changed_skills(skills, a.since)
+        skills, note = changed_skills(skills, a.since or "HEAD")
         if not a.quiet:
             print(note, file=sys.stderr)
     for note in notes:

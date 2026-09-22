@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 79 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 81 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -170,6 +170,8 @@ What has to be true before the skill leaves the machine it was written on. Half 
 | `PB007` | info | high | low | no | Package wires hooks beside this skill |
 | `PB008` | warning | medium | medium | no | Skill points at a package sibling |
 | `PB009` | info | high | low | no | Package installed from an unreviewed checkout |
+| `PB010` | warning | high | medium | no | Instructions changed, the version did not |
+| `PB011` | warning | medium | medium | no | Call surface changed, the version moved by a patch |
 
 ### PB001 - No license
 
@@ -224,6 +226,18 @@ What has to be true before the skill leaves the machine it was written on. Half 
 **Why it matters.** The marketplace entry's `source` names a remote repository, archive or command - the files under review may be a checkout nobody has looked at.
 
 **Fix.** Not a defect - a fact about where the package came from.
+
+### PB010 - Instructions changed, the version did not
+
+**Why it matters.** A skill that was improved and still carries its old version is a skill nobody can tell apart from the one they installed. `PB005` catches two files contradicting each other; this catches a number that contradicts nothing and describes nothing, which is why it goes unnoticed for months.
+
+**Fix.** Bump the patch, `0.0.1` at a time. Nothing rewrites it for you - the version is your claim about your own work.
+
+### PB011 - Call surface changed, the version moved by a patch
+
+**Why it matters.** `name`, the invocation mode and `allowed-tools` decide how a skill is called. Moving one of them and bumping only the patch tells every reader the upgrade is safe to take without reading it.
+
+**Fix.** Bump the minor or the major, whichever the break deserves.
 
 ## quality (QLxxx)
 

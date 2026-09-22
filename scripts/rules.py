@@ -344,6 +344,18 @@ _ROWS = {
               "The marketplace entry's `source` names a remote repository, archive or command "
               "- the files under review may be a checkout nobody has looked at.",
               "Not a defect - a fact about where the package came from.", False),
+    "PB010": ("warning", "Instructions changed, the version did not",
+              "A skill that was improved and still carries its old version is a skill nobody "
+              "can tell apart from the one they installed. `PB005` catches two files "
+              "contradicting each other; this catches a number that contradicts nothing and "
+              "describes nothing, which is why it goes unnoticed for months.",
+              "Bump the patch, `0.0.1` at a time. Nothing rewrites it for you - the version "
+              "is your claim about your own work.", False),
+    "PB011": ("warning", "Call surface changed, the version moved by a patch",
+              "`name`, the invocation mode and `allowed-tools` decide how a skill is called. "
+              "Moving one of them and bumping only the patch tells every reader the upgrade "
+              "is safe to take without reading it.",
+              "Bump the minor or the major, whichever the break deserves.", False),
 
     # ---- EV: evals -----------------------------------------------------------
     "EV001": ("error", "Routing invariant broken",
@@ -481,6 +493,10 @@ GRADES = {
     "PB007": ("high", "low"),    # hooks.json is read, not inferred
     "PB008": ("medium", "medium"),  # a sibling path can be prose about the pattern, not a use of it
     "PB009": ("high", "low"),    # the source shape is read straight off the manifest
+    # the diff is a fact; whether the diff was worth a number is a judgement about the
+    # author's work, and that gap is the whole false-positive risk in PB010
+    "PB010": ("high", "medium"),
+    "PB011": ("medium", "medium"),  # "how it is called" is three fields, not the whole truth
 
     # evals: file parsing and a delegated runner
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),

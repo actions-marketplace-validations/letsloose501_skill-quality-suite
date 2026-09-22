@@ -1,9 +1,9 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: a measured description budget, version
-  bumps on improvement, generating a skill's case set from what you expect of it, from
-  each improvement and from a stranger's promises, an optional LLM review layer, and
+  The planned layers of skill-quality-suite: a measured description budget, generating
+  a skill's case set from what you expect of it, from each improvement and from a
+  stranger's promises, an optional LLM review layer, and
   last of all cross-runtime work - evaluation across engines and porting a skill from
   one harness to another - plus what Claude Code's own eval runner now covers, and what
   was rejected and why.
@@ -71,8 +71,36 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
-| 16 | Version bump on improvement | this skill changed, does its version still say what it is |
 | 17 | The suite writes the checks | this skill has no case set - what should be true of it, and is it |
+
+Shipped: **version bump on improvement (16)** - `PB010`/`PB011` in `scripts/publish.py`,
+opt-in behind `--since`, which now takes a directory as well as a git ref. The directory
+form is the half git cannot do and the one the item was actually about: an installed copy
+and an edited copy drift apart on one machine, in no repository, and the version number is
+the only thing that was supposed to tell them apart. `PB010` fires when files under the
+skill moved and the declared version did not; `PB011` when `name`, the invocation mode or
+`allowed-tools` moved and only the patch digit followed. Neither rewrites: the number is
+the author's claim about their own work, so `fix --apply` stays out of it.
+
+Three silences are deliberate and each one is a false positive that did not happen: a
+skill absent at `--since` has no claim yet to go stale; a skill declaring no version has
+no claim either, and inventing one is the author's decision rather than a lint finding;
+and a file hidden by `.sqsignore` is not a change, because what the suite does not read it
+makes no claims about. `declared_version` also had to learn the nested spelling - `version`
+is not a specification field, it lives under `metadata:`, and the flat frontmatter parser
+folds a nested block into its parent's string - which `PB005` was quietly missing too and
+now shares.
+
+Calibrated against the real tree rather than the fixture, the way `EV007` and `capabilities`
+were: two archives of the installed skills directory twelve commits apart, 29 skills, the
+version held constant on both sides so the only variable was the real content diff. Three
+findings, and `git diff --name-only` agreed file-for-file on all three (30, 1, 1); the two
+skills it stayed silent on were the two that did not exist at the earlier commit. The
+Windows trap this design avoided by using git's own diff rather than hashing files:
+`core.autocrlf=true` makes every checked-out file differ from its blob by `\r` alone, and a
+rule that read that as an improvement would fire on every skill on half the machines that
+run it - the directory path normalises line endings for the same reason.
+Fixture: `tests/fixtures/version-claim`.
 
 Shipped: **the skill arrived inside a plugin (18)** - `PB007`/`PB008`/`PB009` in
 `scripts/publish.py`, under `sqs.py publish`. What else the package wires beside this
@@ -156,16 +184,6 @@ guessing: `eval --trigger` already measures precision and recall of activation, 
 same harness run against progressively trimmed descriptions turns a house style into a
 measured threshold. That is also what justifies keeping the expensive half in the same
 repository as the free one - it is where the free half's rules come from.
-
-**Version bump on improvement (16)** is the smallest item here and the one that decays
-fastest without a tool. A skill that has been improved and still carries its old version is a
-skill nobody can tell apart from the version they installed. `PB005` only catches the manifest
-and the skill disagreeing with each other; nothing notices that the content moved and the
-number did not. The rule: a change to a skill's instructions bumps the patch, `0.0.1` at a
-time, and a change that breaks how it is called bumps more than that. The machinery is already
-here - `--changed --since` diffs skills against git and `fix --apply` already rewrites
-frontmatter - so this is a rule plus a flag, not a layer. It reports rather than rewrites by
-default: a version is a claim about the skill and the author makes it.
 
 **The suite writes the checks (17)**. Two ways a skill wastes your time, and neither is
 caught by anything in this repository as it stands.
