@@ -4,10 +4,10 @@ description: >-
   The planned layers of skill-quality-suite: semantic overlap between skills, routing
   analysis, capability manifests, static analysis of bundled scripts, a measured
   description budget, version bumps on improvement, generating a skill's case set from what
-  you expect of it, from each improvement and from a stranger's promises, an optional LLM
-  review layer, and last of all cross-runtime work - evaluation across engines and porting
-  a skill from one harness to another - plus what Claude Code's own eval runner now covers,
-  and what was rejected and why.
+  you expect of it, from each improvement and from a stranger's promises, what a plugin
+  installs beside the skill you were handed, an optional LLM review layer, and last of all
+  cross-runtime work - evaluation across engines and porting a skill from one harness to
+  another - plus what Claude Code's own eval runner now covers, and what was rejected and why.
 ---
 
 # Roadmap
@@ -78,6 +78,7 @@ uses. Three formats, one per skill.
 | 15 | Description budget, measured | how long a description can get before routing degrades |
 | 16 | Version bump on improvement | this skill changed, does its version still say what it is |
 | 17 | The suite writes the checks | this skill has no case set - what should be true of it, and is it |
+| 18 | The skill arrived inside a plugin | what else got installed beside it, and what it assumes the package provides |
 
 Notes on the harder ones.
 
@@ -197,6 +198,51 @@ Two fixtures prove it. A skill whose description promises a written file and who
 writes one: it passes `--trigger`, passes a hand-written `--runtime` set, and fails here. And a
 skill that does exactly what it promised while the expectation written beside it asked for
 something else - the case that must be reported as *wrong skill* and not as a defect.
+
+**The skill arrived inside a plugin (18)**. This is the one target where checking the skill
+checks a fraction of what was installed. `resolve_targets` already unwraps a plugin container to
+the skills inside it and says so honestly: *other plugin components (commands, agents, hooks,
+manifest) were not analysed*. That note is the item. For a skill you wrote at home it is
+harmless; for a package somebody installed it is the whole question, because a plugin ships
+hooks beside its skills - a `hooks/hooks.json` wiring `command` entries to `PreToolUse`,
+`PostToolUse`, `Stop` - and a hook runs on the event whether or not the model ever routes to the
+skill. A clean verdict on `SKILL.md` printed next to an unread `hooks/` directory is the most
+convincing wrong answer this suite can give, which is the same failure the board avoids by
+stamping every stored run with the date it was measured.
+
+The official runner does not close this either: `claude plugin eval` measures how a plugin
+*behaves* on a case set. Nothing says what the package *contains*.
+
+Three questions, and only the first is a variation of something already here.
+
+- **What else came in the package.** Hooks, MCP servers, commands, agents, and the scripts they
+  point at. Item 9 already reads a directory for what its code can do, so the work is the
+  inventory and the wiring rather than a new scanner: which event fires which file, and which of
+  those files the skill itself never mentions. `${CLAUDE_PLUGIN_ROOT}` in a hook command is the
+  marker that a file belongs to the package rather than to the project it will run in.
+- **What the skill assumes the package provides.** A skill inside a plugin is written against
+  its siblings: it names a command, an MCP tool or a script that lives a directory above
+  `skills/<name>/` and is invisible from inside it. The structure rules resolve pointers within
+  the skill, so a pointer at a sibling component is today either a link nothing can check or a
+  dependency nobody declared - and lifting the skill out of the plugin, which is what copying it
+  into `~/.claude/skills/` does, breaks it in silence.
+- **Where the package came from.** `PB005` already opens `.claude-plugin/plugin.json` and
+  `marketplace.json`, reads a version out of them and stops. A marketplace entry also carries a
+  `source` - `git-subdir` with a URL, in the official catalogue - so the files under review may
+  be a checkout of a repository nobody has looked at. Printing the declared origin beside the
+  skill is a fact rather than a judgement, which is the discipline the security module already
+  keeps.
+
+What it must not become: a plugin linter. Commands, agents and hook handlers are somebody else's
+subject, and the sentence in `resolve_targets` stays true - the plugin is in scope exactly as far
+as it changes what the skill means on the machine that loads it. The verdict stays about the
+skill, with the package as context: *this skill is clean, and it was installed with three hooks
+that run on every tool call* is the sentence worth printing, and nothing prints it today.
+
+Two fixtures prove it. A plugin whose skill passes every rule while its `hooks/hooks.json` runs a
+bundled script on `PreToolUse`. And a skill that points at a sibling command one directory up,
+passes the structure rules because the pointer leaves the skill, and stops working the moment it
+is installed on its own.
 
 ## P2
 
