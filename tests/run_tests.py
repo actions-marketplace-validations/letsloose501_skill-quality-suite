@@ -672,6 +672,30 @@ def history_checks():
         # which by itself hides a later load in the same turn - so a broken first-tool
         # rule passed the check above when it was the only one.
         pairs = history.routing_decisions(os.path.join(proj, "session.jsonl"))
+        # `new --seed`: a seed matches the start of a word, so one stem finds its forms.
+        found = [p for p, _ in history.search(["reconcil"], os.path.join(tmp, "history"))]
+        if found != ["reconcile the march bank export against my books"]:
+            out.append(f"history search by seed: expected the reconcile prompt, got {found}")
+        # `improve`: the route from history arrives, the paid step is offered, and
+        # nothing paid runs - no provider is configured, so a run would have failed.
+        fixture = os.path.join(FIXTURES, "restated-cases")
+        r = subprocess.run([sys.executable, SQS, "improve", "statement-check",
+                            "--skills-dir", fixture, "--history-dir",
+                            os.path.join(tmp, "history"), "--format", "json"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           env=dict(os.environ, PYTHONIOENCODING="utf-8"), cwd=REPO)
+        try:
+            rep = json.loads(r.stdout)["statement-check"]
+        except (ValueError, KeyError) as e:
+            rep = {}
+            out.append(f"improve --format json did not parse: {e} {r.stderr[-200:]}")
+        if rep and rep.get("routed_here") != 1:
+            out.append(f"improve: expected 1 prompt routed here, got {rep.get('routed_here')}")
+        if rep and "paid" not in rep.get("paid_offer", "").lower() and \
+                "$" not in rep.get("paid_offer", ""):
+            out.append("improve: the paid step is not labelled as paid")
+        if rep and not any(x["code"] == "EV010" for x in rep.get("fix", [])):
+            out.append("improve: the fixture's restated trigger cases (EV010) were not reported")
     want_pairs = [("reconcile the march bank export against my books", "statement-check"),
                   ("look at ledger.csv and tell me the totals", None),
                   ("use statement-check on the april file", "statement-check"),

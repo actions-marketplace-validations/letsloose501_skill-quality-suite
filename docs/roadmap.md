@@ -534,6 +534,27 @@ Found on the way and fixed on its own: the trigger set's YAML parser cut every l
 the first `#`, so `"fix issue #12"` read as `"fix issue` with a stray quote and `C#` as
 `C`, with no error - the silent misreading its own docstring says it exists to refuse.
 
+Shipped on request, 23.09.2026: **a skill created and improved from its own analysis and
+the user's requests** - `sqs.py improve <skill>` and `sqs.py new <name> --seed WORD`. What
+shipped is the part that could be made reliable, and the reason it stops there is a
+measurement. A prototype tried to read three things off 1,058 real prompts by stems:
+prompts nothing loaded for that a skill *should* have taken, prompts a neighbour won that
+this skill matched better, and recurring unmet requests that want a new skill. All three
+came out as noise - "два гарнира в одном приёме не должно быть!" filed as a missed request
+for a writing skill, a song chorus attributed to the video skill, requests grouped by
+"ничего" and "знаю". Stems measure vocabulary; which skill a request was meant for is
+intent, the same gap that deferred ghost triggers. Even the extreme case - a description
+covering a prompt entirely while nothing loaded - gave two hits, one real.
+
+So `improve` reports what holds: the findings with the registry's own fix, the routes
+that really happened, and the neighbours' wins ranked by shared words, labelled as such.
+`new --seed` answers the question the user can steer: given words they name, which prompts
+carry them and where each went - and, counting only prompts that reached a skill, whether
+one skill already takes most of them. On real history, `--seed заметк` found 22 prompts, 4
+routed, 3 of them to the notes skill: a new skill there would be a collision. Judging
+intent is left to a model layer, which is paid and so offered in the report, never run -
+the rule `SKILL.md` now states for every paid layer.
+
 ### Admitted to P2 rather than P1
 
 - **Keyword stuffing** - a description padded with domain keywords to win semantic

@@ -172,6 +172,31 @@ def harvest(skill, history_dir=None, limit=10):
             "skipped_long": long_, "skipped_named": named, "transcripts": len(files)}
 
 
+def search(seeds, history_dir=None):
+    """[(prompt, skill it loaded first or None)] for prompts carrying any of `seeds`.
+
+    For a skill that does not exist yet there is no load to harvest, so the user names
+    the need instead: a few words it would be asked with. A seed matches the start of a
+    word, so `инвойс` finds `инвойсы` - Russian inflects at the end, and a whole-word
+    match would miss most of it. The seeds are the user's choice; nothing here decides
+    what is relevant on its own.
+    """
+    pats = [re.compile(r"(?<![\w-])" + re.escape(s.strip()), re.I) for s in seeds if s.strip()]
+    if not pats:
+        return []
+    out, seen = [], set()
+    files = glob.glob(os.path.join(history_dir or default_dir(), "*", "*.jsonl"))
+    for path in sorted(files):
+        for prompt, loaded in routing_decisions(path):
+            key = " ".join(prompt.split()).casefold()
+            if key in seen or len(prompt) > MAX_PROMPT_CHARS:
+                continue
+            seen.add(key)
+            if any(p.search(prompt) for p in pats):
+                out.append((prompt, loaded))
+    return out
+
+
 def as_query_set(harvested):
     """The drafts in `evals/eval_queries.json` form, the shape `triggers.load` reads."""
     return ([{"query": p, "should_trigger": True} for p in harvested["positive"]]

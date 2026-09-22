@@ -896,6 +896,122 @@ stays here; material only some branches reach goes into references/ behind a poi
 """
 
 
+PAID_OFFER = ("Not run, and not run without your say-so: `eval --trigger` measures what "
+              "actually loads, at about $0.21 per run (measured 23.09.2026) and sixty runs "
+              "for a proper set. It pays off only over time - repeated across edits, "
+              "against the last saved run - not as one number today.")
+
+
+def cmd_improve(skills, results, history_dir, fmt="text"):
+    """`sqs.py improve <skill>` - what to change, from the skill and from your requests.
+
+    Two sources, and only what each can say reliably. The skill itself: every finding,
+    grouped by what to fix first, with the fix the registry already states. Your
+    requests: the prompts that really routed to it, and the ones a neighbour won that
+    this skill's description also covers - read off the transcripts, the way
+    `cases --from-history` does.
+
+    What it does not do is judge intent. Whether a prompt nothing loaded for was *meant*
+    for this skill is a question stems cannot answer - tried on 1,058 real prompts, and
+    the "missed" list was mostly conversation, not requests. That judgement belongs to a
+    model, which is paid, so it is offered at the end and never started from here.
+    """
+    from evaluation import history  # noqa: PLC0415
+    findings = dict(results)
+    report = {}
+    for s in skills:
+        if not s.ok:
+            continue
+        fs = findings.get(s.folder, [])
+        by_code = {}
+        for f in fs:
+            by_code.setdefault(f.code, []).append(f)
+        fix = []
+        for code, group in by_code.items():
+            rule = RULES.get(code)
+            fix.append({"code": code, "severity": group[0].severity, "count": len(group),
+                        "title": rule.title if rule else "", "fix": rule.how if rule else "",
+                        "example": group[0].msg})
+        fix.sort(key=lambda r: (RANK.get(r["severity"], 3), r["code"]))
+        h = history.harvest(s, history_dir, limit=1000)
+        report[s.folder] = {"fix": fix,
+                            "routed_here": len(h["positive"]),
+                            "examples": h["positive"][:5],
+                            "neighbours_won": h["near_miss"][:5],
+                            "has_trigger_set": os.path.exists(
+                                os.path.join(s.root, "evals", "eval_queries.json"))
+                            or os.path.isdir(os.path.join(s.root, "evals", "trigger")),
+                            "paid_offer": PAID_OFFER}
+    if fmt == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+    for folder, r in report.items():
+        print(f"\n{folder}")
+        serious = [x for x in r["fix"] if x["severity"] in ("error", "warning")]
+        minor = [x for x in r["fix"] if x not in serious]
+        print("  1. Fix first" if serious else "  1. Nothing to fix first")
+        for x in serious:
+            times = f" x{x['count']}" if x["count"] > 1 else ""
+            print(f"     {x['code']}{times}  {x['title']}")
+            print(f"            {x['example'][:100]}")
+            print(f"            fix: {x['fix'][:160]}")
+        if minor:
+            print(f"     and {len(minor)} note(s): " + ", ".join(x["code"] for x in minor)
+                  + " - `sqs.py explain <CODE>` for each")
+        print(f"  2. What your requests say - {r['routed_here']} prompt(s) in your history "
+              f"loaded it first")
+        for p in r["examples"]:
+            print(f"     +  {' '.join(p.split())[:90]}")
+        if r["neighbours_won"]:
+            print("     a neighbour won these; this description shares words with them, "
+                  "closest first - check the boundary on the top ones:")
+            for n in r["neighbours_won"]:
+                print(f"     -  {' '.join(n['query'].split())[:70]}   -> {n['went_to']}")
+        if not r["has_trigger_set"] and (r["routed_here"] or r["neighbours_won"]):
+            print("     no trigger set yet: `sqs.py cases <skill> --from-history --apply` "
+                  "drafts one from exactly these")
+        print(f"  3. Paid, only if you want it. {r['paid_offer']}")
+    return 0
+
+
+def cmd_new_seeded(seeds, history_dir):
+    """`sqs.py new <name> --seed WORD ...` - what you already ask that it would take.
+
+    A skill that does not exist yet has no loads to learn from, so the user names a few
+    words it would be asked with, and this shows the prompts in their history that carry
+    them - and which skill each one reached instead. Most of them landing on one existing
+    skill is the finding: that skill may want a new branch rather than a new neighbour.
+    """
+    from evaluation import history  # noqa: PLC0415
+    hits = history.search(seeds, history_dir)
+    print(f"\n{len(hits)} prompt(s) in your history carry {', '.join(seeds)}")
+    if not hits:
+        print("  nothing to learn from yet - write the description from a real run of the "
+              "work, and `cases --from-history` will find its first routes later")
+        return
+    unrouted = "(first action was not a skill - mostly mid-conversation)"
+    went = {}
+    for p, loaded in hits:
+        went.setdefault(loaded or unrouted, []).append(p)
+    for target, ps in sorted(went.items(), key=lambda kv: -len(kv[1])):
+        print(f"  {len(ps):3}  {'went to ' + target if target != unrouted else target}")
+        for p in ps[:3]:
+            print(f"         {' '.join(p.split())[:80]}")
+    # The advice counts only the prompts that did reach a skill: the rest were said in the
+    # middle of other work, and a majority of those says nothing about routing. Two is the
+    # floor, because one prompt going somewhere is an anecdote.
+    routed = {k: v for k, v in went.items() if k != unrouted}
+    total = sum(len(v) for v in routed.values())
+    if routed:
+        top, ps = max(routed.items(), key=lambda kv: len(kv[1]))
+        if len(ps) >= 2 and len(ps) * 2 > total:
+            print(f"  Of the {total} that reached a skill, {len(ps)} reached `{top}`. Before "
+                  f"adding a neighbour, ask whether `{top}` needs a new branch instead - two "
+                  f"skills claiming one wording is the collision `EV007` reports.")
+    print("  These are candidate trigger wordings in your own words: read them before any "
+          "of them goes into the new description or its trigger set.")
+
+
 def cmd_new(root, name):
     target = os.path.join(root, name)
     if os.path.exists(target):
@@ -914,7 +1030,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sqs.py", add_help=True,
                                  description="quality suite for Agent Skills")
     ap.add_argument("command", help="check | all | " + " | ".join(sorted(MODULES.values()))
-                    + " | fix | eval | baseline | explain | rules | harnesses | new | route")
+                    + " | fix | eval | baseline | explain | rules | harnesses | new | route"
+                    + " | improve")
     ap.add_argument("args", nargs="*", help="skill names, a rule code, or a new skill's name")
     ap.add_argument("--skills-dir")
     ap.add_argument("--trust-target", action="store_true",
@@ -978,6 +1095,9 @@ def main(argv=None):
     ap.add_argument("--from-history", action="store_true",
                     help="cases: draft trigger queries from your own Claude Code transcripts "
                          "- prompts that loaded the skill, and near misses a neighbour won")
+    ap.add_argument("--seed", action="append", default=[],
+                    help="new: a word the new skill would be asked with; shows the prompts in "
+                         "your history that carry it and where they went (repeatable)")
     ap.add_argument("--history-dir", help="cases --from-history: where the transcripts are "
                                           "(default ~/.claude/projects)")
     a = ap.parse_args(argv)
@@ -995,7 +1115,12 @@ def main(argv=None):
         print(f"no skills directory at {root}", file=sys.stderr)
         return 2
     if a.command == "new":
-        return cmd_new(root, a.args[0]) if a.args else 2
+        if not a.args:
+            return 2
+        rc = cmd_new(root, a.args[0])
+        if rc == 0 and a.seed:
+            cmd_new_seeded(a.seed, a.history_dir)
+        return rc
 
     cfg = load_config(root, a.config)
     picked = []
@@ -1039,6 +1164,8 @@ def main(argv=None):
         modules = list(CHECK_MODULES) + ["publish"]
     elif a.command == "baseline":
         modules = list(CHECK_MODULES)
+    elif a.command == "improve":
+        modules = list(CHECK_MODULES) + ["evals"]
     elif a.command in set(MODULES.values()) | {"fix"}:
         modules = [a.command]
     else:
@@ -1126,6 +1253,8 @@ def main(argv=None):
 
     results = [(s.folder, collect(s, modules, cfg, skill_registry, engine, world))
                for s in skills]
+    if a.command == "improve":
+        return cmd_improve(skills, results, a.history_dir, a.format)
 
     # A duplicate `name` is only visible from above: one skill shadows the other and
     # which one wins is not knowable in advance.
