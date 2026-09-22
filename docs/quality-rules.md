@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 85 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 87 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -200,6 +200,8 @@ What has to be true before the skill leaves the machine it was written on. Half 
 | `PB009` | info | high | low | no | Package installed from an unreviewed checkout |
 | `PB010` | warning | high | medium | no | Instructions changed, the version did not |
 | `PB011` | warning | medium | medium | no | Call surface changed, the version moved by a patch |
+| `PB012` | warning | medium | medium | no | Update reaches further than the version before it |
+| `PB013` | warning | high | low | no | Version went backwards |
 
 ### PB001 - No license
 
@@ -266,6 +268,18 @@ What has to be true before the skill leaves the machine it was written on. Half 
 **Why it matters.** `name`, the invocation mode and `allowed-tools` decide how a skill is called. Moving one of them and bumping only the patch tells every reader the upgrade is safe to take without reading it.
 
 **Fix.** Bump the minor or the major, whichever the break deserves.
+
+### PB012 - Update reaches further than the version before it
+
+**Why it matters.** A skill keeps the trust it earned when somebody read it and installed it, while its content moves underneath. This update pre-approves a tool or a scope the earlier copy did not, or a bundled script gained network access or started spawning processes. Either one is a decision the person who installed the earlier copy never made.
+
+**Fix.** Read the new reach before taking the update. If it is yours and intended, say so in the changelog and bump the minor - the reader deciding whether to update is the one who needs to know.
+
+### PB013 - Version went backwards
+
+**Why it matters.** The declared version is lower than the one at `--since`. Replacing a patched release with an older one that still looks correctly published is how a fixed hole comes back without anybody editing anything.
+
+**Fix.** If the rollback is deliberate, ship it as a new, higher version that carries the old content. A number that only ever rises is what lets a reader trust it.
 
 ## quality (QLxxx)
 

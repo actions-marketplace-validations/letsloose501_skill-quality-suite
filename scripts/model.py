@@ -18,6 +18,25 @@ from core import Skill, strip_code
 _PATH_TAIL = r"[\w./<>-]*"
 
 
+def parse_tools(raw):
+    """`allowed-tools` as {tool name: [scopes]}, in the order the entries were written.
+
+    Module-level rather than inside `SkillModel`, because `publish` compares two
+    versions of the same field and has to read it exactly the way the adapters do - a
+    second parser that splits on commas turned `Agent(a, b, c)` into three tools.
+    """
+    if not raw:
+        return {}
+    raw = re.sub(r"(?:^|\s)-\s+", " ", raw.replace("[", " ").replace("]", " "))
+    scopes = {}
+    for m in re.finditer(r"([A-Za-z][\w:.-]*)(?:\(([^)]*)\))?", raw):
+        name, scope = m.group(1), (m.group(2) or "").strip()
+        scopes.setdefault(name, [])
+        if scope:
+            scopes[name].append(scope)
+    return scopes
+
+
 class Feature:
     """One thing the skill uses, in a shape an adapter can judge."""
 
@@ -103,17 +122,7 @@ class SkillModel:
         to an adapter to be judged as harness tool vocabulary. The scope belongs in
         `detail`, where an adapter can ignore it; only the name is the name.
         """
-        raw = self.fields.get("allowed-tools", "")
-        if not raw:
-            return
-        raw = re.sub(r"(?:^|\s)-\s+", " ", raw.replace("[", " ").replace("]", " "))
-        scopes = {}
-        for m in re.finditer(r"([A-Za-z][\w:.-]*)(?:\(([^)]*)\))?", raw):
-            name, scope = m.group(1), (m.group(2) or "").strip()
-            scopes.setdefault(name, [])
-            if scope:
-                scopes[name].append(scope)
-        for name, found in scopes.items():
+        for name, found in parse_tools(self.fields.get("allowed-tools", "")).items():
             detail = "scoped to " + "; ".join(found) if found else ""
             self.features.append(Feature("tool", name, detail, where="SKILL.md"))
 

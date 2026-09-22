@@ -1,9 +1,9 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: a measured description budget, trigger
-  boundary geometry, declared-against-actual permissions, version changes read as
-  threats, an optional LLM review layer, and last of all cross-runtime work - plus what
+  The planned layers of skill-quality-suite: a measured description budget, the paid
+  layer's missing gates, install commands checked against their own repository, an
+  optional LLM review layer, and last of all cross-runtime work - plus what
   Claude Code's own eval runner now covers, and what was rejected and why.
 ---
 
@@ -69,7 +69,6 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
-| 21 | What changed between versions, read as a threat | did this update quietly gain reach it did not have |
 | 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
 | 23 | Install command against its own repository | does the README tell a stranger to install from where this actually lives |
 
@@ -329,24 +328,63 @@ bogus names became 8 real ones on that skill. A unit check carries the three spe
 because a fixture would only show the result through a compat verdict, where a truncated
 name still reads like a name.
 
-**21. What changed between versions, read as a threat.** The lifecycle taxonomy's last
-stage is the one nobody instruments: a skill keeps the trust it earned on publication
-while its content moves underneath. Named threats there are *permission escalation* (a
-later version asks for network or shell it never had), *tool substitution* (a benign tool
-swapped for a privileged one), *instruction injection* (the body changes while the
-description stays put, so nothing visible moved) and *version rollback* (a patched skill
-replaced by an older signed one). A second source names the live version of the same
-thing: a poisoned run that rewrites the skill's saved content so the payload fires on a
-later reuse.
+Shipped: **what changed between versions, read as a threat (21)** - `PB012`/`PB013` in
+`scripts/publish.py`, behind the same `--since` as `PB010`/`PB011`. The lifecycle
+taxonomy's last stage is the one nobody instruments: a skill keeps the trust it earned on
+publication while its content moves underneath. SkillSec-Eval names the threats there as
+*permission escalation*, *tool substitution*, *instruction injection* and *version
+rollback*, and a second source names the live form: a poisoned run that rewrites the
+skill's saved content so the payload fires on a later reuse.
 
-Item 16 built the machinery for all of this and pointed it at a different question.
-`--since` already produces the diff and `cases.gained_capabilities` already computes which
-capability is new - it just feeds the case generator instead of the report. Three specific
-inversions to make: `PB011` watches `allowed-tools` *shrink*, because that breaks a caller,
-while the threat is it *growing*; a gained `CB001`/`CB002` is a finding, not only a reason
-to write a test; and `PB010` declined to judge a version moving backwards on the grounds
-that inventing a meaning for it would be a guess - rollback is now a named threat, so the
-meaning is no longer invented. Lands in `scripts/publish.py` and `scripts/cases.py`.
+`PB012` is escalation and substitution in one finding, because they are one claim - *this
+update goes further than the copy you read* - made from two kinds of evidence: an
+`allowed-tools` entry the earlier copy did not have, or a bundled script that gained
+`CB001` (network) or `CB002` (process spawning). It fires whatever the version did; a
+correct minor bump does not make the reader's consent retroactive. `PB013` is rollback:
+both numbers parse and the new one is lower. Instruction injection is not built - a body
+that changed under a still description is `PB010`'s diff already, and telling a malicious
+rewrite from an honest one is not something a diff can do.
+
+The three inversions the item named, as they landed:
+
+- **`allowed-tools` growing, not only shrinking.** Compared entry by entry *with the
+  scope*, because the tool name alone misses the case that matters: `Bash(git log *)`
+  becoming `Bash(git *)` is the same tool and a wider permission. A scope covers a narrower
+  one that matches it as a glob, so the reverse is silent. A rewrite that only looks
+  narrower and does not match that way reads as new - a glance for the reader, where the
+  opposite mistake waves a widening through.
+- **A gained capability is a finding.** Compared at the level of the *code*, not the line:
+  a skill that already reached the network and now imports a second HTTP library has not
+  grown. This is why `cases.py` was left alone although the item named it -
+  `gained_capabilities` compares capability *lines*, which is right for writing one test
+  per new import and wrong for asking whether the reach grew. Sharing it would have made
+  one of the two wrong. The capability half only materialises the earlier tree when a
+  script actually changed.
+- **A version going backwards is judged.** Only when both sides parse; `1.2` against
+  `1.10` is a string comparison nobody asked for.
+
+The first thing the work turned up was a bug in `PB011`, shipped with item 16. It read
+`allowed-tools` with its own comma split, the same class of parser `model.py` had just
+been fixed for. Against the eight real declarations in the official marketplace it was
+wrong on seven: six YAML block lists came out as one "tool" called
+`- Read - Write - Bash(ls *) - Bash(mkdir *)`, and the scoped `Agent(a, b, c)` list in
+`claude-security` came out as seven fragments. `model.parse_tools` is now the one parser,
+and both `PB011` and `PB012` read through it; a unit check carries both directions of the
+comparison, and was watched failing when glob coverage was switched off.
+
+Calibrated on the installed skills' own git history (89 commits) at four depths, with the
+code sets before and after printed per skill rather than a zero read as clean. Three
+depths were silent and the sets agreed on every skill whose scripts changed. At the root
+of the history there is one finding, and it is real: `konspekt` gained a script that
+spawns a process (`f70a47e`, 23.08.2026), so anybody who installed the skill before that
+commit never agreed to it. What could not be calibrated, stated rather than papered over:
+no installed skill declares `version` or `allowed-tools` at all, and the marketplace copy
+that does has no history, so `PB013` and the `allowed-tools` half have been watched only
+on the fixture and on the real declarations compared with themselves (silent, all eight).
+A known residual: `Agent(a, b, c)` keeps its list as one scope, so dropping an agent from
+it reads as a new entry. Fixtures: `tests/fixtures/version-reach` for both rules,
+`tests/fixtures/version-claim` for the silent side - a narrowed scope in the bracket
+spelling and a changed script that already spawned a process.
 
 **22. The paid layer's two missing gates.** One harness gates its utility score on
 *invocation*: if the skill was not actually loaded, the task earns nothing, because the

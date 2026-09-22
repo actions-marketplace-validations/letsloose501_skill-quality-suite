@@ -297,6 +297,22 @@ def unit_checks():
         if got != want:
             out.append(f"allowed-tools {raw!r}: expected {want}, got {got}")
 
+    # PB011/PB012: `allowed-tools` read as two versions, in both directions. A narrowing
+    # reads as growth to any comparison that only asks whether the field changed, and a
+    # widening reads as nothing to one that compares tool names without their scope.
+    # PB011 used to split on commas, which made `Agent(a, b, c)` three tools and a YAML
+    # block list one.
+    import publish
+    for old, new, gained, lost in (
+            ("Read, Bash(git log *)", "Read, Bash(git *)", {("Bash", "git *")}, set()),
+            ("Read, Bash", "[Read, Bash(git log *)]", set(), {("Bash", "")}),
+            ("", "Read", {("Read", "")}, set()),
+            ("- Read - Write", "- Read - Write - Bash(ls *)", {("Bash", "ls *")}, set()),
+            ("Agent(a, b, c)", "Agent(a, b, c)", set(), set())):
+        got = publish.tool_delta(old, new)
+        if got != (gained, lost):
+            out.append(f"tool_delta {old!r} -> {new!r}: expected {(gained, lost)}, got {got}")
+
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when
     # the suite is installed as one, so the probe looks in both.

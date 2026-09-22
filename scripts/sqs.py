@@ -885,9 +885,9 @@ def main(argv=None):
                     help="only skills touched by the git diff against --since")
     ap.add_argument("--since", help="the earlier state to compare against: a git ref, or a "
                                     "directory holding an earlier copy of the tree. Selects "
-                                    "the skills for --changed, and is what PB010/PB011 read "
+                                    "the skills for --changed, and is what PB010-PB013 read "
                                     "the previous version off (default HEAD for --changed, "
-                                    "and PB010/PB011 stay off until it is given)")
+                                    "and PB010-PB013 stay off until it is given)")
     ap.add_argument("--strict", action="store_true", help="warnings count as failures")
     ap.add_argument("--quiet", action="store_true", help="print nothing when clean")
     ap.add_argument("--harness", action="append", default=[],
@@ -951,7 +951,7 @@ def main(argv=None):
     if a.lang:
         cfg["lang"] = a.lang
     # `--since` is resolved once, here, because the interesting half of the answer is
-    # the failure: a ref nobody can find would otherwise leave PB010/PB011 silently
+    # the failure: a ref nobody can find would otherwise leave PB010-PB013 silently
     # not running, and a rule that quietly did not run reads exactly like a rule that
     # found nothing.
     if a.since:

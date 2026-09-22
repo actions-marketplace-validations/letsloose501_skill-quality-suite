@@ -67,6 +67,35 @@ no claim to go stale either, and inventing one is the author's decision, not a l
 finding. And a file hidden by `.sqsignore` is not a change, the same way it is not
 anything else: what the suite does not read, it makes no claim about.
 
+## Should the person who installed it take this update
+
+The same diff, read from the other side. PB010 and PB011 ask whether the author's number
+describes their change; these two ask whether somebody who read and trusted the earlier
+copy is still looking at the same thing. A skill keeps the trust it earned on install
+while its content moves underneath, and nothing else in the suite watches that.
+
+| Rule | What it catches |
+|---|---|
+| `PB012` | the update pre-approves a tool or scope the earlier copy did not, or a bundled script gained network access (`CB001`) or process spawning (`CB002`) |
+| `PB013` | the declared version is lower than the one at `--since` |
+
+`PB012` fires whatever the version did, including a correct minor bump: the number can be
+right and the reader can still never have agreed to the new reach. It compares
+`allowed-tools` entry by entry, with the scope: `Bash(git log *)` becoming `Bash(git *)` is
+growth, and the reverse is not, because a scope covers a narrower one that matches it as a
+glob. A rewrite that only *looks* narrower and does not match that way is reported as new -
+a glance for the reader, where the other mistake would be a widening waved through. Reading
+the environment (`CB003`) does not count as reach on its own: it is reported on every
+`check` anyway, and getting a secret off the machine takes one of the other two.
+
+`PB013` reads only numbers that both parse as `major.minor.patch`. A rollback shipped as a
+new, higher version carrying the old content says what happened; a number that goes down
+is how a fixed hole comes back without anybody editing anything.
+
+```bash
+sqs.py publish ./skills --since v2.0.0     # everything this release gained since the last
+```
+
 Plus, from the other modules and worth re-reading before a release:
 
 - `SP013` - repository furniture (README, Makefile, `package.json`) shipping inside the

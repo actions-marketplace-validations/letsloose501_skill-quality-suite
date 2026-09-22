@@ -1,0 +1,13 @@
+{
+  "note": "Two skills compared against an earlier copy of the same tree, each with its version moved the right amount for everything PB010/PB011 can see. `digest-writer` widened `Bash(git log *)` to `Bash(git *)` and its script started opening a URL - a minor bump, and nothing about the number is wrong, but the person who installed 1.0.0 never agreed to either. `backup-pruner` went from 2.1.0 to 2.0.3: the content moved and so did the number, only backwards.",
+  "command": "publish",
+  "args": ["--since", "previous"],
+  "expect": [
+    "PB012",
+    "PB013"
+  ],
+  "reject": [
+    "PB010",
+    "PB011"
+  ]
+}

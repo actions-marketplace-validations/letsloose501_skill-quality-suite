@@ -1,9 +1,13 @@
 {
-  "note": "Two skills compared against an earlier copy of the same tree. `receipt-sorter` gained a whole step and still says 0.3.0 - the version nobody can tell apart from the one they installed. `invoice-filer` dropped `Bash` out of `allowed-tools`, which breaks every caller that relied on it, and moved the patch digit as if nothing had happened.",
+  "note": "Three skills compared against an earlier copy of the same tree. `receipt-sorter` gained a whole step and still says 0.3.0 - the version nobody can tell apart from the one they installed. `invoice-filer` dropped `Bash` out of `allowed-tools`, which breaks every caller that relied on it, and moved the patch digit as if nothing had happened. `log-reader` is the negative half for PB012: `Bash` narrowed to `Bash(git log *)` in the bracket spelling, and its script changed while already spawning a process before - reach went down, not up, and a comparison that only asked 'did the field change' would have called it growth.",
   "command": "publish",
   "args": ["--since", "previous"],
   "expect": [
     "PB010",
     "PB011"
+  ],
+  "reject": [
+    "PB012",
+    "PB013"
   ]
 }

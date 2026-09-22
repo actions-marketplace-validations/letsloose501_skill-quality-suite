@@ -367,6 +367,22 @@ _ROWS = {
               "Moving one of them and bumping only the patch tells every reader the upgrade "
               "is safe to take without reading it.",
               "Bump the minor or the major, whichever the break deserves.", False),
+    "PB012": ("warning", "Update reaches further than the version before it",
+              "A skill keeps the trust it earned when somebody read it and installed it, while "
+              "its content moves underneath. This update pre-approves a tool or a scope the "
+              "earlier copy did not, or a bundled script gained network access or started "
+              "spawning processes. Either one is a decision the person who installed the "
+              "earlier copy never made.",
+              "Read the new reach before taking the update. If it is yours and intended, say "
+              "so in the changelog and bump the minor - the reader deciding whether to update "
+              "is the one who needs to know.", False),
+    "PB013": ("warning", "Version went backwards",
+              "The declared version is lower than the one at `--since`. Replacing a patched "
+              "release with an older one that still looks correctly published is how a fixed "
+              "hole comes back without anybody editing anything.",
+              "If the rollback is deliberate, ship it as a new, higher version that carries "
+              "the old content. A number that only ever rises is what lets a reader trust it.",
+              False),
 
     # ---- EV: evals -----------------------------------------------------------
     "EV001": ("error", "Routing invariant broken",
@@ -540,6 +556,10 @@ GRADES = {
     # author's work, and that gap is the whole false-positive risk in PB010
     "PB010": ("high", "medium"),
     "PB011": ("medium", "medium"),  # "how it is called" is three fields, not the whole truth
+    # as reliable as `capabilities`' own CB001 is; and a reach the author gained on
+    # purpose is still a finding, because the reader it is for did not decide it
+    "PB012": ("medium", "medium"),
+    "PB013": ("high", "low"),    # two parsed numbers compared; unparseable is silence
 
     # evals: file parsing and a delegated runner
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),

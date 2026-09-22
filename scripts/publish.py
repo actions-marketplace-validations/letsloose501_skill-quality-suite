@@ -9,14 +9,18 @@ language the repository is not written in.
 This module is not part of `sqs.py check`. It runs when you ask for it, because half
 its findings are correct-and-intended for a private skill.
 """
+import fnmatch
 import io
 import json
 import os
 import re
 import subprocess
 import tarfile
+import tempfile
 
+import capabilities
 from core import Finding, Skill, parse_frontmatter
+from model import parse_tools
 from security import PERSONAL, PERSONAL_GENERIC
 
 LICENSE_NAMES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")
@@ -176,6 +180,9 @@ META_VERSION_RE = re.compile(r"\bversion:\s*['\"]?([^\s'\",}]+)")
 # change to one of these is a change a caller can trip over, which is the line the
 # specification's own "breaking change" wording draws.
 SURFACE_FIELDS = ("name", "disable-model-invocation", "allowed-tools")
+# Capabilities that take something off the machine or run something else on it - the two
+# a reader has to re-decide on when an update gains them.
+REACH_CODES = ("CB001", "CB002")
 
 
 def declared_version(fm):
@@ -224,7 +231,7 @@ def resolve_since(since, root):
     ok, _ = _git(root, "rev-parse", "--verify", since + "^{commit}")
     if not ok:
         return None, (f"--since {since!r} is neither a directory nor a commit this "
-                      f"checkout knows - the version rules (PB010, PB011) did not run")
+                      f"checkout knows - the version rules (PB010-PB013) did not run")
     return {"kind": "git", "ref": since}, f"--since: comparing against git {since}"
 
 
@@ -330,35 +337,133 @@ def surface_changes(old_fm, new_fm):
         if before == after:
             continue
         if field == "allowed-tools":
-            # Gaining a tool widens what the skill may do and breaks no caller;
-            # losing one is the half that does.
-            lost = _tools(before) - _tools(after)
+            # Gaining a tool widens what the skill may do and breaks no caller -
+            # that half is PB012's; losing one is the half that breaks a caller.
+            _, lost = tool_delta(before, after)
             if lost:
-                out.append(f"`allowed-tools` no longer carries {', '.join(sorted(lost))}")
+                out.append(f"`allowed-tools` no longer carries {_spell(lost)}")
             continue
         out.append(f"`{field}` changed from `{before or '(absent)'}` to "
                    f"`{after or '(absent)'}`")
     return out
 
 
-def _tools(raw):
-    return {t.strip().strip("[]\"'") for t in raw.split(",") if t.strip().strip("[]\"'")}
+def _entries(raw):
+    """`allowed-tools` as (tool, scope) pairs; an empty scope is the whole tool."""
+    return {(name, s) for name, scopes in parse_tools(raw).items() for s in scopes or [""]}
+
+
+def _covered(entry, by):
+    """Whether the entries in `by` already permit everything `entry` does.
+
+    An unscoped tool covers every scope of itself, and a scope covers a narrower one that
+    matches it as a glob: `Bash(git *)` already allows `Bash(git log *)`. Anything else
+    counts as new, including a rewrite that only looks narrower. Calling a narrowing new
+    costs a reader one glance; calling a widening old is the miss PB012 exists to prevent.
+    """
+    name, scope = entry
+    return any(n == name and (not s or s == scope
+                              or (scope and fnmatch.fnmatchcase(scope, s)))
+               for n, s in by)
+
+
+def tool_delta(old_raw, new_raw):
+    """(gained, lost) between two `allowed-tools` values, each a set of (tool, scope)."""
+    before, after = _entries(old_raw), _entries(new_raw)
+    return ({e for e in after if not _covered(e, before)},
+            {e for e in before if not _covered(e, after)})
+
+
+def _spell(entries):
+    return ", ".join(f"{n}({s})" if s else n for n, s in sorted(entries))
+
+
+def rollback_finding(old_fm, new_fm):
+    """PB013 - the version this skill claims is older than the one it replaced.
+
+    PB010 declines to read a version moving backwards, because inventing a meaning for
+    it would be a guess. Replacing a patched release with an older one that is still
+    correctly published is a named move, though - a rollback - and once the move has a
+    name the reading is no longer invented. Both numbers have to parse: `1.2` against
+    `1.10` is a string comparison nobody asked for, and no opinion beats a wrong one.
+    """
+    old, new = declared_version(old_fm), declared_version(new_fm)
+    a, b = SEMVER_RE.match(old or ""), SEMVER_RE.match(new or "")
+    if not a or not b:
+        return []
+    if tuple(map(int, b.group(1, 2, 3))) >= tuple(map(int, a.group(1, 2, 3))):
+        return []
+    return [Finding("PB013", f"`version: {old}` at --since, `{new}` now - the number "
+                             f"went backwards")]
+
+
+def reach_findings(skill, spec, changed, old_fm):
+    """PB012 - this update can do something the version before it could not.
+
+    A skill keeps the trust it earned when somebody read and installed it, while its
+    content moves underneath. The reach grows two ways and they are one finding, because
+    they are one claim - *this update goes further than the one you read* - made from two
+    kinds of evidence: what the skill is now permitted to run without asking, and what its
+    bundled scripts can now do.
+
+    Only network (`CB001`) and process spawning (`CB002`) count as reach. Reading the
+    environment (`CB003`) is already reported by `capabilities` on every run, and on its
+    own it goes nowhere: getting a secret off the machine takes one of the other two.
+    """
+    grew = []
+    gained, _ = tool_delta(old_fm.get("allowed-tools") or "",
+                           skill.fm.get("allowed-tools") or "")
+    if gained:
+        grew.append(f"`allowed-tools` now also permits {_spell(gained)}")
+    # Materialising the earlier tree costs a subprocess and an extraction, and a skill
+    # whose scripts did not change cannot have gained an import.
+    if any(p.lower().endswith(capabilities.SCRIPT_EXT) for p in changed):
+        grew += _gained_reach(skill, spec)
+    if not grew:
+        return []
+    return [Finding("PB012", "this update reaches further than the copy at --since: "
+                             + "; ".join(grew))]
+
+
+def _gained_reach(skill, spec):
+    """One line per reach capability present now and absent from every earlier script."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = previous_copy(skill, spec, tmp)
+        if root is None:
+            return []
+        had = {f.code for f in capabilities.check(Skill(root))}
+    out = []
+    for code in REACH_CODES:
+        hits = [f for f in capabilities.check(skill) if f.code == code]
+        if hits and code not in had:
+            more = f" (+{len(hits) - 1} more)" if len(hits) > 1 else ""
+            out.append(f"{hits[0].where} {hits[0].msg}{more}")
+    return out
 
 
 def version_findings(skill, spec):
-    """PB010 / PB011 - the content moved, and what the version number did about it.
+    """PB010 - PB013 - what moved between `--since` and now, and what the number said.
 
-    `PB005` catches a manifest and a skill disagreeing with each other; this catches a
-    version that agrees with everything and describes nothing, which is the failure
-    nobody notices because no two files contradict. It reports and never rewrites: the
-    number is the author's claim about their own work, and a tool that bumps it on
-    their behalf has made the claim for them.
+    `PB005` catches a manifest and a skill disagreeing with each other; PB010/PB011 catch
+    a version that agrees with everything and describes nothing, which is the failure
+    nobody notices because no two files contradict. PB012/PB013 read the same diff as a
+    reader deciding whether to take the update rather than as its author. None of them
+    rewrites anything: the number is the author's claim about their own work, and a tool
+    that bumps it on their behalf has made the claim for them.
     """
     prev = (_previous_from_git(skill, spec["ref"]) if spec["kind"] == "git"
             else _previous_from_tree(skill, spec["root"]))
     if prev is None:
         return []
     changed, old_fm = prev
+    # Asked apart from PB010/PB011: their early returns turn on whether the number moved
+    # at all, and PB013 is about which way it moved.
+    out =rollback_finding(old_fm, skill.fm) + reach_findings(skill, spec, changed, old_fm)
+    return out + _version_claim(skill, changed, old_fm)
+
+
+def _version_claim(skill, changed, old_fm):
+    """PB010 / PB011 - the content moved, and what the version number did about it."""
     if not changed:
         return []
     old, new = declared_version(old_fm), declared_version(skill.fm)
@@ -455,7 +560,7 @@ def check(skill, cfg=None):
         plugin_name = manifest.get("name") if isinstance(manifest, dict) else None
         out += origin_finding(root, plugin_name or skill.name or skill.folder)
 
-    # PB010 / PB011 - opt-in, because a comparison needs a stated "before". `--since`
+    # PB010 - PB013 - opt-in, because a comparison needs a stated "before". `--since`
     # resolves to one in `sqs.py`, which is also where the note about a `--since` that
     # resolved to nothing gets printed: a rule that quietly did not run is the one
     # failure mode a gate cannot afford.
