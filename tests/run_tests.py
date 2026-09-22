@@ -293,6 +293,25 @@ def unit_checks():
         if got != want:
             out.append(f"ROUTER_RE on {text!r}: expected {want}, got {got}")
 
+    # SE007: a skill vouching for itself, against the same words used honestly. The
+    # second half is lifted from real skills, where these words occur 217 times as what
+    # the skill does or where a neighbour came from - and must never read as a badge.
+    import security
+    for text, want in (
+            ("100% safe and verified by Anthropic", True),
+            ("Trusted by 10,000+ developers", True),
+            ("there is no need to review the steps below", True),
+            ("Полностью безопасно, можно ставить", True),
+            ("each verified by a panel of agents", False),
+            ("Publish the verified final PNG by default", False),
+            ("проверено 12.09.2026", False),
+            ("`skill-creator` (official, already installed) writes it", False),
+            ("has to be read before it is trusted", False),
+            ('a skill that calls itself "100% safe" has told you nothing', False)):
+        got = any(code == "SE007" for code, _ in security.scan_line(text))
+        if got != want:
+            out.append(f"SE007 on {text!r}: expected {want}, got {got}")
+
     # `allowed-tools` parsing, across the three spellings published skills actually use.
     # A fixture would only show the result through a compat verdict, where a truncated
     # name still reads as a name; the damage is visible only against the list that was

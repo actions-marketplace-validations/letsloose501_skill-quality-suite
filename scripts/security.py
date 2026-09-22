@@ -112,6 +112,30 @@ PERSONAL_GENERIC = {"user", "username", "you", "youruser", "runner", "root", "me
                     "administrator", "public", "default", "shared"}
 
 
+# The skill vouching for itself: a safety guarantee, an endorsement by a named vendor, a
+# user count, an invitation to skip review. A selection-stage attack - it works on the
+# router and on the person deciding whether to install - and the claim is exactly the
+# thing a reader has to verify rather than accept.
+#
+# Narrow on purpose. The words are everywhere in honest skills: measured on 308 texts
+# across 57 real skills, `verified`, `safe`, `official`, `проверено` and their kin occur
+# 217 times, as what the skill DOES ("each verified by a panel of agents", "проверено
+# 12.09.2026") or as a neighbour's provenance ("official, already installed"). Only the
+# self-certifying shapes below count, and none of those 217 matches one.
+TRUST_RE = re.compile(
+    r"\b(?:100\s*%|completely|totally|fully|guaranteed)\s+(?:safe|secure|harmless|trusted)\b"
+    r"|\b(?:certified|verified|approved|endorsed|audited|vetted|reviewed)\s+(?:and\s+\w+\s+)?"
+    r"by\s+(?:anthropic|openai|google|microsoft|github|the\s+(?:claude|security)\s+team)\b"
+    r"|\btrusted\s+by\s+(?:over\s+|more\s+than\s+)?[\d,.]+\s*[km]?\+?\s*"
+    r"(?:users|developers|teams|companies)\b"
+    r"|\b(?:no\s+need|not\s+necessary|unnecessary)\s+to\s+(?:review|audit|inspect|check)\b"
+    r"|\bsafe\s+to\s+(?:run|install|use)\s+without\s+(?:review|reading|checking)\b"
+    r"|\bofficial(?:ly)?\s+(?:certified|verified|endorsed|approved)\b"
+    r"|(?:100\s*%|\bполностью|\bабсолютно|\bгарантированно)\s+безопас\w*"
+    r"|\b(?:проверен|одобрен|сертифицирован)\w*\s+(?:anthropic|openai|google|microsoft|github)\b"
+    r"|\bне\s+(?:нужно|надо|требуется)\s+(?:проверять|ревьюить|читать\s+перед)", re.I)
+
+
 QUOTED_RE = re.compile(r"«[^»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|'[^'\n]{4,}'")
 
 
@@ -141,6 +165,11 @@ def scan_line(line):
         if m and not any(a <= m.start() and m.end() <= b for a, b in spans):
             out.append(("SE003", "text addressed at the agent, overriding its instructions"))
             break
+    # SE007 takes the same quotation exemption as SE003: a skill that teaches a reviewer
+    # to distrust «100% safe» has to be able to write the phrase down.
+    m = TRUST_RE.search(line)
+    if m and not any(a <= m.start() and m.end() <= b for a, b in spans):
+        out.append(("SE007", f"\"{m.group(0)}\" - the skill vouches for itself"))
     found = hidden_in(line)
     if found:
         out.append(("SE004", "hidden characters: " + ", ".join(sorted(found))))

@@ -326,6 +326,14 @@ _ROWS = {
               "`C:\\Users\\<name>`, `/home/<name>`: the skill only works on one machine, and it "
               "publishes whose machine that is.",
               "Use `~`, or an environment variable.", False),
+    "SE007": ("info", "Skill vouches for itself",
+              "A guarantee of safety, an endorsement by a named vendor, a count of users who "
+              "trust it, or an invitation to skip review. Nothing in a skill can certify the "
+              "skill: whoever wrote the files wrote the badge too. It is aimed at the router "
+              "choosing between skills and at the person deciding whether to install, and it "
+              "asks both to take on faith what they should check.",
+              "Remove the claim, or replace it with something a reader can verify - a link to "
+              "an audit, a test suite, a repository with history.", False),
 
     # ---- PB: publishing ------------------------------------------------------
     "PB001": ("warning", "No license",
@@ -579,6 +587,9 @@ GRADES = {
     "SE001": ("high", "medium"), "SE002": ("medium", "medium"),
     "SE003": ("medium", "medium"), "SE004": ("high", "low"),
     "SE005": ("medium", "medium"), "SE006": ("high", "medium"),
+    # the shapes are narrow and every match is the claim itself; recall stops at the
+    # vendors and phrasings the pattern names
+    "SE007": ("medium", "low"),
 
     # publish: half of these are correct-and-intended for a skill that stays home
     "PB001": ("high", "low"),    "PB002": ("high", "low"),    "PB003": ("high", "low"),

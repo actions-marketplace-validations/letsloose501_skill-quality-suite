@@ -65,6 +65,21 @@ the finding and by the fixer.
 An absolute path naming whoever wrote the skill. Harmless at home, and information
 disclosure once published.
 
+### A skill vouching for itself (`SE007`)
+
+A safety guarantee ("100% safe"), an endorsement by a named vendor ("verified by ..."), a
+count of users who trust it, an invitation to skip review. Nothing in a skill can certify
+the skill: whoever wrote the files wrote the badge. The claim works on the router choosing
+between skills and on the person deciding whether to install, and it asks both to accept
+what they should check.
+
+The words themselves are everywhere in honest skills - across 57 real ones, `verified`,
+`safe`, `official` and their Russian kin occur 217 times, as what a skill does ("each
+verified by a panel of agents") or where a neighbour came from. Only the self-certifying
+shapes count, and a quoted one is exempt, the same way `SE003` exempts a quotation: a skill
+that warns a reader about such badges has to be able to write one down. `info`, because
+the finding is a claim to verify, not a verdict.
+
 ## What a finding looks like
 
 Every one of them names a file and a line, so every one is checkable:

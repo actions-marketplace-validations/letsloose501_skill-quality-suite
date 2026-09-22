@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 91 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 92 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -426,6 +426,7 @@ What an installed skill can do to the machine that loads it. A skill is executab
 | `SE004` | error | high | low | yes | Hidden or bidirectional Unicode |
 | `SE005` | warning | medium | medium | no | Outbound network call carrying local data |
 | `SE006` | info | high | medium | no | Absolute path naming a user account |
+| `SE007` | info | medium | low | no | Skill vouches for itself |
 
 ### SE001 - Secret in the skill text
 
@@ -462,6 +463,12 @@ What an installed skill can do to the machine that loads it. A skill is executab
 **Why it matters.** `C:\Users\<name>`, `/home/<name>`: the skill only works on one machine, and it publishes whose machine that is.
 
 **Fix.** Use `~`, or an environment variable.
+
+### SE007 - Skill vouches for itself
+
+**Why it matters.** A guarantee of safety, an endorsement by a named vendor, a count of users who trust it, or an invitation to skip review. Nothing in a skill can certify the skill: whoever wrote the files wrote the badge too. It is aimed at the router choosing between skills and at the person deciding whether to install, and it asks both to take on faith what they should check.
+
+**Fix.** Remove the claim, or replace it with something a reader can verify - a link to an audit, a test suite, a repository with history.
 
 ## spec (SPxxx)
 

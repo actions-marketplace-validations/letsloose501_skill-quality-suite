@@ -493,10 +493,6 @@ Two smaller things from the same reading, both parked:
 
 ### Admitted to P2 rather than P1
 
-- **Fake trust indicators in a description** - "certified", "verified", "100% safe",
-  "trusted by", fabricated badges and endorsements. A named selection-stage attack, and a
-  regex plus an `info` severity is the whole implementation. It is also this project's own
-  principle stated by somebody else: a badge is a claim to verify, not a fact to trust.
 - **Keyword stuffing** - a description padded with domain keywords to win semantic
   retrieval it does not deserve. Measurable offline as stem-repetition density against the
   median of the tree, but the threshold is a guess until a corpus says otherwise, which is
@@ -578,6 +574,19 @@ repository as the free one - it is where the free half's rules come from.
 
 ## P2
 
+Shipped: **fake trust indicators (admitted from the intake)** - `SE007` in
+`scripts/security.py`, `info`: a skill vouching for itself - a safety guarantee, an
+endorsement by a named vendor, a count of users, an invitation to skip review. The item
+said a regex is the whole implementation, and the only work was in how narrow. The bare
+words are everywhere in honest skills: across 308 texts of 57 real skills `verified`,
+`safe`, `official`, `проверено` and their kin occur 217 times, as what a skill does ("each
+verified by a panel of agents", "проверено 12.09.2026") or where a neighbour came from
+("official, already installed"). Only self-certifying shapes count, and a quoted one is
+exempt the way `SE003` exempts a quotation. All 217 stay silent - the negative side,
+measured. The positive side is fixture-only, and said so: no skill on this machine vouches
+for itself. Fixture: `tests/fixtures/trust-badges`; a unit check carries real near-misses
+and was watched failing with the quotation exemption removed.
+
 Shipped: **description written for the wrong reader** - `QL015` in `scripts/quality.py`,
 `QL002` turned round. The mechanism it rests on is one row of the Claude Code skills page:
 with `disable-model-invocation: true`, "Description not in context". Routing wording in
@@ -609,9 +618,7 @@ with the verb widened back to `срабатыв\w*`.
   edge cases: the things a regex cannot reach. Hard requirement: `DETERMINISTIC` and
   `LLM REVIEW` stay separated in the output, and the model never promotes an opinion to
   an error.
-- **Version and changelog analysis** - evidence-based warnings only: a version bumped
-  with no changelog entry, a breaking change with no major bump. Where the evidence is
-  not there, no finding.
+
 ## P3 - cross-runtime
 
 Last, deliberately. Everything above makes one skill better on the runtime it already has;
@@ -679,6 +686,14 @@ pays off once two versions of the specification are in the wild and old skills s
 going red for a reason that is not their fault. Today there is effectively one. The form to
 build it in is a versioned schema per specification version, kept as data, rather than a
 version switch threaded through the code.
+
+**Version and changelog analysis** - a version bumped with no changelog entry. Where the
+evidence is not there, no finding, and on this machine it is never there: 13 plugins in
+the official marketplace declare a version, and not one skill or plugin anywhere here
+ships a changelog. A rule that cannot fire on any real input cannot be watched working.
+The other half the item named - a breaking change with too small a bump - is `PB011`
+already, which asks for more than a patch; demanding a major for every break past 1.0
+would be a change of convention made with no history to calibrate it on.
 
 **Ghost triggers** - a trigger phrase in the description that nothing in the body
 serves: the skill fires on that wording and then has nothing to do about it. `CS001` reads
