@@ -808,7 +808,9 @@ of these is built. Each carries what it rests on and what has to happen first.
   by hand and are real: an official marketplace validator that imports `yaml` without a
   word about `pyyaml`, and a skill of the user's that never says to install `sympy`.
   Eleven mutations caught. Fixtures `script-undeclared` (the three colliding words) and
-  `script-declared` (exact, every legitimate way to declare).
+  `script-declared` (exact, every legitimate way to declare). The official authoring guide
+  asks for the same thing and draws the same line: "List required packages in your
+  SKILL.md", with `pip install pypdf` as its good example against "Use the pdf library".
 - Not built, on three findings: **an install command not pinned to a commit or a tag**.
   The README half cannot be fixed by its author - neither `npx skills add` for GitHub nor
   `/plugin marketplace add` documents a way to name a ref (the plugin-marketplaces page:
@@ -839,11 +841,23 @@ of these is built. Each carries what it rests on and what has to happen first.
   that cannot tell the two apart would only restate `git diff`. "always" and "whenever"
   were left out of the bait on purpose: the skill-creation guidance itself recommends a
   slightly pushy description.
-- **A description that retells the procedure.** One reported case: a description that
-  summarised the workflow ("code review between tasks") was followed instead of the body,
-  so the agent ran one review where the body asked for two; with the description cut back
-  to when-to-use, it read the body. One case is an anecdote on this page's own rules, so
-  the first step is measuring how many real descriptions do this at all. Free.
+- Measured, not built as a static rule: **a description that retells the procedure**. One
+  reported case: a description that summarised the workflow ("code review between tasks")
+  was followed instead of the body, so the agent ran one review where the body asked for
+  two. Three findings against a pattern for it. The official authoring guide asks the
+  opposite of "only when": the description "should include both what the Skill does and
+  when to use it", and its own examples list capabilities ("Extract text and tables from
+  PDF files, fill forms, merge documents"). What separates an allowed list of capabilities
+  from a retold procedure is order, and explicit order is rare - sequence markers (`then`,
+  `затем`, arrows, numbered steps) in 3 of the 57 descriptions here, one of them a routing
+  arrow rather than a step. The common form is an implicit chain of verbs ("проверяет
+  дубликат по реестру, скачивает транскрипт, передаёт в konspekt, ведёт реестр") in at
+  least three of the user's own descriptions, read by hand, and a pattern cannot tell it
+  from a capability list. And the harm is behavioural - the agent follows the description
+  and skips a step the body adds - so the evidence has to be a run: two descriptions of
+  one skill whose body carries a step its description omits, graded on whether that step
+  happened. Paid, and on this machine not runnable at all, since `eval --runtime` needs
+  `ANTHROPIC_API_KEY`. One case stays an anecdote until that run exists.
 - **Where a skill wastes work, read from history.** In sessions where the skill loaded:
   the same command or read repeated across sessions (a candidate for a script), the
   largest tool results, tokens spent after the load. The transcript reader already exists
