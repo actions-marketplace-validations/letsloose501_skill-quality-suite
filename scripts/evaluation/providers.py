@@ -78,6 +78,35 @@ def walk(node, want, out):
             walk(v, want, out)
 
 
+# Every tool a routing decision can need, and nothing else. `Skill` is the observation
+# itself; the other three are how a skill's first steps read the files it points at.
+# Nothing here can change anything on the machine.
+TRIGGER_TOOLS = ("Skill", "Read", "Glob", "Grep")
+# The `result` subtype a run carries when its `--max-budget-usd` ceiling ended it. That
+# is the cap doing its job, not a failure, and the transcript in front of it is complete.
+BUDGET_SUBTYPE = "error_max_budget_usd"
+
+
+def _terminal(stdout):
+    """The terminal `result` event of a stream-json transcript, or None.
+
+    What separates "the session ended and here is what happened" from "the process died
+    before saying anything" - which is what the exit code alone used to be asked to
+    decide, and got wrong for every capped run.
+    """
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{") or '"result"' not in line:
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("type") == "result":
+            return event
+    return None
+
+
 def collect_tools(node, tools, skills):
     """Tool calls and skill loads, from anywhere in the transcript."""
     if isinstance(node, dict):
@@ -110,13 +139,17 @@ class Provider:
         return False, "no provider selected"
 
     def run(self, prompt, skill=None, cwd=None, timeout=300, model=None, workdir=None,
-            bare=True):
+            bare=True, max_budget_usd=None):
         """One task, once.
 
         `skill` loads exactly that skill and nothing else. `bare=False` runs in the
         machine's real environment instead - which is what a trigger measurement needs,
         because the question there is whether this description wins against the
         neighbours it actually competes with.
+
+        `max_budget_usd` is a ceiling on one run, for the pass that only needs the first
+        decision and not the work that follows it. A provider with no way to cap a run
+        ignores it.
         """
         raise NotImplementedError
 
@@ -162,16 +195,46 @@ class ClaudeCodeProvider(Provider):
         return plug
 
     def run(self, prompt, skill=None, cwd=None, timeout=300, model=None, workdir=None,
-            bare=True):
+            bare=True, max_budget_usd=None):
         cmd = [self.binary, "-p", prompt,
                "--output-format", "stream-json", "--verbose",
                "--no-session-persistence"]
         # A trigger measurement wants the real tree, so the skill competes with its
         # neighbours; a task measurement wants nothing but the skill under test.
         cmd += ["--bare"] if bare else []
-        # Plan mode for the trigger pass: the run only has to show which skill loaded,
-        # and letting it act would mean paying for work nobody reads.
-        cmd += ["--permission-mode", "bypassPermissions" if bare else "plan"]
+        if bare:
+            cmd += ["--permission-mode", "bypassPermissions"]
+        else:
+            # NOT plan mode, which this ran in until it was watched doing it: in plan
+            # mode the model writes a plan and never calls the `Skill` tool at all.
+            # Three runs against a real 29-skill tree produced zero skill loads and
+            # prose about which skill would suit - so every query would have read as
+            # "did not fire", recall would have come out at zero for every description,
+            # and the whole trigger pass would have measured nothing while looking
+            # exactly like a skill that never triggers.
+            #
+            # Letting it act has to be made safe, and the safety is an ALLOW-list, not
+            # a deny-list: a list of tools to forbid is only ever as complete as the day
+            # it was written, and these four are all a routing decision can need. With
+            # no permission mode set, a tool outside the list needs an approval nobody
+            # is there to give, so it is refused.
+            #
+            # `--restricted` looked like the better lever and was rejected after being
+            # watched: it also ignores user and project settings, and the run then loads
+            # the bundled skills instead of the tree under test - measured side by side,
+            # the same prompt reached `konspekt` without it and a built-in skill with it.
+            # A trigger pass that cannot see the skill it is measuring is worse than one
+            # that costs more.
+            #
+            # `--strict-mcp-config` with no `--mcp-config` beside it leaves no MCP server
+            # running, which is the hole the allow-list cannot close on its own: an MCP
+            # server's tools are named by the server, so they cannot be enumerated here.
+            cmd += ["--strict-mcp-config", "--allowed-tools"] + list(TRIGGER_TOOLS)
+        # The routing decision happens in the first turn or two; everything after it is
+        # the skill doing its job, which a trigger measurement pays for and throws away.
+        # One uncapped run of one query cost four times a capped one.
+        if max_budget_usd:
+            cmd += ["--max-budget-usd", str(max_budget_usd)]
         if model:
             cmd += ["--model", model]
         if skill is not None:
@@ -186,7 +249,14 @@ class ClaudeCodeProvider(Provider):
         except OSError as e:
             return Run(ok=False, error=str(e), workdir=cwd)
         elapsed = time.time() - started
-        if r.returncode != 0:
+        # A non-zero exit is not on its own a failed run: `--max-budget-usd` ends a run
+        # by exhausting its cap and exits 1 with the transcript complete behind it.
+        # Reading the exit code alone turned every capped run into an unusable one, and
+        # a confusion matrix of nothing but `unusable` reads exactly like a description
+        # that never fires. The transcript is the evidence: a `result` event means the
+        # session finished and there is something to measure.
+        terminal = _terminal(r.stdout)
+        if r.returncode != 0 and terminal is None:
             return Run(ok=False, error=f"exit {r.returncode}: {(r.stderr or '').strip()[:300]}",
                        duration_s=elapsed, workdir=cwd)
         return self.parse(r.stdout, elapsed, cwd)
@@ -229,9 +299,17 @@ class ClaudeCodeProvider(Provider):
         if not isinstance(text, str):
             text = str(text)
         ms = last("duration_ms", float)
+        # A run stopped by its own spend ceiling reports `is_error` like any other early
+        # end, and reading that alone made every capped run unusable - a confusion matrix
+        # of nothing but `unusable` looks exactly like a description that never fires,
+        # which is the failure this whole pass exists to tell apart from a real one. The
+        # subtype is what distinguishes them, and the transcript behind it is complete.
+        terminal = _terminal(stdout) or {}
+        capped = terminal.get("subtype") == BUDGET_SUBTYPE
+        failed = bool(last("is_error")) and not capped
         return Run(
-            ok=not bool(last("is_error")),
-            error="the provider reported an error result" if last("is_error") else None,
+            ok=not failed,
+            error="the provider reported an error result" if failed else None,
             text=text,
             tools=tools,
             skills=skills,
@@ -286,7 +364,7 @@ class FakeProvider(Provider):
         return True, ""
 
     def run(self, prompt, skill=None, cwd=None, timeout=300, model=None, workdir=None,
-            bare=True):
+            bare=True, max_budget_usd=None):
         if not self.script:
             self.available()
         spec = dict(self.script.get("default") or {})

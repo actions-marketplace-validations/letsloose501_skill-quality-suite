@@ -229,7 +229,41 @@ and both import forms - `import urllib.request` and `from urllib import request`
 checked against `NETWORK_EXACT` so the split does not silently create a false negative
 in place of the false positive. Fixture: `tests/fixtures/script-capabilities`.
 
-The one note left.
+The one note left, and it now has a price on it.
+
+**What the trigger pass cost to make real.** Item 15 is the only item here that has to
+buy its evidence, so the first thing it bought was a look at the machinery underneath -
+and that machinery was broken. The trigger pass ran the agent in `--permission-mode
+plan`, and in plan mode the model writes a plan and never calls the `Skill` tool at all:
+three runs against a real 29-skill tree produced zero skill loads. Every query would have
+read as *did not fire*, every description would have scored zero recall, and the report
+would have looked exactly like a tree of skills that never trigger. A threshold measured
+on top of that would have been a number with nothing behind it.
+
+Fixed in `scripts/evaluation/providers.py` and documented in `docs/evaluation.md`: an
+allow-list of four read-only tools instead of plan mode, `--strict-mcp-config` for the
+hole an allow-list cannot close, and `--max-budget-usd` because the routing decision
+lands in the first turn or two and everything after it is work this pass throws away.
+Two layers of the same mistake had to go with it - a capped run exits non-zero *and*
+sets `is_error`, and reading either one alone turned every capped run into an `unusable`
+one, which is once again indistinguishable from a skill that never fires. `--restricted`
+was tried and rejected on evidence: it also ignores user settings, so the run loads the
+bundled skills instead of the tree under test.
+
+**The price, measured rather than estimated.** One capped run costs $0.13-$0.19. One
+measurement at the recommended twenty queries and three runs each is 60 runs, about $9.
+A budget sweep needs several description lengths, so one skill is roughly 240 runs, and
+this page's own rule about one example being an anecdote puts a defensible threshold at
+two or three skills - 500 to 700 runs. On a subscription the dollars are notional and
+the real currency is the usage window: six runs moved a five-hour window by about seven
+points, so the sweep is several windows, on the same account the author is working in.
+
+**So the item stays unbuilt, and the reason is now a finding rather than a shrug.** The
+threshold it would produce is measured against one corpus, in one house style, in one
+language, competing with one particular set of neighbours - and it would ship as a rule
+to people with none of those. That is the generalisation from a single example the rest
+of this project refuses everywhere else. What is worth having from the item is already
+here: the pass it depends on now works, and what it costs is written down.
 
 **Description budget (15)** is the gap the registry admits to. `QL001` fires when a
 description is too short to carry triggers and `SP008` fires at the specification's 1024

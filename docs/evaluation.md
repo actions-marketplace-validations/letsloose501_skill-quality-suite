@@ -101,6 +101,46 @@ The set is split 60/40 into train and validation, stratified. Tune the descripti
 against the train failures; the validation numbers are the only thing that says the
 change generalised rather than memorised the failures.
 
+### How one run is set up, and why
+
+A trigger run is the one place this suite deliberately lets the agent act, because
+loading a skill *is* the thing being measured. Four decisions make that safe and
+affordable, and each was arrived at by watching the alternative fail:
+
+| Flag | Why |
+|---|---|
+| **not** `--permission-mode plan` | in plan mode the model writes a plan and never calls the `Skill` tool at all. Measured against a real 29-skill tree: zero skill loads across three runs, prose about which skill would suit instead. Every query would have read as *did not fire* - recall zero for every description, and a pass that measured nothing while looking exactly like a skill that never triggers |
+| `--allowed-tools Skill Read Glob Grep` | an allow-list, not a deny-list: a list of tools to forbid is only as complete as the day it was written. Nothing on this list can change anything on the machine, and a tool outside it needs an approval nobody is there to give |
+| `--strict-mcp-config` | the hole an allow-list cannot close: an MCP server names its own tools, so they cannot be enumerated in advance. With no `--mcp-config` beside it, no server runs |
+| `--max-budget-usd` | the routing decision lands in the first turn or two; the rest of a run is the skill doing its job, which this pass pays for and throws away. One uncapped query cost $0.62 over 19 turns against $0.14 over 4 with the cap |
+
+`--restricted` looks like the right lever and is not: it also ignores user and project
+settings, so the run loads the bundled skills instead of the tree under test. Measured
+side by side, the same prompt reached the real skill without it and a built-in one with
+it. A pass that cannot see the skill it is measuring is worse than one that costs more.
+
+A capped run ends by exhausting its ceiling: it exits non-zero and its `result` event
+carries `is_error` with `subtype: error_max_budget_usd`. Both are read as the cap doing
+its job rather than as a failure - reading either one alone turned every capped run into
+an `unusable` one, and a matrix of nothing but `unusable` looks exactly like the
+description that never fires.
+
+### What one measurement costs
+
+Worth knowing before you start, because the number nobody publishes is the one that
+decides whether this layer gets used at all. Measured on a real tree, one skill, Sonnet:
+
+- **one run**, with the cap on: about $0.13-$0.19;
+- **one measurement**, at the recommended twenty queries and three runs each: **60 runs,
+  roughly $9**.
+
+On a subscription rather than an API key - `apiKeySource: none` in the run's own `init`
+event - that figure is notional. What is actually consumed is the usage window, and the
+transcript reports that too: six runs moved a five-hour window by about seven points, so
+one measurement is of the order of a whole window. Plan against your own limits rather
+than against the dollar figure, and remember that the runs and your editor share an
+account.
+
 ## Runtime evaluation
 
 ```
@@ -114,6 +154,13 @@ skills, commands and plugins, which is what makes a baseline a baseline: without
 skill under test is installed on the machine doing the measuring and **both** arms can
 reach it. A provider that cannot isolate says so in its report instead of calling the
 comparison a baseline.
+
+**`--bare` needs an API key.** Its own help is explicit: Anthropic auth under it is
+strictly `ANTHROPIC_API_KEY` or an `apiKeyHelper` supplied through `--settings`, and
+OAuth and the keychain are never read. So on a machine signed in with a subscription and
+no key, this pass cannot run at all, while the trigger pass above - which does not use
+`--bare` - runs fine. Set `ANTHROPIC_API_KEY` before reaching for `--runtime`, and know
+that the two passes are then billed down two different paths.
 
 ```
                            treatment    baseline       delta

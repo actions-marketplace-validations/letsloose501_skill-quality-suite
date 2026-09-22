@@ -35,6 +35,12 @@ THRESHOLD = 0.5
 TRAIN_SHARE = 0.6
 # The guidance asks for about twenty queries, eight to ten on each side.
 SIDE_MIN = 8
+# A per-run spend cap. The routing decision lands in the first turn or two, and the rest
+# of a run is the skill doing its job - work this pass pays for and throws away. Measured
+# on a real tree: one uncapped query cost $0.62 over 19 turns against $0.14 over 4 with
+# the cap on, and both answered the only question being asked. It is a ceiling, not a
+# spend: raise it for a skill whose routing decision genuinely takes longer to appear.
+RUN_BUDGET_USD = 0.12
 
 
 class DatasetError(ValueError):
@@ -177,7 +183,8 @@ def measure(queries, skill_name, provider, runs, model, on_event=None):
         for attempt in range(runs):
             if on_event:
                 on_event(q, attempt + 1, runs)
-            run = provider.run(q.text, skill=None, bare=False, model=model, timeout=180)
+            run = provider.run(q.text, skill=None, bare=False, model=model, timeout=180,
+                               max_budget_usd=RUN_BUDGET_USD)
             if not run.ok:
                 continue
             usable += 1
