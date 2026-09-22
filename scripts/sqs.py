@@ -756,7 +756,7 @@ def cmd_eval(skills, root, a, cfg):
             report, problem = runtime.evaluate(
                 s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
                 with_baseline=not a.no_baseline,
-                task_filter=set(a.task) if a.task else None)
+                task_filter=set(a.task) if a.task else None, trusted=a.trust_target)
             if problem:
                 print(f"{s.folder}: {problem}", file=sys.stderr)
                 rc = max(rc, 2)
@@ -1036,8 +1036,9 @@ def main(argv=None):
     ap.add_argument("--skills-dir")
     ap.add_argument("--trust-target", action="store_true",
                     help="the tree is yours: let its own check_skills.py and "
-                         "evals/run_evals.py run. Off by default - reading a skill is "
-                         "not a reason to execute one")
+                         "evals/run_evals.py run, and let `eval --runtime` run a skill "
+                         "that can reach the network or spawn processes. Off by default "
+                         "- reading a skill is not a reason to execute one")
     ap.add_argument("--config")
     ap.add_argument("--format", choices=("text", "json", "github", "sarif", "board"),
                     default="text", help="sarif for code-scanning, board for the layer view")

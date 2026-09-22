@@ -340,6 +340,15 @@ _ROWS = {
               "asks both to take on faith what they should check.",
               "Remove the claim, or replace it with something a reader can verify - a link to "
               "an audit, a test suite, a repository with history.", False),
+    "SE008": ("error", "Code decoded before it runs",
+              "A script or an instruction decodes text - base64, hex, a compressed or "
+              "marshalled blob - and executes the result: a decoder piped into a shell, "
+              "PowerShell's encoded-command switch, `eval` over a decoded string, or Python's "
+              "`exec`/`eval` over a decoder's output. Nothing on the page says what runs, which "
+              "is the purpose of writing it that way; no instruction a person has to trust "
+              "needs to be unreadable to them.",
+              "Put the code in the file in plain text. If it is a vendored binary or data, ship "
+              "it as a file with its source named, not as a string that is executed.", False),
 
     # ---- PB: publishing ------------------------------------------------------
     "PB001": ("warning", "No license",
@@ -522,6 +531,16 @@ _ROWS = {
               "other tools.",
               "Not a defect - confirm the script only reads the variables it names needing.",
               False),
+    "CB005": ("warning", "Bundled script's capabilities cannot be read",
+              "The script imports a module by a name it computes, reaches into `os`, "
+              "`subprocess` or `builtins` by a computed attribute name, or passes code built "
+              "at run time to `exec`/`eval`. Whatever that line does is decided by data, not "
+              "by the file, so the other capability rules stay silent about it - and a silent "
+              "manifest reads as \"can do nothing\". The same indirection written with "
+              "constants is followed and reported as the capability it spells.",
+              "Write the import or the call out plainly. If the name really has to come from "
+              "data, check it against a fixed list first, and say in the skill what the list "
+              "is.", False),
 
     # ---- CS: the case set, and where its three sources disagree ---------------
     "CS001": ("warning", "Promise with no instruction behind it",
@@ -631,6 +650,9 @@ GRADES = {
     # the shapes are narrow and every match is the claim itself; recall stops at the
     # vendors and phrasings the pattern names
     "SE007": ("medium", "low"),
+    # the Python half is read off the syntax tree; the shell, PowerShell and JavaScript
+    # half is a pattern, and recall there stops at the decoders it names
+    "SE008": ("medium", "low"),
 
     # publish: half of these are correct-and-intended for a skill that stays home
     "PB001": ("high", "low"),    "PB002": ("high", "low"),    "PB003": ("high", "low"),
@@ -666,6 +688,7 @@ GRADES = {
     # grade is the blend of the two paths, not the AST half alone.
     "CB001": ("medium", "medium"), "CB002": ("high", "low"), "CB003": ("high", "low"),
     "CB004": ("high", "low"),    # the documented syntax, read exactly; the fence question is stated, not guessed
+    "CB005": ("high", "low"),    # a computed name or code string, read off the tree; limited to capability-bearing modules
 
     # cases: a promise clause and a production verb are both matched by pattern, and a
     # body with no production verb anywhere is a strong signal - but "the description

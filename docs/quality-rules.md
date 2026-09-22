@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 96 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 98 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -32,6 +32,7 @@ Each rule carries two gradings that are about **the check**, not about the skill
 | `CB002` | info | high | low | no | Bundled script can spawn a process |
 | `CB003` | info | high | low | no | Bundled script can read the environment |
 | `CB004` | info | high | low | no | Commands run when the skill loads |
+| `CB005` | warning | high | low | no | Bundled script's capabilities cannot be read |
 
 ### CB001 - Bundled script can reach the network
 
@@ -56,6 +57,12 @@ Each rule carries two gradings that are about **the check**, not about the skill
 **Why it matters.** `!`command`` in the body, and every line of a block opened with ```!, runs on the machine before the model is sent the skill - the output replaces the placeholder. It never prompts: a permission rule or the skill's own `allowed-tools` lets it through, or the invocation aborts. A skill that pre-approves its own injected commands runs them silently on every load, before anything in it has been read. A plain code block does not stop it: watched, an injection inside one ran like any other.
 
 **Fix.** Read each command as you would a hook. If the skill pre-approves them in `allowed-tools`, that approval is the author's, not yours.
+
+### CB005 - Bundled script's capabilities cannot be read
+
+**Why it matters.** The script imports a module by a name it computes, reaches into `os`, `subprocess` or `builtins` by a computed attribute name, or passes code built at run time to `exec`/`eval`. Whatever that line does is decided by data, not by the file, so the other capability rules stay silent about it - and a silent manifest reads as "can do nothing". The same indirection written with constants is followed and reported as the capability it spells.
+
+**Fix.** Write the import or the call out plainly. If the name really has to come from data, check it against a fixed list first, and say in the skill what the list is.
 
 ## cases (CSxxx)
 
@@ -448,6 +455,7 @@ What an installed skill can do to the machine that loads it. A skill is executab
 | `SE005` | warning | medium | medium | no | Outbound network call carrying local data |
 | `SE006` | info | high | medium | no | Absolute path naming a user account |
 | `SE007` | info | medium | low | no | Skill vouches for itself |
+| `SE008` | error | medium | low | no | Code decoded before it runs |
 
 ### SE001 - Secret in the skill text
 
@@ -490,6 +498,12 @@ What an installed skill can do to the machine that loads it. A skill is executab
 **Why it matters.** A guarantee of safety, an endorsement by a named vendor, a count of users who trust it, or an invitation to skip review. Nothing in a skill can certify the skill: whoever wrote the files wrote the badge too. It is aimed at the router choosing between skills and at the person deciding whether to install, and it asks both to take on faith what they should check.
 
 **Fix.** Remove the claim, or replace it with something a reader can verify - a link to an audit, a test suite, a repository with history.
+
+### SE008 - Code decoded before it runs
+
+**Why it matters.** A script or an instruction decodes text - base64, hex, a compressed or marshalled blob - and executes the result: a decoder piped into a shell, PowerShell's encoded-command switch, `eval` over a decoded string, or Python's `exec`/`eval` over a decoder's output. Nothing on the page says what runs, which is the purpose of writing it that way; no instruction a person has to trust needs to be unreadable to them.
+
+**Fix.** Put the code in the file in plain text. If it is a vendored binary or data, ship it as a file with its source named, not as a string that is executed.
 
 ## spec (SPxxx)
 

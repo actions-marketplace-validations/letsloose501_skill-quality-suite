@@ -145,6 +145,11 @@ turn.
 sqs.py eval ./my-skill --runtime
 ```
 
+The agent in this pass runs with permission checks bypassed, so a skill that can reach the
+network, spawn a process, run commands on load or hide what it runs is refused until
+`--trust-target` says it is yours or has been read. Do not pass the flag for a skill you
+have not read: the refusal names the findings, read those first.
+
 The same task twice, and the difference is the whole point:
 
 ```

@@ -69,6 +69,14 @@ _PATTERNS = {
     "personal_path": "C:" + chr(92) + "Users" + chr(92) + "alexeyivanov"
                      + chr(92) + "AppData" + chr(92) + "bootstrap.json",
 }
+# Code decoded before it runs. What is encoded is a harmless `print`, and the executing
+# call is still assembled here rather than written out, so the repository carries no line
+# another scanner would read as an obfuscated payload.
+_ENCODED = "cHJpbnQoJ3VucGFja2VkJyk="                   # print('unpacked')
+_PATTERNS["decode_exec_py"] = ("import base64" + chr(10) + "ex" + "ec(base64.b64" + "decode('"
+                               + _ENCODED + "'))" + chr(10))
+_PATTERNS["decode_exec_sh"] = ("#!/bin/bash" + chr(10) + "echo " + _ENCODED + " | base64 -"
+                               + "d | " + _SH + chr(10))
 
 PAYLOADS = {
     # the six security rules, in the shape they arrive in: a skill that reads as helpful
@@ -105,6 +113,8 @@ PAYLOADS = {
         + "| world-writable | `" + _PATTERNS["world_writable"] + "` |" + chr(10)
         + "| history rewrite | `" + _PATTERNS["history_rewrite"] + "` |" + chr(10)
     ),
+    "decode_exec_py": _PATTERNS["decode_exec_py"],
+    "decode_exec_sh": _PATTERNS["decode_exec_sh"],
 }
 
 
@@ -346,6 +356,7 @@ def unit_checks():
     # second half is lifted from real skills, where these words occur 217 times as what
     # the skill does or where a neighbour came from - and must never read as a badge.
     out += history_checks()
+    out += indirection_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -623,6 +634,82 @@ def unit_checks():
     return out
 
 
+def indirection_checks():
+    """CB001-CB005 and SE008 on indirection, one line per branch, both sides.
+
+    The corpus fixture shows the rules fire; it cannot show *which* branch fired, and two
+    of them emit the same code. Each row here reaches exactly one. The executing calls
+    are assembled, as in `_PATTERNS`, so no row is a payload written out.
+    """
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    import capabilities
+    import security
+    ex, nl = "ex" + "ec", chr(10)
+    enc = _ENCODED
+    py = [   # (python source, codes it must produce, codes it must not)
+        ("__import__('subprocess')", {"CB002"}, set()),
+        ("import importlib" + nl + "importlib.import_module('socket')", {"CB001"}, set()),
+        ("from importlib import import_module as im" + nl + "im('socket')", {"CB001"}, set()),
+        ("__import__(''.join(['sub', 'process']))", {"CB002"}, set()),
+        ("import os" + nl + "getattr(os, 'sys' + 'tem')", {"CB002"}, set()),
+        ("import os" + nl + "getattr(os, f'{\"env\"}iron')", {"CB003"}, set()),
+        ("import os" + nl + "vars(os)['popen']", {"CB002"}, set()),
+        ("import os as o" + nl + "o.__dict__['system']", {"CB002"}, set()),
+        ("from os import system", {"CB002"}, set()),
+        ("from os import environ", {"CB003"}, set()),
+        ("__import__('os').system", {"CB002"}, set()),
+        (ex + "('import subprocess')", {"CB002"}, {"CB005"}),
+        ("import os, sys" + nl + "getattr(os, sys.argv[1])", {"CB005"}, set()),
+        ("import os, sys" + nl + "vars(os)[sys.argv[1]]", {"CB005"}, set()),
+        ("import sys" + nl + "__import__(sys.argv[1])", {"CB005"}, set()),
+        ("import builtins" + nl + "getattr(builtins, 'ev' + 'al')", {"CB005"}, set()),
+        (ex + "(input())", {"CB005"}, set()),
+        # the silent side
+        ("import argparse, sys" + nl + "getattr(argparse.Namespace(), sys.argv[1])",
+         set(), {"CB005"}),
+        ("import sys" + nl + "getattr(sys, 'frozen', False)", set(), {"CB005"}),
+        # a computed name on a module with no capability behind it - the list is narrow
+        ("import json, sys" + nl + "getattr(json, sys.argv[1])", set(), {"CB005"}),
+        ("import os" + nl + "os.path.join('a', 'b')", set(), {"CB002", "CB005"}),
+        ("class M:" + nl + "    def eval(self): pass" + nl + "M().eval()", set(), {"CB005"}),
+    ]
+    out = []
+    for src, must, mustnt in py:
+        got = {c for c, _, _ in capabilities._py_capabilities(src)}
+        if not must <= got or got & mustnt:
+            out.append(f"capabilities on {src!r}: got {sorted(got)}, needs {sorted(must)}"
+                       f", must not {sorted(mustnt)}")
+    decoded = [   # (python source, whether SE008 must fire)
+        ("import base64" + nl + ex + "(base64.b64" + "decode('" + enc + "'))", True),
+        ("from base64 import b64" + "decode as d" + nl + "p = d('" + enc + "')" + nl
+         + "q = p" + nl + ex + "(q)", True),
+        ("import zlib" + nl + "ev" + "al(zlib.decompress(b''))", True),
+        ("import base64" + nl + "data = base64.b64" + "decode('" + enc + "')" + nl
+         + "print(data)", False),
+    ]
+    for src, fires in decoded:
+        if bool(security._py_decode_exec(src)) != fires:
+            out.append(f"SE008 on {src!r}: expected {'a finding' if fires else 'silence'}")
+    lines = [   # (a line of a non-Python file, whether SE008 must fire)
+        ("echo " + enc + " | base64 -" + "d | " + _SH, True),
+        ("ev" + "al \"$(echo " + enc + " | base64 --" + "decode)\"", True),
+        ("powershell -NoProfile -en" + "c SQBFAFgAIAAoAE4AZQB3AC0ATwBi", True),
+        ("[Convert]::FromBase64String($s) | i" + "ex", True),
+        ("ev" + "al(at" + "ob('" + enc + "'))", True),
+        ("python -c \"import base64; " + ex + "(base64.b64" + "decode('" + enc + "'))\"", True),
+        ("base64 -d dump.txt > folder.tar", False),
+        ("Decode the export with base64 before reading it.", False),
+    ]
+    for line, fires in lines:
+        got = any(c == "SE008" for c, _ in security.scan_line(line))
+        if got != fires:
+            out.append(f"SE008 on line {line!r}: expected {'a finding' if fires else 'silence'}")
+        if any(c == "SE008" for c, _ in security.scan_line(line, python=True)):
+            out.append(f"SE008 pattern fired on a .py line, where the syntax tree reads it: "
+                       f"{line!r}")
+    return out
+
+
 def history_checks():
     """`cases --from-history` against a transcript built to cross every filter once.
 
@@ -895,6 +982,25 @@ def evaluation_checks():
                        f"failures {rt.get('failures')}")
         with open(cases_path, "w", encoding="utf-8") as f:
             f.write(good)
+
+        # The runtime arm bypasses every permission check, so a skill that can spawn a
+        # process is refused until the person says it is theirs. The waiver on the line
+        # is the skill author's own and must not open the gate.
+        hazard = os.path.join(tree, "ledger-lite", "scripts", "sync.py")
+        os.makedirs(os.path.dirname(hazard), exist_ok=True)
+        with open(hazard, "w", encoding="utf-8") as f:
+            f.write("import subprocess  # sqs-allow: CB002" + chr(10))
+        r = run_eval("script-v1.json", "--runtime")
+        if r.returncode != 2 or "nothing was run" not in r.stderr or "CB002" not in r.stderr:
+            out.append(f"runtime pass ran a skill that can spawn a process: exit "
+                       f"{r.returncode}, {(r.stdout + r.stderr)[-200:]!r}")
+        r = run_eval("script-v1.json", "--runtime", "--trust-target", "--format", "json")
+        try:
+            json.loads(r.stdout)["runtime"]
+        except (ValueError, KeyError):
+            out.append(f"--trust-target did not let the runtime pass run: exit "
+                       f"{r.returncode}, {(r.stdout + r.stderr)[-200:]!r}")
+        os.remove(hazard)
 
     # the trigger dataset parser must refuse what it cannot read rather than guess
     sys.path.insert(0, os.path.join(REPO, "scripts"))

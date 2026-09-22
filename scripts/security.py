@@ -14,6 +14,7 @@ a dangerous pattern avoids being reported for containing it.
 sqs-allow-file: SE001, SE002, SE003, SE005
 This module holds the patterns it hunts for, so it matches every one of them.
 """
+import ast
 import re
 
 from core import Finding
@@ -138,6 +139,79 @@ TRUST_RE = re.compile(
     r"|\bне\s+(?:нужно|надо|требуется)\s+(?:проверять|ревьюить|читать\s+перед)", re.I)
 
 
+# Code that arrives encoded and is run once decoded: nothing on the page says what it
+# does, and no honest skill needs its instructions unreadable. The shell, PowerShell and
+# JavaScript shapes are read by pattern; Python is read by `ast` below, so these are not
+# applied to `.py` files. In a `.md` the Python shape is a pattern too - an instruction
+# telling the agent to run `python -c "exec(base64...)"` is the same payload.
+DECODE_EXEC = re.compile(
+    r"base64\s+(?:-d|-D|--decode)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba|z|k|da)?sh\b"
+    r"|\beval\b[^\n]{0,40}\$\([^\n)]*base64\s+(?:-d|-D|--decode)"
+    r"|\b(?:ba|z)?sh\s+-c\s+[\"']?\$\([^\n)]*base64\s+(?:-d|-D|--decode)"
+    r"|\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]*\s-e(?:nc|ncodedcommand)?\s+[A-Za-z0-9+/]{16,}={0,2}"
+    r"|FromBase64String[^\n]*\|\s*(?:iex|Invoke-Expression)\b"
+    r"|\b(?:iex|Invoke-Expression)\b[^\n]*FromBase64String"
+    r"|\b(?:eval|Function)\s*\(\s*(?:atob|Buffer\.from)\s*\("
+    r"|\b(?:exec|eval)\s*\(\s*(?:base64\.\w*decode|codecs\.decode|bytes\.fromhex"
+    r"|zlib\.decompress|marshal\.loads|binascii\.(?:a2b_\w+|unhexlify))", re.I)
+
+# Modules whose job is turning bytes nobody can read into bytes something can run.
+DECODE_MODULES = {"base64", "codecs", "binascii", "zlib", "bz2", "lzma", "gzip", "marshal"}
+
+
+def _py_decode_exec(text):
+    """[(line, what)] - `exec`/`eval` whose code came out of a decoder, in a Python file.
+
+    Followed through one kind of indirection only: a name assigned from a decoder call
+    anywhere in the file. That is the shape a payload is written in; data flow through
+    functions is beyond what a syntax tree can promise, and claiming it would be a guess.
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    decoders = set()                  # `from base64 import b64decode` and friends
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in DECODE_MODULES:
+            decoders |= {a.asname or a.name for a in node.names}
+
+    def decoder_in(expr):
+        for n in ast.walk(expr):
+            if not isinstance(n, ast.Call):
+                continue
+            f = n.func
+            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and (
+                    f.value.id in DECODE_MODULES or (f.value.id == "bytes"
+                                                     and f.attr == "fromhex")):
+                return f"{f.value.id}.{f.attr}"
+            if isinstance(f, ast.Name) and f.id in decoders:
+                return f.id
+        return None
+
+    tainted = {}
+    for _ in range(2):                # a second pass carries `a = decode(); b = a`
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                src = decoder_in(node.value) or next(
+                    (tainted[n.id] for n in ast.walk(node.value)
+                     if isinstance(n, ast.Name) and n.id in tainted), None)
+                if src:
+                    for t in node.targets:
+                        if isinstance(t, ast.Name):
+                            tainted[t.id] = src
+    out = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in ("exec", "eval") and node.args):
+            arg = node.args[0]
+            src = decoder_in(arg) or next((tainted[n.id] for n in ast.walk(arg)
+                                           if isinstance(n, ast.Name) and n.id in tainted),
+                                          None)
+            if src:
+                out.append((node.lineno, f"`{node.func.id}` runs code decoded by `{src}`"))
+    return out
+
+
 QUOTED_RE = re.compile(r"«[^»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|'[^'\n]{4,}'")
 
 
@@ -146,9 +220,16 @@ def quoted_spans(line):
     return [(m.start(), m.end()) for m in QUOTED_RE.finditer(line)]
 
 
-def scan_line(line):
-    """Every finding a single line carries, as (code, message)."""
+def scan_line(line, python=False):
+    """Every finding a single line carries, as (code, message).
+
+    `python` says the line is from a `.py` file, where `SE008` is read off the syntax
+    tree instead - the pattern would see the same call twice under two wordings.
+    """
     out = []
+    if not python and DECODE_EXEC.search(line):
+        out.append(("SE008", "runs code that is decoded first - what it does is not on "
+                             "the page"))
     for label, rx in SECRETS:
         if rx.search(line):
             out.append(("SE001", f"{label} committed in the text"))
@@ -193,12 +274,16 @@ def check(skill, cfg=None):
             continue
         try:
             with open(f"{skill.root}/{rel}", encoding="utf-8", errors="replace") as f:
-                lines = f.read().split("\n")
+                text = f.read()
         except OSError:
             continue
+        python = rel.lower().endswith(".py")
+        if python:
+            for n, what in _py_decode_exec(text):
+                out.append(Finding("SE008", what, where=rel, line=n))
         seen = set()
-        for n, line in enumerate(lines, 1):
-            for code, msg in scan_line(line):
+        for n, line in enumerate(text.split("\n"), 1):
+            for code, msg in scan_line(line, python):
                 # One line of each kind per file: a path repeated forty times is one
                 # decision to make, not forty.
                 if (code, msg) in seen:

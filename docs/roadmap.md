@@ -523,6 +523,45 @@ same idea - `$ARGUMENTS` and `!` as Claude-only syntax in `compat` - was not bui
 other runtimes' pages on it were not checked, and an adapter row nobody checked is how
 `cursor.py` once invented an incompatibility.
 
+Shipped from a third reading (a security scanner whose change log is a list of evasions
+it learned to see): **indirection in bundled scripts**. A probe of seven Python scripts,
+each reaching a capability without naming it - `__import__('subprocess')`,
+`importlib.import_module`, `getattr(os, 'sys' + 'tem')`, `vars(os)['system']`,
+`exec(base64.b64decode(...))`, the network through `__import__('urllib.request')` - came
+back with **no finding at all** from `CB` or `SE`; the plain import beside them fired, so
+the rules were live and simply blind. `capabilities.py` now folds constant names (`+`,
+f-strings of literals, `''.join([...])`) and follows `__import__`, `import_module`,
+`getattr`, `vars()[...]`, `.__dict__[...]`, `from os import system` and `exec` of a literal,
+reporting each as the capability it spells. What a name computed at run time reaches cannot
+be read, and that is **`CB005`** (warning), limited to modules that carry a capability, so
+`getattr(args, field)` stays ordinary code. **`SE008`** (error) is code decoded before it
+runs: Python's `exec`/`eval` over a decoder, through one assignment, off the syntax tree;
+a decoder piped into a shell, PowerShell's encoded command, `eval(atob(...))` and the
+same Python shape inside an instruction, by pattern. On the 19 real skill trees here (173
+script files) nothing that fired before was lost, and the one new finding was this
+suite's own harness registry, which imports adapters by the names in its own directory -
+true by the rule's definition and waived on the line. Found on the way: the first draft
+crashed the whole `check` on a plain `os.path`, which only a probe that counted a crash as
+a failure caught. Eighteen mutations of the new branches, all caught; the one that first
+survived (the module list widened to everything) now has a silent case of its own.
+Fixtures `script-indirection` (payloads assembled at run time) and
+`script-indirection-benign` (exact).
+
+The same reading also turned up a defect of this suite's own. Asked why signing, SBOM and
+a sandbox were out of scope, the honest answer for the sandbox was that the suite needed
+one: `eval --runtime` runs the treatment arm with permission checks bypassed, which the
+Claude Code CLI's help recommends only in a sandbox with no internet access, and this
+suite advertises itself for reading skills that came from elsewhere. Building a sandbox is
+the harness's job; refusing to run is ours. `runtime.evaluate` now refuses a skill with
+any of `CB001`, `CB002`, `CB004`, `CB005` or `SE002`-`SE005`/`SE008` until `--trust-target`,
+and reads them straight from the engines so that the skill's own `sqs-allow` cannot open
+it. On this machine it would refuse 14 skills - seven of the user's own, seven from the
+official marketplace. Signing and an SBOM stay unbuilt, with reasons: no installer checks a
+signature today (an open feature request in Claude Code), Ed25519 is not in the standard
+library, and the 19 real trees here carry no dependency manifest at all, so an SBOM would
+be empty - the gap underneath it, a script importing a package nothing declares, is the
+next rule worth writing.
+
 Shipped from the second intake: **trigger queries from the user's own history** -
 `sqs.py cases <skill> --from-history`, in `scripts/evaluation/history.py`. One of the ten
 tools harvests past sessions to replay recurring tasks; the same transcripts hold what a
@@ -743,6 +782,48 @@ with the verb widened back to `срабатыв\w*`.
   edge cases: the things a regex cannot reach. Hard requirement: `DETERMINISTIC` and
   `LLM REVIEW` stay separated in the output, and the model never promotes an opinion to
   an error.
+
+### Queued from the third reading (23.09.2026)
+
+Found while reading two published projects - a skill framework and a security scanner -
+and the research on description optimisation; the projects stay unnamed, as before. None
+of these is built. Each carries what it rests on and what has to happen first.
+
+- **A script imports a package nothing declares.** Measured: the 19 real skill trees here
+  carry no dependency manifest at all, and their scripts import numpy, requests, PIL,
+  pymupdf, openpyxl, yaml and more. So a skill half-works on any machine missing one of
+  them, and an SBOM built from manifests would be empty. Offline and stdlib-only via
+  `sys.stdlib_module_names`, which exists from Python 3.10 - older interpreters need a
+  decision before this ships. Free.
+- **An install command not pinned to a commit or a tag**, beside `PB014`. No installer
+  checks a signature today (an open feature request in Claude Code), and the one integrity
+  mechanism that works now is pinning, which is how an attested marketplace in the wild
+  does it. Free.
+- **The trigger surface widened on update.** A description that gained trigger wordings, or
+  words such as "best" and "always", between `--since` and now - a static continuation of
+  `PB012`/`PB013`. Rests on two attack papers: rewriting a tool's description moved its
+  selection rate from about 20% to 81% (ToolTweak, arXiv 2510.02554), and an implicit
+  version moved a skill's from 15.2% to 63.5% while human reviewers caught 2.9% of it
+  (ISM, arXiv 2609.02035). Free; the word list has to be calibrated on real diffs.
+- **A description that retells the procedure.** One reported case: a description that
+  summarised the workflow ("code review between tasks") was followed instead of the body,
+  so the agent ran one review where the body asked for two; with the description cut back
+  to when-to-use, it read the body. One case is an anecdote on this page's own rules, so
+  the first step is measuring how many real descriptions do this at all. Free.
+- **Where a skill wastes work, read from history.** In sessions where the skill loaded:
+  the same command or read repeated across sessions (a candidate for a script), the
+  largest tool results, tokens spent after the load. The transcript reader already exists
+  in `cases --from-history`. Free and local.
+- **Description optimisation, done where it is missing.** Not a rewrite loop - the
+  `skill-creator` plugin already runs one with a blinded 60/40 holdout, and a production
+  study found a single rewrite from the false positives and negatives captures most of
+  the gain, with iteration count moving F1 by under 0.5% against a 0.78% multi-seed noise
+  floor (arXiv 2606.30775). What nothing checks is the neighbours: a description tuned to
+  fire more takes requests from the skills beside it, which is the attacks above done in
+  good faith. So: re-run the nearest neighbours' trigger sets after an edit and fail on
+  their recall dropping; repeat runs for a noise floor, so "better" inside it reads as no
+  change; and report a large train-validation gap as the study's own diagnosis - scopes
+  that genuinely overlap, which wording cannot fix. The code is free, the runs are paid.
 
 ## P3 - cross-runtime
 

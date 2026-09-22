@@ -194,6 +194,19 @@ Three rules the numbers obey:
 - a metric the provider never reported comes back **`n/a`**, never as zero. A zero is a
   measurement, and inventing one is how a comparison quietly starts lying about cost.
 
+**Nothing runs a skill that can act on the machine until you say so.** The treatment arm
+runs the agent with permission checks bypassed - the Claude Code CLI's own help recommends
+that only for sandboxes with no internet access - and the only isolation is a fresh working
+directory. So before anything runs, the pass reads the skill with the capability and
+security engines, and a skill that can reach the network or spawn a process (`CB001`,
+`CB002`), runs commands on load (`CB004`), hides what it runs (`CB005`, `SE008`), or
+carries a destructive command, an override, hidden characters or an upload (`SE002`-`SE005`)
+is refused with those findings named. `--trust-target` is you saying the skill is yours or
+has been read. An `sqs-allow` waiver does not open the gate: in a stranger's skill it is
+written by the same author whose skill is in question. The trigger pass is not gated - it
+runs with four read-only tools and no MCP servers, so a skill it loads cannot execute
+anything.
+
 **Nothing is spent on a set that cannot measure.** Before the first run the pass reads
 the set and refuses it when any case is still a draft (a field opening with `TODO`),
 names a fixture that is not in the skill, carries a `re:` that does not compile, or checks

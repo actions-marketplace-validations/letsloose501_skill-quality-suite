@@ -126,13 +126,49 @@ def prepare_workdir(task, skill, parent):
     return work
 
 
+# What a runtime run would let the skill do to the machine. The treatment arm runs the
+# agent with every permission check bypassed - the CLI's own help recommends that "only
+# for sandboxes with no internet access" - and the only isolation is a fresh working
+# directory. So a skill that can reach the network, spawn a process, run commands on
+# load, hide what it runs, or carries text aimed at the agent gets to do all of it here.
+# Reading environment variables (CB003) is not on the list: on its own it reaches
+# nothing, and with a way out it is already here as CB001 or CB002.
+HAZARDS = ("CB001", "CB002", "CB004", "CB005",
+           "SE002", "SE003", "SE004", "SE005", "SE008")
+
+
+def hazards(skill):
+    """The findings that make running this skill unattended a decision, not a default.
+
+    Read from the engines directly, not through `check`: an `sqs-allow` waiver or a
+    config switch is written by the same author whose skill is in question, and a gate
+    that its subject can switch off is not a gate.
+    """
+    import capabilities                                            # noqa: PLC0415
+    import security                                                # noqa: PLC0415
+    return [f for f in capabilities.check(skill) + security.check(skill)
+            if f.code in HAZARDS]
+
+
 def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filter=None,
-             on_event=None):
+             on_event=None, trusted=False):
     """Run the task set on both sides. Returns (report dict, problem).
 
     Every run gets its own empty working directory, so an `outputs:` assertion is about
     what this run created and not about what the last one left behind.
+
+    `trusted` is `--trust-target`: the person says the skill is theirs or has been read.
+    Without it a skill with any of `HAZARDS` is refused before anything runs.
     """
+    if not trusted:
+        found = hazards(skill)
+        if found:
+            head = "; ".join(f"{f.code} {f.where}:{f.line} {f.msg}" for f in found[:3])
+            more = f" and {len(found) - 3} more" if len(found) > 3 else ""
+            return None, (f"{len(found)} finding(s) say this skill can act on the machine - "
+                          f"{head}{more}. The runtime pass runs it with permission checks "
+                          f"bypassed, so nothing was run. Read them; if the skill is yours "
+                          f"or you have read it, pass --trust-target")
     task_list, problem = taskmod.load(skill.root)
     if problem:
         return None, problem

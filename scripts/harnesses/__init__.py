@@ -23,7 +23,8 @@ def _load():
     for mod in pkgutil.iter_modules([here]):
         if mod.name.startswith("_") or mod.name == "base":
             continue
-        module = importlib.import_module(f".{mod.name}", __name__)
+        # the names come from this package's own directory, not from data
+        module = importlib.import_module(f".{mod.name}", __name__)  # sqs-allow: CB005
         for obj in vars(module).values():
             if (isinstance(obj, type) and issubclass(obj, HarnessAdapter)
                     and obj is not HarnessAdapter and obj.name):
