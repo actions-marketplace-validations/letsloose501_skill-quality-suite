@@ -89,7 +89,8 @@ through, or the invocation aborts - so a skill that pre-approves its own injecte
 commands runs them silently on every load, before a word of it has been read. That is
 the count the finding leads with.
 
-Reported from the `capabilities` module at `info`, one finding per skill: a skill that
+Reported from the `capabilities` module - `sqs.py capabilities` or any `check`, not
+`sqs.py security` - at `info`, one finding per skill: a skill that
 documents the syntax carries dozens of examples. An injection inside an ordinary code
 block is counted apart, because the documentation does not say whether it runs there;
 `KEY=!`cmd`` is not counted at all, because the documentation says the inline form
