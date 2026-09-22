@@ -858,10 +858,25 @@ of these is built. Each carries what it rests on and what has to happen first.
   one skill whose body carries a step its description omits, graded on whether that step
   happened. Paid, and on this machine not runnable at all, since `eval --runtime` needs
   `ANTHROPIC_API_KEY`. One case stays an anecdote until that run exists.
-- **Where a skill wastes work, read from history.** In sessions where the skill loaded:
-  the same command or read repeated across sessions (a candidate for a script), the
-  largest tool results, tokens spent after the load. The transcript reader already exists
-  in `cases --from-history`. Free and local.
+- Shipped: **where a skill's work goes, read from history** - section 3 of `sqs.py
+  improve`, `history.work_after_load`. A load's work is everything from the `Skill` call to
+  the next thing the person typed; the report says that is attribution by time, not by
+  cause. Only what points at a change in the skill is listed, each ranked rather than cut
+  at a threshold: a `--help`, `find -name` or `which` repeated in two or more sessions (the
+  skill left out what the agent keeps looking up); the files read in two or more sessions
+  that cost the most characters (a grep, a section or a script would do); a file reread in
+  one load with no edit between; and the median fresh input and output tokens a load. On
+  535 real transcripts it named, among others, a trainer skill's `bank.py add --help` in
+  six sessions, a video-analysis skill hunting for `transcript.py` in three, and a lyrics
+  skill rereading a 57,000-character theory note fourteen times. Three corrections, each
+  a wrong line watched in the first runs: a long turn filed one skill's work under
+  another, so a call into another skill's folder - and its tokens - is that skill's; the
+  transcripts a video skill was asked to analyse topped its "heavy reads", so a file read
+  in one session only is the task's input, not the skill's habit; and a scratchpad file
+  still came through from three sessions, one of them this tool's own, so temporary
+  directories are inputs by location. Eight mutations, one per rule, all caught against
+  a two-session transcript built so that each rule has one call that must count and one
+  that must not.
 - **Description optimisation, done where it is missing.** Not a rewrite loop - the
   `skill-creator` plugin already runs one with a blinded 60/40 holdout, and a production
   study found a single rewrite from the false positives and negatives captures most of

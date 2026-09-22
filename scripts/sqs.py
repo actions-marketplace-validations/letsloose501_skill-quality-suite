@@ -934,7 +934,7 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
                         "example": group[0].msg})
         fix.sort(key=lambda r: (RANK.get(r["severity"], 3), r["code"]))
         h = history.harvest(s, history_dir, limit=1000)
-        report[s.folder] = {"fix": fix,
+        report[s.folder] = {"fix": fix, "work": history.work_after_load(s, history_dir),
                             "routed_here": len(h["positive"]),
                             "examples": h["positive"][:5],
                             "neighbours_won": h["near_miss"][:5],
@@ -970,8 +970,30 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
         if not r["has_trigger_set"] and (r["routed_here"] or r["neighbours_won"]):
             print("     no trigger set yet: `sqs.py cases <skill> --from-history --apply` "
                   "drafts one from exactly these")
-        print(f"  3. Paid, only if you want it. {r['paid_offer']}")
+        _print_work(r["work"])
+        print(f"  4. Paid, only if you want it. {r['paid_offer']}")
     return 0
+
+
+def _print_work(w):
+    """Section 3 of `improve`: where the agent's work went after the skill loaded."""
+    if not w.get("loads"):
+        print("  3. Where the work went - it never loaded in your history")
+        return
+    print(f"  3. Where the work went - {w['loads']} load(s) in {w['sessions']} session(s), "
+          f"median {w['median_fresh_tokens']} fresh input and {w['median_output_tokens']} "
+          f"output tokens a load")
+    print("     counted from the load to your next message, so a turn that moved on to "
+          "other work is in here too")
+    for x in w["lookups"]:
+        print(f"     looked up again in {x['sessions']} sessions - write the answer into "
+              f"the skill:")
+        print(f"        {x['command'][:110]}")
+    for x in w["heavy_reads"]:
+        print(f"     read in full: {x['chars']} chars over {x['reads']} read(s) - a grep, "
+              f"a section or a script would do: {x['file'][-80:]}")
+    for x in w["rereads"]:
+        print(f"     read again with no edit between: {x['times']}x {x['file'][-80:]}")
 
 
 def cmd_new_seeded(seeds, history_dir):

@@ -96,8 +96,10 @@ everything nearby, so re-run step 5 each time.
 
 `python scripts/sqs.py improve my-skill` puts in one place what the suite can say
 reliably about it: every finding with the registry's fix, the prompts in your history
-that really routed to it, and the ones a neighbour won that its description shares
-words with. Whether a prompt was *meant* for the skill is not in it - that takes a model,
+that really routed to it, the ones a neighbour won that its description shares words
+with, and where the agent's work went after it loaded - a lookup it repeats from session
+to session, a note it reads whole every time, a file it rereads with nothing changed.
+Whether a prompt was *meant* for the skill is not in it - that takes a model,
 which is paid, so the report offers it and never runs it.
 
 The same discipline, in reverse order.

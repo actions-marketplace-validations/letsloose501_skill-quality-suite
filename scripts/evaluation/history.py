@@ -197,6 +197,166 @@ def search(seeds, history_dir=None):
     return out
 
 
+# What the agent looks up rather than does: a script's own usage, a path, a file by name.
+# Asked once it is work; asked again in the next session it is something the skill could
+# have said.
+LOOKUP_RE = re.compile(r"(?:^|\s)(?:--help|-h)(?:\s|$)|\bfind\s+\S+.*-i?name\b"
+                       r"|^\s*(?:which|where)\s", re.I)
+SHELL_TOOLS = ("Bash", "PowerShell")
+# Where a task keeps its own inputs. A file there is what one job was about, even when a
+# later session opens it again: the first real run ranked a scratchpad transcript among a
+# skill's heaviest reads, read from three sessions - one of them this tool's own.
+TEMP_RE = re.compile(r"(?:^|[/\\])(?:te?mp|scratchpad)(?:[/\\]|$)", re.I)
+
+
+def _call_key(name, inp):
+    if name in SHELL_TOOLS:
+        return " ".join(str(inp.get("command") or "").split())
+    for k in ("file_path", "path", "pattern", "url", "query"):
+        if inp.get(k):
+            return str(inp[k])
+    return ""
+
+
+def _result_chars(block):
+    c = block.get("content")
+    if isinstance(c, str):
+        return len(c)
+    return sum(len(x.get("text", "")) for x in c or [] if isinstance(x, dict))
+
+
+def _loads(path, name):
+    """[{"calls": [(tool, key)], "reads": [(key, chars)], "usage": {...}}] for one transcript.
+
+    A load's work is everything the agent did from the `Skill` call to the next thing the
+    person typed, or to the next skill loading. That is attribution by time, not by cause:
+    a long turn that loads a skill and then goes on to something else is counted here too.
+    One correction is made on evidence - a call that names another skill's folder is that
+    skill's work - because the first run over real history filed a notes skill's turn full
+    of a trainer skill's commands under the notes skill.
+    """
+    out, seg, msgs, pending = [], None, set(), {}
+    try:
+        f = open(path, encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    other_skill = re.compile(r"[/\\]\.claude[/\\]skills[/\\](?!" + re.escape(name)
+                             + r"[/\\])[\w.-]+[/\\]")
+    with f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict) or rec.get("isSidechain"):
+                continue
+            msg = rec.get("message") or {}
+            content = msg.get("content")
+            if rec.get("type") == "user":
+                text = _user_text(content)
+                if text is not None:
+                    if not rec.get("isMeta") and not text.lstrip().startswith("<"):
+                        seg = None                    # the person spoke: the load's work ends
+                    continue
+                if seg is not None and isinstance(content, list):
+                    for b in content:
+                        if isinstance(b, dict) and b.get("type") == "tool_result":
+                            call = pending.pop(b.get("tool_use_id"), None)
+                            if call and call[0] == "Read" and not TEMP_RE.search(call[1]):
+                                seg["reads"].append((call[1], _result_chars(b)))
+            elif rec.get("type") == "assistant" and isinstance(content, list):
+                elsewhere = 0                         # calls that were another skill's work
+                for b in content:
+                    if not (isinstance(b, dict) and b.get("type") == "tool_use"):
+                        continue
+                    tool, inp = b.get("name"), b.get("input") or {}
+                    if tool == "Skill":
+                        seg = None
+                        if is_this(inp.get("skill") or "", name):
+                            seg = {"calls": [], "reads": [], "usage": {"fresh": 0, "out": 0}}
+                            out.append(seg)
+                        continue
+                    if seg is None:
+                        continue
+                    key = _call_key(tool, inp)
+                    if other_skill.search(key):
+                        elsewhere += 1
+                        continue
+                    seg["calls"].append((tool, key))
+                    pending[b.get("id")] = (tool, key)
+                mid = msg.get("id")
+                # A record carrying only another skill's call is that skill's cost as well.
+                if seg is not None and mid and mid not in msgs and not elsewhere:
+                    msgs.add(mid)                     # one message, several content records
+                    u = msg.get("usage") or {}
+                    seg["usage"]["fresh"] += ((u.get("input_tokens") or 0)
+                                              + (u.get("cache_creation_input_tokens") or 0))
+                    seg["usage"]["out"] += u.get("output_tokens") or 0
+    return out
+
+
+def work_after_load(skill, history_dir=None, limit=3):
+    """Where the agent's work went after this skill loaded, across the user's sessions.
+
+    Only what points at a change in the skill is reported, and each list is ranked rather
+    than cut at a threshold nobody measured:
+
+    - `lookups` - the same `--help`, `find -name` or `which` in two or more sessions: the
+      skill left out something the agent keeps having to find;
+    - `heavy_reads` - the files, read in two or more sessions, that cost the most
+      characters across all loads; a grep, a section or a script would do;
+    - `rereads` - a file read again in one load with no edit to it in between;
+    - `cost` - loads, sessions, and the median fresh input and output tokens per load.
+    """
+    import statistics                                               # noqa: PLC0415
+    name = skill.name or skill.folder
+    loads = []                                   # [(transcript, load)]
+    for path in sorted(glob.glob(os.path.join(history_dir or default_dir(), "*", "*.jsonl"))):
+        loads += [(path, seg) for seg in _loads(path, name)]
+    if not loads:
+        return {"loads": 0}
+    lookup_sessions = {}
+    for path, seg in loads:
+        for tool, key in seg["calls"]:
+            if tool in SHELL_TOOLS and LOOKUP_RE.search(key):
+                lookup_sessions.setdefault(key, set()).add(path)
+    lookups = sorted(((len(v), k) for k, v in lookup_sessions.items() if len(v) >= 2),
+                     key=lambda r: (-r[0], r[1]))
+    read_chars, read_count, read_sessions = {}, {}, {}
+    for path, seg in loads:
+        for key, chars in seg["reads"]:
+            read_chars[key] = read_chars.get(key, 0) + chars
+            read_count[key] = read_count.get(key, 0) + 1
+            read_sessions.setdefault(key, set()).add(path)
+    # A file read in one session only is that task's input - a transcript being analysed,
+    # a draft being edited - and reading it whole is the task. What the skill can change
+    # is what it makes the agent read every time: its own references, the notes it
+    # consults. Watched: without this, the top of a video-analysis skill's list was the
+    # transcripts it had been asked to analyse.
+    heavy = sorted(((k, c) for k, c in read_chars.items() if len(read_sessions[k]) >= 2),
+                   key=lambda kv: -kv[1])
+    rereads = {}
+    for _, seg in loads:
+        open_reads = set()
+        for tool, key in seg["calls"]:
+            if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+                open_reads.discard(key)
+            elif tool == "Read" and not TEMP_RE.search(key):
+                if key in open_reads:
+                    rereads[key] = rereads.get(key, 0) + 1
+                open_reads.add(key)
+    return {
+        "loads": len(loads), "sessions": len({p for p, _ in loads}),
+        "median_fresh_tokens": int(statistics.median(s["usage"]["fresh"] for _, s in loads)),
+        "median_output_tokens": int(statistics.median(s["usage"]["out"] for _, s in loads)),
+        "lookups": [{"command": k, "sessions": n} for n, k in lookups[:limit]],
+        "heavy_reads": [{"file": k, "chars": c, "reads": read_count[k]}
+                        for k, c in heavy[:limit]],
+        "rereads": [{"file": k, "times": n}
+                    for k, n in sorted(rereads.items(), key=lambda kv: -kv[1])[:limit]],
+    }
+
+
 def as_query_set(harvested):
     """The drafts in `evals/eval_queries.json` form, the shape `triggers.load` reads."""
     return ([{"query": p, "should_trigger": True} for p in harvested["positive"]]

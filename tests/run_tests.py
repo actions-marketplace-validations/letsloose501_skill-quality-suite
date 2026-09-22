@@ -359,6 +359,7 @@ def unit_checks():
     out += indirection_checks()
     out += dependency_checks()
     out += ranking_checks()
+    out += work_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -789,6 +790,82 @@ def ranking_checks():
             if bool(got) != fires:
                 out.append(f"SE007 ranking on {desc!r}: expected "
                            f"{'a finding' if fires else 'silence'}, got {[x.msg for x in got]}")
+    return out
+
+
+def work_checks():
+    """`improve`'s "where the work went" against two sessions built to cross every rule.
+
+    Each rule has one call that must count and one beside it that must not: a lookup
+    repeated across sessions and one asked once; a file read in both sessions and one
+    read in one; a scratchpad input; a reread with and without an edit between; a call
+    into another skill's folder; work after the person spoke again.
+    """
+    from core import Skill
+    from evaluation import history
+    n = [0]
+
+    def call(tool, **inp):
+        n[0] += 1
+        chars = inp.pop("_chars", 10)
+        return [
+            {"type": "assistant", "message": {"id": f"m{n[0]}", "usage": {
+                "input_tokens": 100, "cache_creation_input_tokens": 50,
+                "output_tokens": 10},
+                "content": [{"type": "tool_use", "id": f"t{n[0]}", "name": tool,
+                             "input": inp}]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": f"t{n[0]}",
+                 "content": "x" * chars}]}}]
+
+    def session(extra):
+        recs = [{"type": "user", "message": {"content": "reconcile the march export"}}]
+        recs += call("Skill", skill="statement-check")
+        recs += call("Bash", command="python scripts/check.py --help")
+        recs += call("Read", file_path="notes/rules.md", _chars=5000)
+        recs += call("Read", file_path="notes/rules.md", _chars=5000)       # reread
+        recs += call("Read", file_path="ledger.csv", _chars=100)
+        recs += call("Edit", file_path="ledger.csv")
+        recs += call("Read", file_path="ledger.csv", _chars=100)            # after an edit
+        recs += call("Bash", command="python ~/.claude/skills/other-skill/run.py --help")
+        # a task input, read in both sessions: cross-session alone would keep it
+        recs += call("Read", file_path="/tmp/job/input.md", _chars=90000)
+        return recs + extra
+
+    # `other.py --help` is looked up inside the first load and only after the person spoke
+    # in the second, so it becomes a two-session lookup only if the load does not end there
+    one = session(call("Read", file_path="only-once.md", _chars=90000)
+                  + call("Bash", command="which pandoc")
+                  + call("Bash", command="python scripts/other.py --help"))
+    two = session([{"type": "user", "message": {"content": "thanks, now something else"}}]
+                  + call("Bash", command="python scripts/other.py --help"))
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        proj = os.path.join(tmp, "history", "p")
+        os.makedirs(proj)
+        for name, recs in (("a.jsonl", one), ("b.jsonl", two)):
+            with open(os.path.join(proj, name), "w", encoding="utf-8") as f:
+                for r in recs:
+                    f.write(json.dumps(r) + "\n")
+        skill = Skill(os.path.join(FIXTURES, "restated-cases", "statement-check"))
+        w = history.work_after_load(skill, os.path.join(tmp, "history"))
+    want = {
+        "loads": (w.get("loads"), 2),
+        "sessions": (w.get("sessions"), 2),
+        "lookups": ([x["command"] for x in w.get("lookups", [])],
+                    ["python scripts/check.py --help"]),
+        "heavy_reads": ([x["file"] for x in w.get("heavy_reads", [])],
+                        ["notes/rules.md", "ledger.csv"]),
+        "rereads": ([(x["file"], x["times"]) for x in w.get("rereads", [])],
+                    [("notes/rules.md", 2)]),
+        # 150 fresh tokens a record. Each load: the Skill call, six calls of its own and
+        # the task input = 8; the other skill's call is not its cost. Load a adds three
+        # more (11), load b none - the person spoke. The median of 1650 and 1200.
+        "median_fresh_tokens": (w.get("median_fresh_tokens"), 1425),
+    }
+    for key, (got, expected) in want.items():
+        if got != expected:
+            out.append(f"work_after_load {key}: {got!r}, expected {expected!r}")
     return out
 
 

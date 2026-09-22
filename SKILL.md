@@ -54,7 +54,7 @@ edits. The free checks say X. Run it?"
 | Does the skill actually help | `sqs.py eval <skill> --runtime` - **paid, ask first**: the task with it and without it |
 | Did my last edit break it | `sqs.py eval <skill> --all --save v2`, then `--compare v1 v2` - **paid, ask first** |
 | What do people actually type to reach it | `sqs.py cases <skill> --from-history` - free, reads local transcripts |
-| What should I change in this skill | `sqs.py improve <skill>` - findings with fixes, plus what your own requests say |
+| What should I change in this skill | `sqs.py improve <skill>` - findings with fixes, what your own requests say, and where its work went after loading |
 | Switching the gate on over an old tree | `sqs.py baseline create`, then `check --baseline` |
 | One line per layer, for a decision | `sqs.py check <skill> --format board` |
 | Writing a new skill | `sqs.py new <name> [--seed WORD]`, then [creating-a-skill.md](references/creating-a-skill.md) |
