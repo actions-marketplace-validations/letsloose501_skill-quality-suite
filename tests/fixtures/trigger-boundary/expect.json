@@ -1,0 +1,10 @@
+{
+  "note": "Two skills whose descriptions carry a real exclusion clause, one fuzzy and one sharp. `invoice-router` claims supplier invoices and then fences out supplier invoices of a different kind using the same topic words, so the clause meant to keep it quiet reads to the router as one more reason to fire. `receipt-router` fences out the neighbouring work by naming a different topic entirely - payroll, bank exports - which is the same fence written so that it holds, and it must stay silent or the rule is only reporting that an exclusion exists. `QL003` is rejected so the case stays about the boundary rather than about redundancy: the two rules compare the same phrases and only differ in which pairs they keep.",
+  "command": "quality",
+  "expect": [
+    "QL014"
+  ],
+  "reject": [
+    "QL003"
+  ]
+}

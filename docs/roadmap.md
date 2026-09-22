@@ -69,7 +69,6 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
-| 19 | Trigger boundary geometry | is the line between *fire* and *do not fire* sharp enough to hold |
 | 20 | Declared against actual | does the skill ask for the permissions its own code needs, and no more |
 | 21 | What changed between versions, read as a threat | did this update quietly gain reach it did not have |
 | 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
@@ -272,21 +271,48 @@ authoring (`spec`, `structure`, `quality`), storage and execution (`security`,
 exactly the kind this project can already see offline. That gap is why three of the four
 items below exist.
 
-**19. Trigger boundary geometry.** One framework scores a description's trigger by three
-geometric quantities over its positive and negative phrases: how far apart the positives
-spread (a trigger too narrow to catch its own work), how far each negative sits from the
-nearest positive (an exclusion that does not exclude), and - the one that matters most -
-the *minimum* distance between any positive and any negative. Their argument is that a
-single ambiguous pair causes catastrophic misrouting even when everything else separates
-cleanly.
+Shipped: **trigger boundary geometry (19)** - `QL014` in `scripts/quality.py`
+(`boundary_pairs`), beside `QL003` and on the same phrase comparison. SkillAxe scores a
+trigger by three geometric quantities over its positive and negative phrases; only the
+third is built here, and the other two were dropped on this project's own rules rather
+than forgotten. *Coverage breadth* - how far the positives spread - reduces on a corpus
+like this to `QL003` restated, and a third rule over the same measurement would be a
+patch, not a rule. *Negative specificity* is that measurement averaged, and an average is
+a statistic with nothing to point at, which is exactly the complaint `QL004` already
+earns. What survived is the one that names a pair: the *minimum* distance between a
+clause that claims work and a clause that fences it out, because a description can
+separate its branches well on average and still be misrouted by one bad pair.
 
-This repository already computes that comparison and then throws away the interesting
-half: `near_duplicates` skips every pair whose polarity differs (`if na != nb: continue`),
-because it was built to find a branch written twice, and an opposite branch is not a
-duplicate. Read as a boundary rather than as a duplicate, that skipped pair is the
-finding. Lands in `scripts/quality.py` beside `QL003`, on `POLARITY_RE`,
-`branch_segments` and `stems` - no new dependency, and embeddings are not needed for a
-comparison this suite already makes with stems.
+That pair is precisely the one `near_duplicates` throws away (`if na != nb: continue`).
+It was right to: asked *is one branch written twice*, a pair that disagrees is two
+branches and not its business. Asked *is the line sharp enough to hold*, the same pair is
+the whole answer. No embeddings were needed for a comparison this suite already makes
+with stems.
+
+Two rounds of live calibration against the 29 installed skills, and the first one was the
+whole rule being wrong:
+
+- **`POLARITY_RE` cannot classify an exclusion.** It answers "do these two segments
+  disagree", which is all `near_duplicates` needs; used as a classifier it was wrong on
+  every case in the corpus. Of the seven segments it marked negative, none was an
+  exclusion branch - and two of them, "что не так с этим текстом" and "не звучит как я",
+  are wordings a user types to *invoke* the skill, so the label inverted their meaning.
+  `EXCLUSION_RE` replaces it, and the difference is not a longer list of words: a clause
+  fences work out because of what its negation *governs* - the act of using the skill, the
+  purpose it would serve, or the neighbour it defers to - not because it contains one.
+- **Third person is description, not instruction.** With that fixed, one case remained:
+  this project's own description contains "when a skill does not fire", which is a
+  situation it triggers on, and the pattern read it as an instruction not to fire. Two
+  lookbehinds separate `do not fire` from `does not fire`.
+
+After both: nine genuine exclusion clauses found across seven of the 29 skills, worst
+overlap 0.00, and the rule silent - which is the corpus being clean rather than the branch
+being dead, and the difference was checked by measuring the overlaps rather than by
+reading a zero. The inversion cases cannot be reached by any fixture, because a phrase
+wrongly labelled an exclusion usually produces no finding and looks exactly like a clean
+description, so they are a unit check in `tests/run_tests.py` alongside `NEIGHBOUR_RE`'s.
+Fixture: `tests/fixtures/trigger-boundary`, one fuzzy boundary and one sharp one, with
+`QL003` rejected so the case stays about the boundary.
 
 **20. Declared against actual.** Two independent sources converge on the same check:
 compare what a skill *declares* against what its code *does*, over a shared capability

@@ -195,6 +195,72 @@ def near_duplicates(desc, threshold=0.6):
     return pairs
 
 
+# A clause that fences work OUT, which is not the same thing as a clause containing a
+# negation. `POLARITY_RE` answers "do these two segments disagree", which is all
+# `near_duplicates` needs to avoid pairing opposites; asked instead to classify a segment
+# as an exclusion it is wrong most of the time. Measured on 29 real descriptions: of the
+# seven segments it marked negative, none was an exclusion branch, and two - "что не так
+# с этим текстом", "не звучит как я" - are wordings a user types that SHOULD fire the
+# skill, so the label inverted their meaning.
+#
+# What separates the two is not the negation but what the negation governs. Three
+# grammatical roles, not three examples: the act of using the skill, the purpose it would
+# be used for, and the neighbour it defers to instead.
+# The lookbehinds keep the third person out: `do not fire` is an instruction to the
+# router, `a skill does not fire` is a situation somebody describes - and this project's
+# own description contains the second, so without them the rule mislabels its own
+# strongest trigger phrase as an exclusion.
+EXCLUSION_RE = re.compile(
+    r"(?<!does )(?<!did )\b(?:do not|don't|dont|never|not)\s+"
+    r"(?:use|trigger|fire|invoke|call|run|reach|apply)\b"
+    r"|\b(?:not|never)\s+(?:for|about|when)\b"
+    r"|\bне\s+(?:для|под|про)\b"
+    r"|\bне\s+(?:запускайся|запускай|срабатывай|триггерь|вызывай|зови|бери|используй|"
+    r"применяй)\b"
+    r"|\bне\s+(?:путать|подменяет|подменяй|заменяет|заменяй)\b"
+    r"|\bdo(?:es)?\s+not\s+(?:replace|substitute|cover)\b"
+    r"|\bnot\s+to\s+be\s+confused\b",
+    re.I)
+
+
+def boundary_pairs(desc, threshold=0.6):
+    """(fires-on phrase, does-not-fire-on phrase, overlap) where the line is too faint.
+
+    The pair `near_duplicates` above deliberately skips. That rule asks *is one branch
+    written twice*, so a pair disagreeing about polarity is two branches and not its
+    business. Asked a different question - *is the line between fire and do-not-fire
+    sharp enough to hold* - the same pair is the whole answer, and it is the one worth
+    the most: a description can separate its branches well on average and still be
+    misrouted catastrophically by a single exclusion that reads almost exactly like an
+    activation.
+
+    Only the worst pair is reported, not an average over all of them. An average would
+    be a statistic with nothing to point at, which is the complaint `QL004` already
+    earns; a pair can be read and disagreed with.
+
+    `content_stems`, not `stems`: within one description the connective scaffolding -
+    `when`, `user`, `asks` - repeats across every branch by construction, so a
+    four-letter floor lets an activation and an exclusion match on nothing but the
+    house style. That is the same confound `EV007` was calibrated against, in the one
+    place where it bites hardest, because here both halves come from the same author.
+
+    `EXCLUSION_RE`, not `POLARITY_RE`: see the note on that pattern. A segment is an
+    exclusion because of what its negation governs, not because it contains one.
+    """
+    segs = [s.strip(" -—:") for s in SEGMENT_RE.split(desc)]
+    known = [(s, content_stems(s), bool(EXCLUSION_RE.search(s))) for s in segs
+             if len(s) > 8]
+    fires = [(s, st) for s, st, neg in known if not neg and st]
+    quiet = [(s, st) for s, st, neg in known if neg and st]
+    out = []
+    for a, sa in fires:
+        for b, sb in quiet:
+            small = min(len(sa), len(sb))
+            if small >= 2 and len(sa & sb) / small >= threshold:
+                out.append((a[:48], b[:48], len(sa & sb) / small))
+    return sorted(out, key=lambda r: -r[2])
+
+
 SENTENCE_RE = re.compile(r"[.;]\s+|\n")
 
 
@@ -328,6 +394,11 @@ def check(skill, cfg=None, registry=None):
         for a, b in near_duplicates(desc)[:2]:
             out.append(Finding("QL003", f"\"{a}\" and \"{b}\" are the same branch written "
                                         f"twice", where="SKILL.md"))
+        # QL014 - the pair QL003 skips, asked the other question
+        for a, b, overlap in boundary_pairs(desc)[:1]:
+            out.append(Finding("QL014", f"\"{b}\" fences out wording that \"{a}\" claims "
+                                        f"({overlap:.0%} of the shorter phrase's topic "
+                                        f"words are shared)", where="SKILL.md"))
         if re.search(r"\b" + re.escape(skill.folder) + r"\b", desc, re.I):
             out.append(Finding("QL009", f"description repeats `{skill.folder}`", where="SKILL.md"))
         m = SELF_TALK_RE.search(desc)

@@ -251,6 +251,16 @@ _ROWS = {
               "been chosen. Keep it in the description only when a model-invoked neighbour "
               "would otherwise take the work, and then name that neighbour rather than its "
               "topic.", False),
+    "QL014": ("warning", "Fuzzy boundary between fire and do-not-fire",
+              "An exclusion clause in the description shares its topic words with a clause "
+              "that claims the work. A description can separate its branches well on average "
+              "and still be misrouted by one pair like this, because the router matches "
+              "wording and a negation does not reverse a match. `QL003` compares two clauses "
+              "that agree and calls the second redundant; this compares two that disagree, "
+              "where the second reads as a reason to fire rather than a reason to stay quiet.",
+              "Make the two sides differ in topic words, not only in the negation - or move "
+              "the exclusion into the body, which is read after the skill has been chosen.",
+              False),
 
     # ---- CP: agent compatibility --------------------------------------------
     "CP001": ("warning", "Field value the runtime cannot read",
@@ -504,6 +514,10 @@ GRADES = {
     "QL011": ("medium", "medium"),
     "QL012": ("high", "low"),
     "QL013": ("medium", "medium"),
+    # the exclusion side is read off a pattern of three grammatical roles rather than
+    # off any negation, which is what makes it more confident than QL003's blanket
+    # polarity flag - but the overlap threshold above it is still a stem heuristic
+    "QL014": ("medium", "medium"),
 
     # compat: every verdict comes from an adapter's declared support table
     "CP001": ("high", "low"),    "CP002": ("high", "low"),

@@ -41,7 +41,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 84 rules](docs/quality-rules.md)**
+📋 **[All 85 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|
@@ -163,7 +163,7 @@ table, the source behind each row, and how to add one without guessing.
 - **· info** - a nudge. Real, small, safe to leave.
 
 Every finding carries a rule code. `sqs.py explain ST008` prints the reasoning and the
-fix; `sqs.py rules` lists all 84.
+fix; `sqs.py rules` lists all 85.
 
 ## Commands
 

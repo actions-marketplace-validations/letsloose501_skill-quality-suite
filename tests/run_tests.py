@@ -253,6 +253,29 @@ def unit_checks():
         if got != want:
             out.append(f"NEIGHBOUR_RE on {text!r}: expected {sorted(want)}, got {sorted(got)}")
 
+    # EXCLUSION_RE: what a fixture cannot reach either, and for the same reason. The rule
+    # it feeds only fires when an exclusion ALSO overlaps an activation, so a phrase
+    # wrongly labelled an exclusion usually produces nothing and reads exactly like a
+    # clean description. That is how the first version survived a live corpus: it marked
+    # "что не так с этим текстом" and "не звучит как я" - wordings a user types to INVOKE
+    # a skill - as exclusions, and read this project's own "when a skill does not fire"
+    # the same way. The second half of this table is the half that matters.
+    for text, want in (
+            ("do not use for spreadsheets", True),
+            ("Do not use for a scanned photograph", True),
+            ("Не для блок-схем", True),
+            ("НЕ запускайся на рутине", True),
+            ("Не путать с `konspekt`", True),
+            ("Не подменяет заметку GIT.md", True),
+            ("when a skill does not fire", False),
+            ("a rule that did not fire", False),
+            ("что не так с этим текстом", False),
+            ("не звучит как я", False),
+            ("Теорию не хранит", False),
+            ("и потому не придумывают контракты заново", False)):
+        if bool(quality.EXCLUSION_RE.search(text)) != want:
+            out.append(f"EXCLUSION_RE on {text!r}: expected {want}, got {not want}")
+
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when
     # the suite is installed as one, so the probe looks in both.

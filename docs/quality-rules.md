@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 84 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 85 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -286,6 +286,7 @@ Whether the instructions read like instructions. The module with the most room t
 | `QL011` | error | medium | medium | no | Bundled script waits for input |
 | `QL012` | info | high | low | no | Unpinned one-off command |
 | `QL013` | info | medium | medium | no | Description rules out a topic |
+| `QL014` | warning | medium | medium | no | Fuzzy boundary between fire and do-not-fire |
 
 ### QL001 - Description too short to carry triggers
 
@@ -364,6 +365,12 @@ Whether the instructions read like instructions. The module with the most room t
 **Why it matters.** A description is matched on topic, and a negation does not reverse a match. Spelling out the work the skill will not take puts that work's vocabulary in the one place the router reads, so the clause meant as a fence reads as one more reason to fire. `QL008` is this same trap when a neighbouring skill is named; this is the version with only a topic in it, which is the common one.
 
 **Fix.** Move the boundary into the body, which is read after the skill has already been chosen. Keep it in the description only when a model-invoked neighbour would otherwise take the work, and then name that neighbour rather than its topic.
+
+### QL014 - Fuzzy boundary between fire and do-not-fire
+
+**Why it matters.** An exclusion clause in the description shares its topic words with a clause that claims the work. A description can separate its branches well on average and still be misrouted by one pair like this, because the router matches wording and a negation does not reverse a match. `QL003` compares two clauses that agree and calls the second redundant; this compares two that disagree, where the second reads as a reason to fire rather than a reason to stay quiet.
+
+**Fix.** Make the two sides differ in topic words, not only in the negation - or move the exclusion into the body, which is read after the skill has been chosen.
 
 ## security (SExxx)
 
