@@ -73,6 +73,7 @@ uses. Three formats, one per skill.
 | 20 | Declared against actual | does the skill ask for the permissions its own code needs, and no more |
 | 21 | What changed between versions, read as a threat | did this update quietly gain reach it did not have |
 | 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
+| 23 | Install command against its own repository | does the README tell a stranger to install from where this actually lives |
 
 Shipped: **the suite writes the checks (17)** - the `cases` module (`scripts/cases.py`,
 prefix `CS`) in every `check` run, plus `sqs.py cases <skill> --generate [--apply]`,
@@ -236,11 +237,31 @@ in place of the false positive. Fixture: `tests/fixtures/script-capabilities`.
 ### Where items 19-22 came from
 
 Items 15-18 were reasoned out from this repository's own corpus. Items 19-22 are an
-intake from published work on agent skills - a security-lifecycle taxonomy, two
-evaluation harnesses, and a diagnostic self-refinement framework, all 2026. They are
-recorded here with what each one rests on, because an item admitted on somebody else's
-evidence has to say whose evidence it is; an item this page cannot attribute is an item
-nobody can check.
+intake from published work on agent skills, recorded here with what each one rests on:
+an item admitted on somebody else's evidence has to say whose evidence it is, because an
+item this page cannot attribute is an item nobody can check. The sources, all 2026:
+
+- **SkillSec-Eval** - *Agent Skill Security: Threat Models, Attacks, Defenses, and
+  Evaluation*, Badhe & Tiwari, arXiv:2607.13987. The lifecycle taxonomy and the named
+  threats behind items 20 and 21.
+- **SkillAxe** - *Sharpening LLM-Authored Agent Skills Through Evaluation-Guided
+  Self-Refinement*, Gautam, Radhakrishna & Gulwani, arXiv:2606.10546. The trigger
+  geometry behind item 19, the fault-attribution split, and the measured finding that
+  skills buy execution reliability rather than answer quality.
+- **SkillTester** - *Benchmarking Utility and Security of Agent Skills*, Wang, Wang & Xu,
+  arXiv:2603.28815. The invocation gate and the pre-flight evaluability check in item 22,
+  and the practice of treating badges and self-claimed safety as claims to verify.
+- **SkillEval** - *Decomposing Agent Skill Quality into Interpretable Signals*, Han et al.,
+  arXiv:2608.06891. Document-level quality independent of any one downstream task, and the
+  warning that length and formatting confound a score meant to measure something else -
+  which is a caution aimed squarely at item 15.
+- **SkillOpt** - *Executive Strategy for Self-Evolving Agent Skills*, Microsoft Research,
+  June 2026. Bounded edits per revision, validation gating, and the measured median length
+  of an optimized skill file.
+
+The code stays free of all of this: a rule's docstring explains the rule, not who
+suggested it. Attribution belongs on this page, where somebody deciding what to build
+next can follow it.
 
 The single most useful thing taken is not a rule but a frame: **a skill has a lifecycle,
 and each stage is a separate trust boundary** - authoring, storage, retrieval, selection
@@ -317,6 +338,41 @@ runnable in both arms. This suite discovers the equivalent after the fact, as `u
 in the report - which is honest but is found only once the money is gone. A pre-flight
 gate is offline, costs nothing, and sits naturally on what `cases --generate` already
 writes. Lands in `scripts/evaluation/runtime.py` and `scripts/evalcheck.py`.
+
+### 23. Read from a real skill in the wild
+
+The items above came from papers. This one came from reading a published, installable
+skill the way a stranger would - which is the thing this project's front page says it is
+for - and finding a defect in it that nothing here would have caught.
+
+**The install command names a different repository than the one it ships in.** The
+README's install instructions pointed at one GitHub owner while the repository itself
+lived under another: the project had moved and the commands had not. Anyone following
+those instructions installs from an account that is no longer the author's, which is a
+supply-chain hole with a friendly face, and it is exactly the rename-leaves-a-pointer
+failure this suite already claims to catch - just one level up, in the file that tells a
+human what to type.
+
+Checkable offline and cheaply: an install command in a README (`npx skills add owner/repo`,
+`/plugin marketplace add owner/repo`, a `raw.githubusercontent.com/owner/repo` URL) whose
+`owner/repo` disagrees with the repository's own git remote or with the marketplace entry
+beside it. Lands in `scripts/publish.py` with the rest of the PB module, and it is the
+first PB rule that reads the README as payload rather than as a box to tick.
+
+Two smaller things from the same reading, both parked:
+
+- **A step with no way to tell done from not-done.** That skill's own fourth principle is
+  that weak success criteria make an agent loop badly, and its format makes the criterion
+  structural: `[step] -> verify: [check]`. `QL006` fires when a bound is *present and
+  vague* (`be thorough`, `as needed`); the complementary rule fires when there is no bound
+  at all. Parked because a good step often needs no explicit check, so the false-positive
+  risk is high and the threshold is a guess.
+- **The same guidance shipped in several files that can drift.** That repository carries
+  its content as `SKILL.md`, as `CLAUDE.md` and as a Cursor rule, all by hand. Two copies
+  of one instruction set with no mechanism keeping them equal is the drift this project
+  already knows how to detect - the directory form of `--since` from item 16 is the same
+  comparison. Parked because shipping several copies on purpose is legitimate, so the
+  finding is a caution about a maintenance cost rather than a defect.
 
 ### Admitted to P2 rather than P1
 
