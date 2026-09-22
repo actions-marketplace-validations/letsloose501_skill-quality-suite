@@ -580,6 +580,31 @@ repository as the free one - it is where the free half's rules come from.
 
 ## P2
 
+### A second intake: tools rather than papers
+
+A reading of ten published tools in the same space - description optimisers, evaluators,
+a porter between runtimes, a large audit skill - done by reading their code, not only
+their pages. What was taken is recorded as what it is here; the sources stay unnamed on
+purpose, and nothing was copied.
+
+Shipped from it: **`SP020`**, a bare `<` or `>` in a description. `SP018` covered a tag;
+the validator the reference skill-creation tooling ships refuses any angle bracket, and
+its packager runs that validator first, so an arrow was enough for a skill that works
+locally to be refused there. No real skill on this machine carries one; the fixture and
+a unit check hold both sides, including the `>-` of a block scalar, which the parser
+strips.
+
+Shipped from it: **`EV010`**, should-trigger cases that restate the description word for
+word. Measured before it was built, on the one real routing set on this machine: 37 of
+105 positives carry a wording their own skill's description quotes - 5 of 5 for one
+skill, 5 of 6 for another. The first count said 38 and was inflated by a substring match
+(`план` inside `по плану`); whole words only since, and a unit check holds that line. The
+first wording of the message was too strong as well: a one-verb wording two neighbours
+both list makes the case a test of the fork, which can fail - so it is a count at `info`,
+not a verdict. The rule reads the suite's own two case formats; the real set is in a
+tree-level format this suite does not document, so the calibration ran the same function
+over it through a probe rather than through `check`.
+
 Shipped: **fake trust indicators (admitted from the intake)** - `SE007` in
 `scripts/security.py`, `info`: a skill vouching for itself - a safety guarantee, an
 endorsement by a named vendor, a count of users, an invitation to skip review. The item

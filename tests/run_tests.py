@@ -304,6 +304,20 @@ def unit_checks():
         if got != want:
             out.append(f"SP020 on {folder}: expected {want}, got {got}")
 
+    # EV010: whole words only. The first measurement on a real routing set counted the
+    # wording «план» inside "по плану" - inflection, not a copy.
+    import evalcheck
+    from evaluation.triggers import Query
+    desc = 'Ведёт день. Срабатывай на «план», «что сегодня по плану», "reconcile"'
+    for text, want in (("что сегодня по плану", True),
+                       ("reconcile this", True),
+                       ("покажи план на неделю", True),
+                       ("сверь по плану расходы", False),
+                       ("reconciled already?", False)):
+        got = bool(evalcheck.restated(desc, [Query(text, True, "probe")]))
+        if got != want:
+            out.append(f"EV010 on {text!r}: expected {want}, got {got}")
+
     # SE007: a skill vouching for itself, against the same words used honestly. The
     # second half is lifted from real skills, where these words occur 217 times as what
     # the skill does or where a neighbour came from - and must never read as a badge.

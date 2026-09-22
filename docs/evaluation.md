@@ -101,6 +101,16 @@ The set is split 60/40 into train and validation, stratified. Tune the descripti
 against the train failures; the validation numbers are the only thing that says the
 change generalised rather than memorised the failures.
 
+**A case that restates the description measures almost nothing.** If the description
+quotes "reconcile my statement" as a trigger and a should-trigger case is "reconcile my
+statement please", the case passes by string match; it says nothing about the phrasings
+nobody thought to list, which is what the set is for. `EV010` counts such cases on every
+`check`, whole words only, and shows the first one. On one real routing set of 105
+positives it counted 37. A few are fair - a one-verb wording two neighbours both list
+turns the case into a test of the fork between them - so the finding is a count at
+`info`, not a verdict. Write the rest the way requests actually arrive: with context, in
+other words.
+
 ### How one run is set up, and why
 
 A trigger run is the one place this suite deliberately lets the agent act, because

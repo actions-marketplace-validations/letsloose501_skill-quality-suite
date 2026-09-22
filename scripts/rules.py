@@ -467,6 +467,16 @@ _ROWS = {
               "Fill the draft, add the fixture under the skill or drop it, fix the pattern.",
               False),
 
+    "EV010": ("info", "Trigger cases repeat the description",
+              "A should-trigger case that contains, word for word, a wording the description "
+              "quotes as a trigger can pass by string match alone. It shows the listed words "
+              "are there; it says nothing about the phrasings a person uses that the author "
+              "did not think to list, which is what a trigger set is for. Measured on a real "
+              "routing set of 105 positives: 37 were this.",
+              "Keep one such case per branch as a sanity check if you like, and write the rest "
+              "the way the requests actually arrive - with context, in other words, without "
+              "the listed phrase.", False),
+
     # ---- CB: capabilities ------------------------------------------------------
     "CB001": ("info", "Bundled script can reach the network",
               "An import or a command a bundled script carries - `requests`, `socket`, "
@@ -623,6 +633,7 @@ GRADES = {
     "EV007": ("low", "high"),    # same stem-overlap heuristic as QL003, graded the same way
     "EV008": ("high", "low"),    # the absence of two keys, read off the file
     "EV009": ("high", "low"),    # a placeholder, a path and a compile - all exact
+    "EV010": ("high", "medium"), # whole-word match is exact; a one-verb fork wording is a fair case
 
     # capabilities: `ast` reads an import or a call exactly, CB002/CB003 only ever fire
     # that way. CB001 also fires off a command-name regex for non-Python scripts, the

@@ -1,0 +1,7 @@
+{
+  "note": "A trigger set where two of three positives restate the description's own quoted wordings, so they pass by string match. The third - the books disagree, find where - is how the request actually arrives, and it is the one that tests the description.",
+  "command": "evals",
+  "expect": [
+    "EV010"
+  ]
+}

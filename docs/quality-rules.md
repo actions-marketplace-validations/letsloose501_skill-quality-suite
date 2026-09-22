@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 93 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 94 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -142,6 +142,7 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 | `EV007` | warning | low | high | no | Semantic overlap between two skills |
 | `EV008` | warning | high | low | no | Eval case cannot pass or fail |
 | `EV009` | error | high | low | no | Eval case cannot run as written |
+| `EV010` | info | high | medium | no | Trigger cases repeat the description |
 
 ### EV001 - Routing invariant broken
 
@@ -196,6 +197,12 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 **Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, or carries a `re:` assertion that does not compile. The first measures nothing, the second hands the agent a task about a file it never receives, and the third crashes the grader after both arms have run. `eval --runtime` refuses the whole set until it is fixed.
 
 **Fix.** Fill the draft, add the fixture under the skill or drop it, fix the pattern.
+
+### EV010 - Trigger cases repeat the description
+
+**Why it matters.** A should-trigger case that contains, word for word, a wording the description quotes as a trigger can pass by string match alone. It shows the listed words are there; it says nothing about the phrasings a person uses that the author did not think to list, which is what a trigger set is for. Measured on a real routing set of 105 positives: 37 were this.
+
+**Fix.** Keep one such case per branch as a sanity check if you like, and write the rest the way the requests actually arrive - with context, in other words, without the listed phrase.
 
 ## publish (PBxxx)
 
