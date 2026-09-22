@@ -496,7 +496,13 @@ Two smaller things from the same reading, both parked:
 - **Keyword stuffing** - a description padded with domain keywords to win semantic
   retrieval it does not deserve. Measurable offline as stem-repetition density against the
   median of the tree, but the threshold is a guess until a corpus says otherwise, which is
-  the same trap item 15 is parked on.
+  the same trap item 15 is parked on. Measured since, and the corpus did not say: over the
+  55 real descriptions long enough to count, the share of words repeating an earlier stem
+  runs continuously from 0.00 to 0.34 (median 0.20, 90th percentile 0.30) with no cluster
+  to cut at. The top of the range is honest - `plugin-dev` descriptions listing the
+  wordings a user types ("create a slash command", "add a command", ...), which is
+  `QL003`'s territory rather than padding. Still parked; a stuffed description would have
+  to be found in the wild before a line could be drawn under it.
 - **Edit budget per revision** - one source treats an unbounded rewrite as the mechanism by
   which skills drift and quietly degrade, and caps how much a single revision may change.
   `--since` gives the percentage for free. Parked because "how much is too much" is another
