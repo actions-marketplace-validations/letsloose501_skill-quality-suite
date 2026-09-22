@@ -304,6 +304,18 @@ def unit_checks():
         if got != want:
             out.append(f"SP020 on {folder}: expected {want}, got {got}")
 
+    # CB004: what counts as a load-time command, against the documented rules - inline
+    # only at a line start or after whitespace, every line of a ```! block, and an
+    # ordinary fence tracked apart rather than guessed about.
+    import capabilities
+    got = [(cmd, fenced) for _, cmd, fenced in capabilities._injections(
+        Skill(os.path.join(FIXTURES, "load-time-commands", "release-status")))]
+    want = [("date -u +%Y-%m-%d", False), ("git status --short", False),
+            ("git log --oneline $(git describe --tags --abbrev=0)..HEAD", False),
+            ("rm -rf build", True)]
+    if got != want:
+        out.append(f"CB004 injections: expected {want}, got {got}")
+
     # EV010: whole words only. The first measurement on a real routing set counted the
     # wording «план» inside "по плану" - inflection, not a copy.
     import evalcheck

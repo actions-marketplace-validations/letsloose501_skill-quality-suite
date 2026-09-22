@@ -80,6 +80,21 @@ shapes count, and a quoted one is exempt, the same way `SE003` exempts a quotati
 that warns a reader about such badges has to be able to write one down. `info`, because
 the finding is a claim to verify, not a verdict.
 
+### Commands that run on load (`CB004`)
+
+Claude Code runs `` !`command` `` in a skill's body, and every line of a block opened
+with ` ```! `, before the model is sent the skill: the output replaces the placeholder.
+It never prompts. A permission rule or the skill's own `allowed-tools` lets the command
+through, or the invocation aborts - so a skill that pre-approves its own injected
+commands runs them silently on every load, before a word of it has been read. That is
+the count the finding leads with.
+
+Reported from the `capabilities` module at `info`, one finding per skill: a skill that
+documents the syntax carries dozens of examples. An injection inside an ordinary code
+block is counted apart, because the documentation does not say whether it runs there;
+`KEY=!`cmd`` is not counted at all, because the documentation says the inline form
+counts only at a line start or after whitespace.
+
 ## What a finding looks like
 
 Every one of them names a file and a line, so every one is checkable:

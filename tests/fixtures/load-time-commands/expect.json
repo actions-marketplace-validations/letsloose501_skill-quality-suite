@@ -1,0 +1,7 @@
+{
+  "note": "A skill that runs commands the moment it loads: an inline `date` its own `allowed-tools` pre-approves, and a ```! block of git commands. An example inside an ordinary code block is counted apart, because the documentation does not say whether it runs, and `CACHE_KEY=!`...`` is left out, because the documentation says the inline form counts only at a line start or after whitespace.",
+  "command": "capabilities",
+  "expect": [
+    "CB004"
+  ]
+}

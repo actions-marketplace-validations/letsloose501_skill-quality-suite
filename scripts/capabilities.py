@@ -20,6 +20,7 @@ as an answer instead of a list, is the manifest: nothing here invents a second r
 format for the same underlying facts.
 """
 import ast
+import fnmatch
 import re
 
 from core import Finding
@@ -141,4 +142,89 @@ def check(skill, cfg=None):
                 continue
             seen.add((code, msg))
             out.append(Finding(code, msg, severity="info", where=rel, line=line))
+    out += load_time_commands(skill)
     return out
+
+
+# Claude Code runs `!`command`` in a skill's body, and every line of a block opened with
+# ```!, before the model is sent the skill - the output replaces the placeholder, and the
+# command never prompts: a permission rule or the skill's own `allowed-tools` lets it
+# through, or the invocation aborts. Documented on the Claude Code skills page, which
+# also states the inline form counts only at a line start or after whitespace.
+INJECT_INLINE_RE = re.compile(r"(?:^|(?<=\s))!`([^`\n]+)`")
+FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(!?)")
+
+
+def _injections(skill):
+    """[(line number, command, inside an ordinary code block)] from SKILL.md's body.
+
+    An ordinary fence is tracked rather than skipped: the documentation says nothing
+    about whether an inline injection inside one runs, and a rule that quietly assumed
+    it does not would be making the claim the page declines to make.
+    """
+    lines = skill.text.split("\n")
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                start = i + 1
+                break
+    out, fence, runs = [], None, False
+    for i in range(start, len(lines)):
+        line = lines[i]
+        m = FENCE_RE.match(line)
+        if m and fence is None:
+            fence, runs = m.group(1)[0], bool(m.group(2))
+            continue
+        if m and fence is not None and m.group(1)[0] == fence and not m.group(2):
+            fence, runs = None, False
+            continue
+        if runs:
+            if line.strip():
+                out.append((i + 1, line.strip(), False))
+            continue
+        for mm in INJECT_INLINE_RE.finditer(line):
+            out.append((i + 1, mm.group(1).strip(), fence is not None))
+    return out
+
+
+def _preapproved(command, raw_tools):
+    """Whether the skill's own `allowed-tools` lets this command through unasked."""
+    from model import parse_tools                     # local: model is heavier than this
+    scopes = parse_tools(raw_tools).get("Bash")
+    if scopes is None:
+        return False
+    if not scopes:
+        return True                                   # bare `Bash`: every command
+    return any(fnmatch.fnmatchcase(command, s) for s in scopes)
+
+
+def load_time_commands(skill):
+    """CB004 - commands the skill runs on the machine the moment it loads.
+
+    One finding per skill, not per command: a skill that documents the syntax carries
+    dozens of examples, and a list of them is the report `CB001` once was per import site.
+    The count that matters most is the one the skill pre-approved for itself - those run
+    silently on every load, before anything has been read.
+    """
+    found = _injections(skill)
+    if not found:
+        return []
+    raw = skill.fm.get("allowed-tools") or ""
+    live = [f for f in found if not f[2]]
+    fenced = len(found) - len(live)
+    line, cmd, _ = (live or found)[0]
+    parts = []
+    if live:
+        approved = sum(1 for _, c, _ in live if _preapproved(c, raw))
+        parts.append(f"{len(live)} command(s) run when the skill loads, before the model "
+                     f"reads it, without asking - first `{cmd[:60]}`")
+        if approved:
+            parts.append(f"{approved} of them pre-approved by its own `allowed-tools`, so "
+                         f"nothing stops them")
+    if fenced:
+        parts.append(f"{fenced}{' more' if live else ''} inside ordinary code blocks, where "
+                     f"the documentation "
+                     f"does not say whether they run"
+                     + ("" if live else f" - first `{cmd[:60]}`"))
+    return [Finding("CB004", "; ".join(parts), severity="info", where="SKILL.md", line=line)]

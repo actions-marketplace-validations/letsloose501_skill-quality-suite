@@ -492,6 +492,15 @@ _ROWS = {
               "with the permissions the agent has.",
               "Not a defect - confirm the process it spawns matches what the skill claims "
               "to do.", False),
+    "CB004": ("info", "Commands run when the skill loads",
+              "`!`command`` in the body, and every line of a block opened with ```!, runs on "
+              "the machine before the model is sent the skill - the output replaces the "
+              "placeholder. It never prompts: a permission rule or the skill's own "
+              "`allowed-tools` lets it through, or the invocation aborts. A skill that "
+              "pre-approves its own injected commands runs them silently on every load, "
+              "before anything in it has been read.",
+              "Read each command as you would a hook. If the skill pre-approves them in "
+              "`allowed-tools`, that approval is the author's, not yours.", False),
     "CB003": ("info", "Bundled script can read the environment",
               "`os.environ`/`os.getenv` gives a script access to whatever the process's "
               "environment carries, which commonly includes API keys and tokens set for "
@@ -640,6 +649,7 @@ GRADES = {
     # same reliability `security`'s own DANGEROUS patterns are graded at (SE002), so its
     # grade is the blend of the two paths, not the AST half alone.
     "CB001": ("medium", "medium"), "CB002": ("high", "low"), "CB003": ("high", "low"),
+    "CB004": ("high", "low"),    # the documented syntax, read exactly; the fence question is stated, not guessed
 
     # cases: a promise clause and a production verb are both matched by pattern, and a
     # body with no production verb anywhere is a strong signal - but "the description

@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 94 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 95 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -31,6 +31,7 @@ Each rule carries two gradings that are about **the check**, not about the skill
 | `CB001` | info | medium | medium | no | Bundled script can reach the network |
 | `CB002` | info | high | low | no | Bundled script can spawn a process |
 | `CB003` | info | high | low | no | Bundled script can read the environment |
+| `CB004` | info | high | low | no | Commands run when the skill loads |
 
 ### CB001 - Bundled script can reach the network
 
@@ -49,6 +50,12 @@ Each rule carries two gradings that are about **the check**, not about the skill
 **Why it matters.** `os.environ`/`os.getenv` gives a script access to whatever the process's environment carries, which commonly includes API keys and tokens set for other tools.
 
 **Fix.** Not a defect - confirm the script only reads the variables it names needing.
+
+### CB004 - Commands run when the skill loads
+
+**Why it matters.** `!`command`` in the body, and every line of a block opened with ```!, runs on the machine before the model is sent the skill - the output replaces the placeholder. It never prompts: a permission rule or the skill's own `allowed-tools` lets it through, or the invocation aborts. A skill that pre-approves its own injected commands runs them silently on every load, before anything in it has been read.
+
+**Fix.** Read each command as you would a hook. If the skill pre-approves them in `allowed-tools`, that approval is the author's, not yours.
 
 ## cases (CSxxx)
 

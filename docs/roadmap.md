@@ -491,6 +491,20 @@ Two smaller things from the same reading, both parked:
   comparison. Parked because shipping several copies on purpose is legitimate, so the
   finding is a caution about a maintenance cost rather than a defect.
 
+Shipped from the second intake: **`CB004`**, commands a skill runs the moment it loads.
+One of the ten tools read has to translate the body syntax between runtimes, which is how
+`` !`command` `` came up at all; the Claude Code skills page then settled what it does -
+runs before the model is sent the skill, never prompts, lets through what a permission
+rule or the skill's own `allowed-tools` allows. The static half had no view of it. On the
+57 real skills here it fires on two, both from the official marketplace: one runs `date`
+and `find` on every load, each pre-approved by its own `allowed-tools`; the other is a
+guide to the syntax whose 14 injections all sit inside ordinary code blocks. Whether
+those run is the one question the documentation leaves open, so the finding counts them
+apart and says so; finding out takes a live load, which costs. The porting half of the
+same idea - `$ARGUMENTS` and `!` as Claude-only syntax in `compat` - was not built: the
+other runtimes' pages on it were not checked, and an adapter row nobody checked is how
+`cursor.py` once invented an incompatibility.
+
 ### Admitted to P2 rather than P1
 
 - **Keyword stuffing** - a description padded with domain keywords to win semantic
