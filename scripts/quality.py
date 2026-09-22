@@ -24,6 +24,24 @@ TRIGGER_RE = re.compile(
     r"срабатыв\w*|когда|если|триггер\w*|вызывай|зови|по словам|при\b)",
     re.I)
 
+# Wording that only makes sense addressed to the router: an order to fire or not to fire,
+# the user spoken of in the third person, the house phrase for a trigger list. Narrower
+# than TRIGGER_RE on purpose - "use when you need a spec" reads as naturally to a person
+# choosing from a menu as to a model, so it proves nothing about who the text is for.
+# The verb has to be an order, not a description: "hooks that trigger on save" and
+# "хуки, которые не срабатывают" are about a hook, and a menu entry may well say so.
+# Same split QL014 needed between `do not fire` and `does not fire`. The noun
+# `триггер` is out for the same reason - "настроить триггер CI" is a menu line.
+ROUTER_RE = re.compile(
+    r"\b(?:this skill should be used when|(?<!that )(?<!which )(?<!who )trigger (?:on|when)|"
+    r"invoke (?:this |me )?when|(?:do not|don't|never) (?:fire|trigger|activate)|"
+    r"(?:when|if) the user|user asks|"
+    r"срабатыва(?:й|ть)\b|вызывай|зови|по словам|"
+    r"(?:когда|если) (?:он|она|пользователь)\b)", re.I)
+# A quoted wording, the other shape a trigger list takes: «...», "...", “...”.
+QUOTED_RE = re.compile(r"«[^»]{2,60}»|\"[^\"]{2,60}\"|“[^”]{2,60}”")
+QUOTED_MIN = 3
+
 # Kept narrow on purpose. `WIP`, `ПОТОМ` and `ЗАГЛУШКА` were in this set: they matched a
 # bad-commit example, the ordinary Russian word for "afterwards", and a sentence
 # explaining what a placeholder looks like. A marker that also reads as content is not
@@ -385,6 +403,20 @@ def check(skill, cfg=None, registry=None):
     if not skill.ok:
         return out
     desc = skill.description
+
+    # QL015 - QL002 turned round. With `disable-model-invocation: true` the description
+    # never reaches the model's context, so routing wording in it is addressed to a reader
+    # who is not there, spent where the only reader left needs a line about what the
+    # command does.
+    if desc and skill.slash_only:
+        m = ROUTER_RE.search(desc)
+        quoted = QUOTED_RE.findall(desc)
+        if m or len(quoted) >= QUOTED_MIN:
+            what = (f'"{m.group(0)}"' if m else
+                    f"{len(quoted)} quoted wordings ({', '.join(quoted[:2])}, ...)")
+            out.append(Finding("QL015", f"{what} - this skill is user-invoked only, so the "
+                                        f"model never sees its description; routing "
+                                        f"wording here has no reader", where="SKILL.md"))
 
     # QL002 / QL003 / QL009 - the description as a context pointer
     if desc and not skill.slash_only:

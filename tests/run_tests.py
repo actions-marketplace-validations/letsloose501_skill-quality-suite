@@ -276,6 +276,23 @@ def unit_checks():
         if bool(quality.EXCLUSION_RE.search(text)) != want:
             out.append(f"EXCLUSION_RE on {text!r}: expected {want}, got {not want}")
 
+    # QL015: wording addressed to the router, against a menu line a person reads. The
+    # second half is the risk: the router's verbs are ordinary verbs, and a menu entry
+    # about hooks may say that they trigger or do not fire. Only an order counts.
+    for text, want in (
+            ("Никогда не срабатывай сам — ни на упоминание VPN", True),
+            ("Use when the user asks to deploy", True),
+            ("Trigger on any mention of the tracker", True),
+            ('Deploys. "ship it", "push to prod", "release now"', True),
+            ("Use when you need a spec for the current conversation", False),
+            ("Rerun the hooks that trigger on save", False),
+            ("Чинит хуки, которые не срабатывают на сохранение", False),
+            ("/deploy - настроить триггер CI и выкатить ветку", False)):
+        got = bool(quality.ROUTER_RE.search(text)
+                   or len(quality.QUOTED_RE.findall(text)) >= quality.QUOTED_MIN)
+        if got != want:
+            out.append(f"ROUTER_RE on {text!r}: expected {want}, got {got}")
+
     # `allowed-tools` parsing, across the three spellings published skills actually use.
     # A fixture would only show the result through a compat verdict, where a truncated
     # name still reads as a name; the damage is visible only against the list that was

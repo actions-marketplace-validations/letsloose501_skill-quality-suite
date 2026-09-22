@@ -578,6 +578,33 @@ repository as the free one - it is where the free half's rules come from.
 
 ## P2
 
+Shipped: **description written for the wrong reader** - `QL015` in `scripts/quality.py`,
+`QL002` turned round. The mechanism it rests on is one row of the Claude Code skills page:
+with `disable-model-invocation: true`, "Description not in context". Routing wording in
+such a description - an order to fire or not to fire, the user in the third person, a
+list of quoted wordings - is addressed to a reader who is not there. Only that direction
+was built: the reverse, a model-invoked skill whose description reads like a menu line,
+is `QL002` already.
+
+The pattern had to be narrower than `TRIGGER_RE`, and the reason is the negation trap
+again, from the other side. `use when` reads as naturally to a person as to a model, so it
+proves nothing and does not count. The router's verbs are ordinary verbs: a menu entry may
+say hooks "trigger on save" or "не срабатывают", so only an order counts - the imperative
+or infinitive (`срабатывай`, `срабатывать`), and `trigger on`/`when` not preceded by
+`that`, `which` or `who`, the same split `QL014` needed between `do not fire` and `does not
+fire`. The noun `триггер` is out: "настроить триггер CI" is a menu line.
+
+Calibrated on every user-invoked skill on this machine - five installed, one in the
+official marketplace. One finding, and it is real: `vpn`, whose description is entirely a
+routing fence ("Никогда не срабатывай сам — ни на упоминание VPN...") in a skill the model
+never sees the description of. The other five are menu lines and stay silent. Recall was
+estimated on the other side of the flag: of 51 model-invoked descriptions, which are
+router-addressed by construction, the pattern recognises 43. The eight it misses all open
+with `Use when`, which is the price stated above rather than a gap. Fixture:
+`tests/fixtures/wrong-reader`; the menu lines about hooks are a unit check, watched failing
+with the verb widened back to `срабатыв\w*`.
+
+
 - **LLM review as a separate optional layer** - clarity, gaps, contradictions, missing
   edge cases: the things a regex cannot reach. Hard requirement: `DETERMINISTIC` and
   `LLM REVIEW` stay separated in the output, and the model never promotes an opinion to
@@ -585,12 +612,6 @@ repository as the free one - it is where the free half's rules come from.
 - **Version and changelog analysis** - evidence-based warnings only: a version bumped
   with no changelog entry, a breaking change with no major bump. Where the evidence is
   not there, no finding.
-- **Description written for the wrong reader** - a skill carrying
-  `disable-model-invocation: true` whose description is a list of trigger wordings, or the
-  reverse. Invocation mode decides the audience: a model matching wordings, or a person
-  reading a menu entry. The mismatch is mechanical to spot and is currently invisible -
-  `QL001` and `QL002` only look at the model-facing direction, so a manual-only skill
-  passes them while spending its description on a reader who never sees it.
 - **Ghost triggers, named as their own rule** - `QL004` reports that a description and a
   body barely overlap, which is a statistic and reads as vague. The specific defect worth
   its own code is narrower and checkable: a trigger phrase in the description that no

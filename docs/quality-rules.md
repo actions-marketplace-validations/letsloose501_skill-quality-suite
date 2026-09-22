@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 90 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 91 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -322,6 +322,7 @@ Whether the instructions read like instructions. The module with the most room t
 | `QL012` | info | high | low | no | Unpinned one-off command |
 | `QL013` | info | medium | medium | no | Description rules out a topic |
 | `QL014` | warning | medium | medium | no | Fuzzy boundary between fire and do-not-fire |
+| `QL015` | warning | medium | low | no | User-invoked skill's description is written for the router |
 
 ### QL001 - Description too short to carry triggers
 
@@ -406,6 +407,12 @@ Whether the instructions read like instructions. The module with the most room t
 **Why it matters.** An exclusion clause in the description shares its topic words with a clause that claims the work. A description can separate its branches well on average and still be misrouted by one pair like this, because the router matches wording and a negation does not reverse a match. `QL003` compares two clauses that agree and calls the second redundant; this compares two that disagree, where the second reads as a reason to fire rather than a reason to stay quiet.
 
 **Fix.** Make the two sides differ in topic words, not only in the negation - or move the exclusion into the body, which is read after the skill has been chosen.
+
+### QL015 - User-invoked skill's description is written for the router
+
+**Why it matters.** With `disable-model-invocation: true` the description is not in the model's context at all. Trigger wordings, orders to fire or not to fire, and the user spoken of in the third person are addressed to a reader who never sees them - and they take the place of the one thing the remaining reader needs: what the command does when you run it.
+
+**Fix.** Rewrite the description as a one-line menu entry for a person. Keep the routing boundary, if it matters, in the body.
 
 ## security (SExxx)
 

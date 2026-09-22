@@ -61,7 +61,7 @@ is created.
 
 ## 3. Does it read like an instruction
 
-A skill can be perfectly valid and still be a bad skill. These rules (`QL001`-`QL012`)
+A skill can be perfectly valid and still be a bad skill. These rules (`QL001`-`QL015`)
 are heuristics, and each one names a file and a line so you can judge it:
 
 - `QL002` - the description says *what* the skill is and never *when* to reach for it.
@@ -71,6 +71,10 @@ are heuristics, and each one names a file and a line so you can judge it:
   appropriate"). The agent cannot tell done from not-done.
 - `QL010` - a description written about itself ("This skill helps you...") rather than
   as an instruction about when to act.
+- `QL015` - the same mistake turned round: a skill with `disable-model-invocation: true`
+  whose description is still written for the router ("trigger on", "when the user asks",
+  a list of quoted wordings). The model never sees that description, so the words have
+  no reader. `use when` alone does not count - it reads fine to a person too.
 - `QL011` - a bundled script that waits for input. Agents run in non-interactive shells,
   so it hangs until something kills it.
 

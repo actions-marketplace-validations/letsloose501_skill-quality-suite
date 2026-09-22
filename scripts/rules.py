@@ -251,6 +251,14 @@ _ROWS = {
               "been chosen. Keep it in the description only when a model-invoked neighbour "
               "would otherwise take the work, and then name that neighbour rather than its "
               "topic.", False),
+    "QL015": ("warning", "User-invoked skill's description is written for the router",
+              "With `disable-model-invocation: true` the description is not in the model's "
+              "context at all. Trigger wordings, orders to fire or not to fire, and the user "
+              "spoken of in the third person are addressed to a reader who never sees them - "
+              "and they take the place of the one thing the remaining reader needs: what the "
+              "command does when you run it.",
+              "Rewrite the description as a one-line menu entry for a person. Keep the "
+              "routing boundary, if it matters, in the body.", False),
     "QL014": ("warning", "Fuzzy boundary between fire and do-not-fire",
               "An exclusion clause in the description shares its topic words with a clause "
               "that claims the work. A description can separate its branches well on average "
@@ -557,6 +565,9 @@ GRADES = {
     # off any negation, which is what makes it more confident than QL003's blanket
     # polarity flag - but the overlap threshold above it is still a stem heuristic
     "QL014": ("medium", "medium"),
+    # the invocation flag is read exactly; the wording is a pattern, kept narrow so that
+    # "use when" - fine for a person too - never counts
+    "QL015": ("medium", "low"),
 
     # compat: every verdict comes from an adapter's declared support table
     "CP001": ("high", "low"),    "CP002": ("high", "low"),

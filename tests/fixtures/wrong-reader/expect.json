@@ -1,0 +1,6 @@
+{
+  "note": "Two skills a person runs by hand. `deploy-now` kept the description it had when the model could reach for it: an order not to fire and a list of wordings, for a reader that `disable-model-invocation` has taken away. `ship-notes` is the silent side - a menu line, which is all the remaining reader needs.",
+  "expect": [
+    "QL015"
+  ]
+}
