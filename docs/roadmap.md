@@ -612,16 +612,6 @@ with the verb widened back to `срабатыв\w*`.
 - **Version and changelog analysis** - evidence-based warnings only: a version bumped
   with no changelog entry, a breaking change with no major bump. Where the evidence is
   not there, no finding.
-- **Ghost triggers, named as their own rule** - `QL004` reports that a description and a
-  body barely overlap, which is a statistic and reads as vague. The specific defect worth
-  its own code is narrower and checkable: a trigger phrase in the description that no
-  instruction in the body serves. The skill fires on that wording and then has nothing to
-  do about it, which is the half-working case users report as "it activates and ignores me".
-  Still unbuilt after item 17: `CS001` is the other half of the same promise - *use me when
-  X and I will do Y* - and reads `Y` against the body. This one reads `X`, and the two
-  cannot be folded together, because a trigger nothing serves and an outcome nothing
-  produces are different defects with different fixes.
-
 ## P3 - cross-runtime
 
 Last, deliberately. Everything above makes one skill better on the runtime it already has;
@@ -689,6 +679,35 @@ pays off once two versions of the specification are in the wild and old skills s
 going red for a reason that is not their fault. Today there is effectively one. The form to
 build it in is a versioned schema per specification version, kept as data, rather than a
 version switch threaded through the code.
+
+**Ghost triggers** - a trigger phrase in the description that nothing in the body
+serves: the skill fires on that wording and then has nothing to do about it. `CS001` reads
+the outcome half of a description against the body; this would read the trigger half.
+
+Deferred on a measurement, not on a hunch. The prototype split every trigger zone at the
+same commas `QL003` uses, dropped exclusions with `EXCLUSION_RE`, and called a phrase a
+ghost when none of its stems appeared anywhere in the skill's texts. On the 51
+model-invoked skills on this machine it read 459 phrases and flagged 39, and not one of
+the four candidates that looked real survived being checked: `commit` serves "отправь на
+гитхаб" through `git push` and `github.com` - the same thing, in the other alphabet; `pdf`
+serves "добавь в базу" by handing its text to `konspekt`. The rest were prose fragments
+the commas cut loose ("когда он просит") and the items of an exclusion list separated from
+the "НЕ запускайся на рутине:" that governed them. A trigger is served by a *procedure*,
+and a stem test measures *vocabulary*; that gap is the whole false-positive rate.
+
+The narrow version was measured too: a trigger that names a literal artefact - a file, a
+`/command`, a backticked token - absent from every text of the skill. 44 such tokens in
+48 trigger zones, 8 absent. Six were neighbours' names in a deferral ("это `trener`")
+that the split had cut away from its lead-in, one was context rather than a promise ("after
+`/maker-setup`"), and one is arguable: `yadro` answers "сделай tech.md" with a file called
+`CONTRACTS.md`. One example is an anecdote on this page's own rules, so nothing shipped.
+
+What survives for whenever this is picked up: the split has to be at the level
+`branch_segments` uses - whole sentences, with named neighbours dropped - or every
+disclaimer turns into a trigger; and literal artefacts are the only part checkable
+without a model.
+Deciding whether a procedure serves a wording is the LLM review layer's job, not a
+pattern's.
 
 **Declared against actual (20)** - compare what a skill's `allowed-tools` declares against
 what its code and instructions actually need, in both directions: a tool it needs and did
