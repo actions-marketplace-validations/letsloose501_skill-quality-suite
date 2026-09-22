@@ -61,7 +61,7 @@ def parse_simple_yaml(text, source="<yaml>"):
     items = []
     current = None
     for n, raw in enumerate(text.split("\n"), 1):
-        line = raw.split("#", 1)[0].rstrip() if not raw.strip().startswith("#") else ""
+        line = _strip_comment(raw).rstrip()
         if not line.strip():
             continue
         if line.startswith("- "):
@@ -84,6 +84,26 @@ def parse_simple_yaml(text, source="<yaml>"):
         raise DatasetError(f"{source}:{n}: only a list of `- prompt: ...` items is "
                            f"supported here, got {line.strip()[:40]!r}")
     return items
+
+
+def _strip_comment(raw):
+    """The line without its comment, by YAML's own rule.
+
+    A comment opens at a `#` outside quotes that starts the line or follows whitespace.
+    This used to cut at the first `#` anywhere, so `- prompt: "fix issue #12"` read as
+    `"fix issue` with a stray quote and no error - a real prompt silently rewritten,
+    which is the one failure this parser exists to refuse. `C#` was cut the same way.
+    """
+    quote = None
+    for i, ch in enumerate(raw):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'" and (i == 0 or raw[i - 1] in " \t:-"):
+            quote = ch
+        elif ch == "#" and (i == 0 or raw[i - 1] in " \t"):
+            return raw[:i]
+    return raw
 
 
 def _scalar(value, line, source):

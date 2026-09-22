@@ -744,6 +744,13 @@ def evaluation_checks():
         except triggers.DatasetError:
             continue
         out.append(f"the trigger parser accepted YAML it cannot read: {bad!r}")
+    # ...and must read a `#` inside a prompt as part of the prompt. It used to cut at the
+    # first one anywhere: "fix issue #12" became `"fix issue`, and `C#` became `C`.
+    got = [i["prompt"] for i in triggers.parse_simple_yaml(
+        '- prompt: "fix issue #12"  # a comment' + nl + "- prompt: learning C# basics" + nl,
+        "probe.yaml")]
+    if got != ["fix issue #12", "learning C# basics"]:
+        out.append(f"the trigger parser rewrote prompts carrying `#`: {got}")
     return out
 
 
