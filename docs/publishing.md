@@ -96,6 +96,28 @@ is how a fixed hole comes back without anybody editing anything.
 sqs.py publish ./skills --since v2.0.0     # everything this release gained since the last
 ```
 
+## Does the README send people to the right place
+
+`PB014` reads the README as payload rather than as a box to tick: it is the file that
+tells a stranger what to type. A project that moved while its install instructions did
+not sends every new user to an account that is no longer the author's, and whoever
+registers that name next receives the installs.
+
+Two shapes, both checked against what is on disk and nothing else:
+
+- an install command - `npx skills add`, `/plugin marketplace add`, `git clone`, a
+  `raw.githubusercontent.com` URL - naming this project's repository under an owner that
+  none of the checkout's git remotes, and no marketplace entry beside it, know;
+- `/plugin install <this plugin>@<marketplace>` naming a marketplace other than the one
+  that lists the plugin.
+
+Only a disagreement about *this* project counts: the repository name has to match one the
+checkout is known to live under. A README that installs somebody else's repository is a
+catalogue doing its job and is never reported. A fork that tells people to install from
+upstream is correct, and says so to the rule once upstream is a git remote. The README is
+read beside the skill, one level up, and at the plugin root; one shared by several skills
+is reported on the first of them.
+
 Plus, from the other modules and worth re-reading before a release:
 
 - `SP013` - repository furniture (README, Makefile, `package.json`) shipping inside the

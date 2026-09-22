@@ -2,9 +2,8 @@
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
   The planned layers of skill-quality-suite: a measured description budget, the paid
-  layer's missing gates, install commands checked against their own repository, an
-  optional LLM review layer, and last of all cross-runtime work - plus what
-  Claude Code's own eval runner now covers, and what was rejected and why.
+  layer's missing gates, an optional LLM review layer, and last of all cross-runtime
+  work - plus what Claude Code's own eval runner now covers, and what was rejected and why.
 ---
 
 # Roadmap
@@ -70,7 +69,6 @@ uses. Three formats, one per skill.
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
 | 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
-| 23 | Install command against its own repository | does the README tell a stranger to install from where this actually lives |
 
 Shipped: **the suite writes the checks (17)** - the `cases` module (`scripts/cases.py`,
 prefix `CS`) in every `check` run, plus `sqs.py cases <skill> --generate [--apply]`,
@@ -414,11 +412,36 @@ supply-chain hole with a friendly face, and it is exactly the rename-leaves-a-po
 failure this suite already claims to catch - just one level up, in the file that tells a
 human what to type.
 
-Checkable offline and cheaply: an install command in a README (`npx skills add owner/repo`,
-`/plugin marketplace add owner/repo`, a `raw.githubusercontent.com/owner/repo` URL) whose
-`owner/repo` disagrees with the repository's own git remote or with the marketplace entry
-beside it. Lands in `scripts/publish.py` with the rest of the PB module, and it is the
-first PB rule that reads the README as payload rather than as a box to tick.
+Shipped: `PB014` in `scripts/publish.py` (`install_findings`), the first PB rule that reads
+the README as payload rather than as a box to tick. Two shapes: an install command -
+`npx skills add`, `/plugin marketplace add`, `git clone`, a `raw.githubusercontent.com`
+URL - whose `owner/repo` disagrees with the checkout's git remotes or the marketplace entry
+beside it; and `/plugin install <this plugin>@<marketplace>` naming a marketplace other
+than the one listing the plugin.
+
+The item as written would have been wrong on its first real catalogue. "Disagrees with the
+remote" read literally flags every README that installs somebody else's repository, which
+is what a collection README exists to do. What moves when a project moves is the owner,
+not the name, so the rule fires only when the *repository name* matches one this checkout
+is known under and the owner is one it is not. Every remote counts, not only `origin`, so
+a fork with `upstream` set is correct by construction rather than by suppression.
+
+The second shape was not in the item. It came from calibration, on the official
+marketplace: `plugin-dev`'s README says `/plugin install plugin-dev@claude-code-marketplace`,
+and the `marketplace.json` that lists it is named `claude-plugins-official`. Whether a
+marketplace by the other name exists somewhere cannot be checked offline, so the finding
+states the disagreement and stops. Across the 23 plugins there that ship skills, that is the
+only finding. The first run printed it once per skill - seven times for one README line,
+the per-site noise item 17 already fixed once - so a README above the skill folder is
+now reported on the first skill beside it only.
+
+The owner half was watched on this repository's own README (remote in the
+`ssh://…:443/owner/repo` spelling, both install lines extracted, silent because they
+agree); on the installed skills it cannot fire at all, since no README there carries an
+install command. A fixture cannot carry a git remote of its own - it would read this
+repository's - so that half is a unit check building a throwaway checkout, including the
+fork case, and was watched failing with the owner comparison switched off. Fixture:
+`tests/fixtures/install-origin`, with three decoy install lines that must stay silent.
 
 Two smaller things from the same reading, both parked:
 

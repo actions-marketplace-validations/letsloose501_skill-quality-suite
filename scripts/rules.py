@@ -383,6 +383,15 @@ _ROWS = {
               "If the rollback is deliberate, ship it as a new, higher version that carries "
               "the old content. A number that only ever rises is what lets a reader trust it.",
               False),
+    "PB014": ("warning", "README installs from somewhere this does not ship",
+              "An install command in the README names this project under an owner its own git "
+              "remotes and marketplace entry do not know, or installs this plugin from a "
+              "marketplace other than the one listing it. A project that moved while its "
+              "instructions did not sends every new user to an account that is no longer the "
+              "author's, and whoever takes that name next receives the installs.",
+              "Point the command at where the project lives now. If this is a fork telling "
+              "people to install upstream, add upstream as a git remote and the finding goes "
+              "away on its own.", False),
 
     # ---- EV: evals -----------------------------------------------------------
     "EV001": ("error", "Routing invariant broken",
@@ -560,6 +569,9 @@ GRADES = {
     # purpose is still a finding, because the reader it is for did not decide it
     "PB012": ("medium", "medium"),
     "PB013": ("high", "low"),    # two parsed numbers compared; unparseable is silence
+    # both sides are read off disk; the risk is a fork with no `upstream` remote, and
+    # recall stops at the install spellings the pattern knows
+    "PB014": ("medium", "medium"),
 
     # evals: file parsing and a delegated runner
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),

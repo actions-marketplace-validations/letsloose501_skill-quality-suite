@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 87 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 88 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -202,6 +202,7 @@ What has to be true before the skill leaves the machine it was written on. Half 
 | `PB011` | warning | medium | medium | no | Call surface changed, the version moved by a patch |
 | `PB012` | warning | medium | medium | no | Update reaches further than the version before it |
 | `PB013` | warning | high | low | no | Version went backwards |
+| `PB014` | warning | medium | medium | no | README installs from somewhere this does not ship |
 
 ### PB001 - No license
 
@@ -280,6 +281,12 @@ What has to be true before the skill leaves the machine it was written on. Half 
 **Why it matters.** The declared version is lower than the one at `--since`. Replacing a patched release with an older one that still looks correctly published is how a fixed hole comes back without anybody editing anything.
 
 **Fix.** If the rollback is deliberate, ship it as a new, higher version that carries the old content. A number that only ever rises is what lets a reader trust it.
+
+### PB014 - README installs from somewhere this does not ship
+
+**Why it matters.** An install command in the README names this project under an owner its own git remotes and marketplace entry do not know, or installs this plugin from a marketplace other than the one listing it. A project that moved while its instructions did not sends every new user to an account that is no longer the author's, and whoever takes that name next receives the installs.
+
+**Fix.** Point the command at where the project lives now. If this is a fork telling people to install upstream, add upstream as a git remote and the finding goes away on its own.
 
 ## quality (QLxxx)
 

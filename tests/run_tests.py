@@ -313,6 +313,36 @@ def unit_checks():
         if got != (gained, lost):
             out.append(f"tool_delta {old!r} -> {new!r}: expected {(gained, lost)}, got {got}")
 
+    # PB014's git half. A fixture cannot carry a remote of its own - it sits inside this
+    # repository and would read this repository's - so the checkout is built here. Two
+    # of the four lines are the project under its old owner; the other two are the new
+    # owner and somebody else's repository, which a README may install freely. Then the
+    # fork case: with the old owner added as `upstream`, the same README is correct.
+    from core import Skill
+    with tempfile.TemporaryDirectory() as tmp:
+        home = os.path.join(tmp, "widget")
+        os.makedirs(home)
+        with open(os.path.join(home, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: widget\ndescription: Builds widgets. Use when a widget "
+                    "is needed.\n---\n\n1. Build the widget.\n")
+        with open(os.path.join(home, "README.md"), "w", encoding="utf-8") as f:
+            f.write("npx skills add old-owner/widget\n"
+                    "git clone https://github.com/new-owner/widget.git\n"
+                    "curl -fsSL https://raw.githubusercontent.com/old-owner/widget/main/x\n"
+                    "npx skills add old-owner/gadget\n")
+        git = ["git", "-C", home]
+        subprocess.run(git + ["init", "-q"], check=True)
+        subprocess.run(git + ["remote", "add", "origin",
+                              "ssh://git@ssh.github.com:443/new-owner/widget.git"], check=True)
+        got = [f.msg for f in publish.install_findings(Skill(home))]
+        if len(got) != 2 or not all("old-owner/widget" in m for m in got):
+            out.append(f"PB014 git half: expected the two old-owner/widget lines, got {got}")
+        subprocess.run(git + ["remote", "add", "upstream",
+                              "git@github.com:old-owner/widget.git"], check=True)
+        got = [f.msg for f in publish.install_findings(Skill(home))]
+        if got:
+            out.append(f"PB014 with an upstream remote: expected silence, got {got}")
+
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when
     # the suite is installed as one, so the probe looks in both.

@@ -496,6 +496,134 @@ def _version_claim(skill, changed, old_fm):
     return []
 
 
+# ---- the README as payload: what a stranger is told to type -------------------------
+
+# `owner/repo` out of a remote URL in any of the spellings git prints: https, scp-style
+# `git@github.com:o/r`, and `ssh://...ssh.github.com:443/o/r` for a remote on port 443.
+REMOTE_REPO_RE = re.compile(r"github\.com(?::\d+)?[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+# Unnamed on purpose: the pair repeats once per spelling, and a group name cannot. The
+# owner may not start with a dot, which keeps `./local-path` out of it.
+_OR = r"([\w-][\w.-]*)/([\w.-]+)"
+INSTALL_REPO_RE = re.compile(
+    r"npx\s+(?:-y\s+)?skills(?:@\S+)?\s+add\s+(?:https?://github\.com/)?" + _OR
+    + r"|/plugin\s+marketplace\s+add\s+(?:https?://github\.com/)?" + _OR
+    + r"|git\s+clone\s+(?:-\S+\s+)*(?:https?://github\.com/|git@github\.com:)" + _OR
+    + r"|raw\.githubusercontent\.com/" + _OR)
+PLUGIN_INSTALL_RE = re.compile(r"/plugin\s+install\s+(?P<plugin>[\w.-]+)@(?P<market>[\w.-]+)")
+
+
+def enclosing_marketplace(skill):
+    """(marketplace name, its plugin entries) for the catalogue this skill ships in.
+
+    Walked up from the skill rather than read beside it: a marketplace lists plugins
+    under `plugins/<name>/`, so the catalogue sits two or three levels above the skill.
+    """
+    here = skill.root
+    for _ in range(5):
+        data = _load_json(os.path.join(here, ".claude-plugin", "marketplace.json"))
+        if isinstance(data, dict) and isinstance(data.get("plugins"), list):
+            return data.get("name"), [p for p in data["plugins"] if isinstance(p, dict)]
+        up = os.path.dirname(here)
+        if up == here:
+            break
+        here = up
+    return None, []
+
+
+def known_repos(skill, entries):
+    """{repo name: {owners}} this skill is known to live under, lowercased.
+
+    Every remote counts, not only `origin`: a fork with an `upstream` remote telling
+    people to install from upstream is doing the right thing. Marketplace entries count
+    too, because a README pointing at a sibling plugin under its old owner is the same
+    defect one entry over.
+    """
+    urls = []
+    ok, out = _git(skill.root, "remote", "-v")
+    if ok:
+        urls += [ln.split()[1] for ln in out.splitlines() if len(ln.split()) > 1]
+    for entry in entries:
+        src = entry.get("source")
+        if isinstance(src, dict):
+            if src.get("repo"):
+                urls.append("github.com/" + str(src["repo"]))
+            elif src.get("url"):
+                urls.append(str(src["url"]))
+    known = {}
+    for url in urls:
+        m = REMOTE_REPO_RE.search(url.strip())
+        if m:
+            known.setdefault(m.group(2).lower(), set()).add(m.group(1).lower())
+    return known
+
+
+def install_findings(skill):
+    """PB014 - an install command whose target disagrees with where this ships from.
+
+    The README is read as payload here rather than checked for existence: it is the file
+    that tells a human what to type, and a project that moved while its instructions did
+    not sends every new user to an account that is no longer the author's. Whoever takes
+    that name next receives the installs.
+
+    Only a disagreement about *this* project counts. A repository name that matches one
+    this checkout is known to live under, with a different owner, is a move the README
+    missed; a README that installs somebody else's repository is a catalogue doing its
+    job, and says nothing either way. The same for a plugin: `/plugin install <this
+    plugin>@<marketplace>` naming a marketplace other than the one listing it.
+    """
+    market, entries = enclosing_marketplace(skill)
+    known = known_repos(skill, entries)
+    this_plugin = None
+    root = plugin_root(skill)
+    if root:
+        manifest = _load_json(os.path.join(root, ".claude-plugin", "plugin.json"))
+        this_plugin = manifest.get("name") if isinstance(manifest, dict) else None
+    listed = {e.get("name") for e in entries}
+
+    # A README above the skill's own folder is shared by every skill beside it, and a
+    # plugin with eight skills would print the same line eight times. It is reported on
+    # the first of them by folder name - deterministic, and it needs no state kept
+    # between skills.
+    parent = os.path.dirname(skill.root)
+    first = min((e for e in os.listdir(parent)
+                 if os.path.isfile(os.path.join(parent, e, "SKILL.md"))), default=None)
+    readmes = []
+    for d in (skill.root, parent, root):
+        p = os.path.join(d, "README.md") if d else None
+        if not p or not os.path.isfile(p) or os.path.realpath(p) in readmes:
+            continue
+        if d != skill.root and first is not None and first != skill.folder:
+            continue
+        readmes.append(os.path.realpath(p))
+
+    out = []
+    for path in readmes:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                lines = f.read().split("\n")
+        except OSError:
+            continue
+        shown = os.path.relpath(path, os.path.dirname(skill.root)).replace(os.sep, "/")
+        for n, line in enumerate(lines, 1):
+            for m in INSTALL_REPO_RE.finditer(line):
+                owner, repo = next((m.group(i), m.group(i + 1))
+                                   for i in range(1, len(m.groups()), 2) if m.group(i))
+                repo = repo[:-4] if repo.lower().endswith(".git") else repo
+                owners = known.get(repo.lower())
+                if owners and owner.lower() not in owners:
+                    homes = ", ".join(f"`{o}/{repo}`" for o in sorted(owners))
+                    out.append(Finding("PB014", f"{shown}:{n} installs `{owner}/{repo}`, but "
+                                                f"the remotes and marketplace here know it "
+                                                f"as {homes}"))
+            for m in PLUGIN_INSTALL_RE.finditer(line):
+                plugin, named = m.group("plugin"), m.group("market")
+                if market and plugin == this_plugin and plugin in listed and named != market:
+                    out.append(Finding("PB014", f"{shown}:{n} installs `{plugin}@{named}`, but "
+                                                f"`{plugin}` is listed in the `{market}` "
+                                                f"marketplace"))
+    return out
+
+
 def check(skill, cfg=None):
     cfg = cfg or {}
     lang = cfg.get("lang")
@@ -559,6 +687,9 @@ def check(skill, cfg=None):
         manifest = _load_json(os.path.join(root, ".claude-plugin", "plugin.json"))
         plugin_name = manifest.get("name") if isinstance(manifest, dict) else None
         out += origin_finding(root, plugin_name or skill.name or skill.folder)
+
+    # PB014 - the README tells a stranger to install from somewhere this does not live
+    out += install_findings(skill)
 
     # PB010 - PB013 - opt-in, because a comparison needs a stated "before". `--since`
     # resolves to one in `sqs.py`, which is also where the note about a `--since` that

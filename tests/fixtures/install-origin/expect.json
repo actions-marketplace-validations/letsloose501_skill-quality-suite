@@ -1,0 +1,7 @@
+{
+  "note": "A plugin whose README was not updated when the project moved. It tells a stranger to install `note-taker` from `acme-old-tools` while the marketplace beside it is `acme-tools`, and to fetch the companion `sync-kit` from `acme/` while its marketplace entry says `acme-labs/`. The other install lines are the silent side: a different plugin, and somebody else's repository, which a README is allowed to point at.",
+  "command": "publish",
+  "expect": [
+    "PB014"
+  ]
+}
