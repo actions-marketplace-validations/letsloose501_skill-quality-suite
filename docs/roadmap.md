@@ -1,9 +1,9 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: a measured description budget, the paid
-  layer's missing gates, an optional LLM review layer, and last of all cross-runtime
-  work - plus what Claude Code's own eval runner now covers, and what was rejected and why.
+  The planned layers of skill-quality-suite: a measured description budget, an optional
+  LLM review layer, and last of all cross-runtime work - plus what Claude Code's own eval
+  runner now covers, and what was rejected and why.
 ---
 
 # Roadmap
@@ -68,7 +68,6 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
-| 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
 
 Shipped: **the suite writes the checks (17)** - the `cases` module (`scripts/cases.py`,
 prefix `CS`) in every `check` run, plus `sqs.py cases <skill> --generate [--apply]`,
@@ -384,19 +383,53 @@ it reads as a new entry. Fixtures: `tests/fixtures/version-reach` for both rules
 `tests/fixtures/version-claim` for the silent side - a narrowed scope in the bracket
 spelling and a changed script that already spawned a process.
 
-**22. The paid layer's two missing gates.** One harness gates its utility score on
-*invocation*: if the skill was not actually loaded, the task earns nothing, because the
-model's own ability would otherwise be credited to the skill. `eval --trigger` here
-observes activation; `eval --runtime` does not, so its treatment arm can win a task
-without the skill ever loading, and the delta is then attributed to the skill. The
-detector is the same `Skill`-call reading the trigger pass already uses.
+Shipped: **the paid layer's two missing gates (22)**, both from SkillTester.
 
-The same harness checks a task set for *evaluability before spending anything*: every case
-must carry an objective, an expected outcome, a decidable pass criterion, and must be
-runnable in both arms. This suite discovers the equivalent after the fact, as `ungraded`
-in the report - which is honest but is found only once the money is gone. A pre-flight
-gate is offline, costs nothing, and sits naturally on what `cases --generate` already
-writes. Lands in `scripts/evaluation/runtime.py` and `scripts/evalcheck.py`.
+*The invocation gate* (`scripts/evaluation/runtime.py`). A treatment run is credited only
+when its transcript shows the skill loading, read by the same `Skill`-call parser the
+trigger pass uses. The uncredited passes are not thrown away: they are reported as
+`passed_without_skill`, because the model's own ability is the number the delta has to be
+read against, and a report that hid it would trade one misreading for another.
+
+It found something before it shipped. The scripted provider's own test run had been
+passing its treatment arm with `skills: []` on every run - the script's default carried an
+empty list and the treatment rules never overrode it. The test asserted 100% treatment
+success, and under the gate that number is 0%: the fixture meant to show the comparison
+working was itself the case the gate exists for. The scripts now record the load, one
+task in each spelling (see below).
+
+What is not verified, and is the first thing to look at when a live run is allowed: which
+spelling a real treatment transcript carries. The arm hands the skill over inside a
+one-skill plugin, plugin skills are called with the plugin's name in front, and the trigger
+pass - which runs a plain skills tree - has only ever been watched printing the bare name.
+Both spellings count, so neither guess can zero the column; if a live run shows the skill
+loading in no run, the report says so in a line of its own rather than printing 0% as if
+the skill had failed.
+
+*The pre-flight gate* (`tasks.preflight`, shared). SkillTester's four criteria, and two of
+them were already `EV004`: an objective (`prompt`) and an expected outcome. The other two
+are new. A decidable pass criterion - no `assertions` and no `files` - is `EV008`. Runnable
+as written is `EV009`, and reading for it turned up two failures that were silent today
+rather than merely late: a fixture that does not exist is skipped by `prepare_workdir` with
+no word, so the agent starts a task about a file it never received; and a `re:` that does
+not compile raises inside the grader after both arms have already run - watched happening,
+traceback and all, with the gate switched off. The third `EV009` reason is a draft left as
+a draft: a field opening with `TODO`, anchored at the start because a real task may well
+mention a todo list and a generated one never starts any other way. `eval --runtime`
+refuses the whole set on any `EV009`, and on a set where no case is graded; `check` reports
+both codes for free, so the refusal is never the first an author hears of it.
+
+Calibration is thinner than it should be, and the reason is the corpus: there is no real
+`evals/evals.json` anywhere on this machine outside the tests. The real inputs that do exist
+are the drafts this suite writes, so the gate was run on those - `cases --generate --apply`
+and `evals --init` over a copy of the 29 installed skills produced 26 sets, and all 26 came
+back `EV009` with no `EV008` mislabel and no crash. The silent side is the filled
+`ledger-lite` set, which stays quiet, and `totals-ok` in the fixture. One fixture mistake was
+caught on the way and is worth keeping: `\d{2` without its brace *compiles* in Python - an
+unmatched `{` is a literal - so the first "broken regex" in the fixture was not broken, and
+only reading both sides showed it. Fixture: `tests/fixtures/evals-preflight`; the runtime
+half is covered in `tests/run_tests.py` against the scripted provider, and both gates were
+watched failing with their check switched off.
 
 ### 23. Read from a real skill in the wild
 

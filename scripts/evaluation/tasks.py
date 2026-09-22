@@ -123,6 +123,48 @@ def grade(task, run):
     return Grade(checks, task.graded, unnecessary, forbidden, sorted(set(unsafe)))
 
 
+# A field that still opens with the placeholder `sqs.py evals --init` and `sqs.py cases
+# --generate` write. Anchored at the start, because a real task may well mention a
+# TODO list; a draft never starts any other way.
+PLACEHOLDER_RE = re.compile(r"TODO\b")
+
+
+def preflight(skill_root, task_list):
+    """[(task id, "ungraded" | "unrunnable", why)] - what a run would waste money on.
+
+    Everything here is found today only after the money is spent: an ungraded case shows
+    up as `ungraded` in the report, a fixture that is not there is skipped in silence and
+    the agent starts a task about a file it was never given, and a broken `re:` raises in
+    the grader after both arms have already run. All of it is readable off the file.
+    """
+    out = []
+    base = os.path.realpath(skill_root)
+    for t in task_list:
+        why = []
+        fields = [t.prompt, t.expected] + t.assertions + t.files + t.fixtures
+        if any(PLACEHOLDER_RE.match(f) for f in fields):
+            why.append("still a draft - a field opens with `TODO`")
+        for rel in t.fixtures:
+            full = os.path.realpath(os.path.join(base, rel))
+            if full != base and not full.startswith(base + os.sep):
+                why.append(f"fixture `{rel}` is outside the skill")
+            elif not os.path.exists(full):
+                why.append(f"fixture `{rel}` does not exist")
+        for a in t.assertions:
+            body = a[4:] if a.startswith("not:") else a
+            if body.startswith("re:"):
+                try:
+                    re.compile(body[3:])
+                except re.error as e:
+                    why.append(f"`{a}` is not a valid regex ({e})")
+        if why:
+            out.append((t.id, "unrunnable", "; ".join(why)))
+        elif not t.graded:
+            out.append((t.id, "ungraded", "no `assertions` and no `files` - nothing "
+                                          "decides whether it passed"))
+    return out
+
+
 def load(skill_root, path=None):
     """(tasks, problem) - the task set, or why there is none to run."""
     full = path or os.path.join(skill_root, CASES)

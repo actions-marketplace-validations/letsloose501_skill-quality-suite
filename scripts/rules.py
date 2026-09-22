@@ -430,6 +430,20 @@ _ROWS = {
               "that ships its own routing runner.",
               "Read the two descriptions named in the finding; usually one needs to name the "
               "other and defer, the way `QL008` and `QL013` already ask for.", False),
+    "EV008": ("warning", "Eval case cannot pass or fail",
+              "A case in `evals/evals.json` carries no `assertions` and no `files`, so nothing "
+              "decides whether a run of it passed. `eval --runtime` would run it on both arms, "
+              "spend the money, and report it as `ungraded`.",
+              "Add one checkable assertion - a literal the answer must contain, a `re:` "
+              "pattern, or a file the run has to create.", False),
+    "EV009": ("error", "Eval case cannot run as written",
+              "A case is still a draft (a field opens with `TODO`), names a fixture that is "
+              "not in the skill, or carries a `re:` assertion that does not compile. The "
+              "first measures nothing, the second hands the agent a task about a file it "
+              "never receives, and the third crashes the grader after both arms have run. "
+              "`eval --runtime` refuses the whole set until it is fixed.",
+              "Fill the draft, add the fixture under the skill or drop it, fix the pattern.",
+              False),
 
     # ---- CB: capabilities ------------------------------------------------------
     "CB001": ("info", "Bundled script can reach the network",
@@ -578,6 +592,8 @@ GRADES = {
     "EV004": ("high", "low"),    "EV005": ("high", "low"),
     "EV006": ("high", "low"),
     "EV007": ("low", "high"),    # same stem-overlap heuristic as QL003, graded the same way
+    "EV008": ("high", "low"),    # the absence of two keys, read off the file
+    "EV009": ("high", "low"),    # a placeholder, a path and a compile - all exact
 
     # capabilities: `ast` reads an import or a call exactly, CB002/CB003 only ever fire
     # that way. CB001 also fires off a command-name regex for non-Python scripts, the

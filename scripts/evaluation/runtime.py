@@ -28,6 +28,7 @@ import shutil
 import statistics
 import tempfile
 
+from . import providers
 from . import tasks as taskmod
 
 
@@ -47,10 +48,19 @@ def total(values):
 
 
 class Side:
-    """One arm of the comparison, aggregated over every run of every task."""
+    """One arm of the comparison, aggregated over every run of every task.
 
-    def __init__(self, label):
+    The treatment arm is built with the name of the skill under test, and on that arm a
+    passed task counts only when the transcript shows the skill loading. Without that
+    gate the arm can win a task the model would have won anyway, with the skill sitting
+    unread in the plugin, and the delta is then credited to a skill that did nothing.
+    The uncredited passes are still counted, as `passed_without_skill`: they are the
+    model's own ability, and a reader needs that number to read the delta at all.
+    """
+
+    def __init__(self, label, skill_name=None):
         self.label = label
+        self.skill_name = skill_name
         self.runs = []                       # [(task, run, grade)]
 
     def add(self, task, run, grade):
@@ -60,17 +70,28 @@ class Side:
     def usable(self):
         return [(t, r, g) for t, r, g in self.runs if r.ok]
 
+    def credited(self, run, grade):
+        return grade.passed and (self.skill_name is None
+                                 or providers.loaded(run, self.skill_name))
+
     def metrics(self):
         usable = self.usable
         graded = [(t, r, g) for t, r, g in usable if g.graded]
+        gated = self.skill_name is not None
         m = {
             "runs": len(self.runs),
             "failed_runs": len(self.runs) - len(usable),
             "failure_rate": (len(self.runs) - len(usable)) / len(self.runs) if self.runs else None,
             "graded_runs": len(graded),
             "ungraded_runs": len(usable) - len(graded),
-            "success_rate": (sum(1 for _, _, g in graded if g.passed) / len(graded)
+            "success_rate": (sum(1 for _, r, g in graded if self.credited(r, g)) / len(graded)
                              if graded else None),
+            "skill_loaded_runs": (sum(1 for _, r, _ in usable
+                                      if providers.loaded(r, self.skill_name))
+                                  if gated else None),
+            "passed_without_skill": (sum(1 for _, r, g in graded
+                                         if g.passed and not self.credited(r, g))
+                                     if gated else None),
             "tool_calls": mean([len(r.tools) for _, r, _ in usable]),
             "turns": mean([r.turns for _, r, _ in usable]),
             "duration_s": mean([r.duration_s for _, r, _ in usable]),
@@ -88,7 +109,7 @@ class Side:
             row = out.setdefault(t.id, {"runs": 0, "ok": 0, "passed": 0, "graded": g.graded})
             row["runs"] += 1
             row["ok"] += int(r.ok)
-            row["passed"] += int(g.passed)
+            row["passed"] += int(self.credited(r, g))
         for row in out.values():
             row["success_rate"] = (row["passed"] / row["ok"]) if row["ok"] else None
         return out
@@ -120,7 +141,23 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
         if not task_list:
             return None, f"no task matches {', '.join(sorted(task_filter))}"
 
-    sides = {"treatment": Side("treatment")}
+    # The pre-flight gate: nothing is spent on a set that cannot produce a measurement.
+    # One case that cannot run as written stops the pass, because the alternative is a
+    # report that mixes measured cases with a skipped fixture or a grader crash halfway
+    # through. An ungraded case alone does not - it still says something about cost and
+    # tool use - but a set where every case is ungraded measures nothing at all.
+    blocked = taskmod.preflight(skill.root, task_list)
+    unrunnable = [(i, why) for i, kind, why in blocked if kind == "unrunnable"]
+    if unrunnable:
+        head = "; ".join(f"{i}: {why}" for i, why in unrunnable[:3])
+        more = f" and {len(unrunnable) - 3} more" if len(unrunnable) > 3 else ""
+        return None, (f"{len(unrunnable)} case(s) cannot run as written, nothing was "
+                      f"spent - {head}{more}")
+    if all(kind == "ungraded" for _, kind, _ in blocked) and len(blocked) == len(task_list):
+        return None, ("no case carries `assertions` or `files`, so no run could pass or "
+                      "fail - nothing was spent")
+
+    sides = {"treatment": Side("treatment", skill.name or skill.folder)}
     if with_baseline:
         sides["baseline"] = Side("baseline")
 
@@ -161,6 +198,7 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
 
 ROWS = [
     ("success_rate", "task success", "pct"),
+    ("skill_loaded_runs", "runs that loaded it", "int"),
     ("failure_rate", "runs that failed", "pct"),
     ("tool_calls", "tool calls", "num"),
     ("turns", "turns", "num"),
@@ -216,6 +254,15 @@ def render(report):
             else:
                 row += f"{'n/a':>12}"
         lines.append(row)
+
+    treat = sides["treatment"]
+    if treat.get("passed_without_skill"):
+        lines += ["", f"  {treat['passed_without_skill']} treatment run(s) passed without "
+                      f"loading the skill and were not counted",
+                  "  as success: that is the model's own ability, not the skill's."]
+    if treat.get("skill_loaded_runs") == 0 and treat.get("runs"):
+        lines += ["", "  The skill loaded in no treatment run. This column measures the "
+                      "model alone."]
 
     ungraded = report.get("ungraded_tasks") or []
     if ungraded:

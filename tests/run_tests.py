@@ -611,6 +611,53 @@ def evaluation_checks():
             if expected not in cmp.stdout:
                 out.append(f"the regression report never mentions {expected!r}")
 
+        # The invocation gate. v1 with one change: the `balance` task still passes on
+        # the treatment arm, but the transcript no longer shows the skill loading. That
+        # pass is the model's own, and crediting it to the skill is the mistake the gate
+        # exists for. The other task loads under the plugin's name, so the prefixed
+        # spelling is exercised by the half that is still credited.
+        with open(os.path.join(tree, "script-v1.json"), encoding="utf-8") as f:
+            unloaded = json.load(f)
+        for rule in unloaded["rules"]:
+            if rule.get("with_skill") is True and rule["contains"] == "balance":
+                rule["run"]["skills"] = []
+        with open(os.path.join(tree, "script-unloaded.json"), "w", encoding="utf-8") as f:
+            json.dump(unloaded, f)
+        r = run_eval("script-unloaded.json", "--format", "json")
+        try:
+            treat = json.loads(r.stdout)["runtime"]["sides"]["treatment"]
+        except (ValueError, KeyError) as e:
+            treat = {}
+            out.append(f"the unloaded-skill run produced no runtime block: {e}")
+        for key, value in (("success_rate", 0.5), ("passed_without_skill", 2),
+                           ("skill_loaded_runs", 2)):
+            if treat and treat.get(key) != value:
+                out.append(f"invocation gate: treatment {key} is {treat.get(key)}, "
+                           f"expected {value}")
+
+        # The pre-flight gate: a set that cannot run is refused before anything is spent.
+        # A draft left with its placeholder, a fixture that is not there and a regex the
+        # grader would raise on are all readable off the file.
+        cases_path = os.path.join(tree, "ledger-lite", "evals", "evals.json")
+        with open(cases_path, encoding="utf-8") as f:
+            good = f.read()
+        for label, case in (
+                ("a draft", {"id": "d", "prompt": "TODO a realistic task",
+                             "expected_output": "x", "assertions": ["y"]}),
+                ("a missing fixture", {"id": "f", "prompt": "Sum receipts.pdf",
+                                       "expected_output": "x", "assertions": ["y"],
+                                       "fixtures": ["evals/files/receipts.pdf"]}),
+                ("a broken regex", {"id": "r", "prompt": "Sum it", "expected_output": "x",
+                                    "assertions": ["re:(unclosed"]})):
+            with open(cases_path, "w", encoding="utf-8") as f:
+                json.dump({"skill_name": "ledger-lite", "evals": [case]}, f)
+            r = run_eval("script-v1.json", "--runtime")
+            if r.returncode != 2 or "nothing was spent" not in r.stderr:
+                out.append(f"pre-flight let {label} through: exit {r.returncode}, "
+                           f"{(r.stdout + r.stderr)[-200:]!r}")
+        with open(cases_path, "w", encoding="utf-8") as f:
+            f.write(good)
+
     # the trigger dataset parser must refuse what it cannot read rather than guess
     sys.path.insert(0, os.path.join(REPO, "scripts"))
     from evaluation import triggers

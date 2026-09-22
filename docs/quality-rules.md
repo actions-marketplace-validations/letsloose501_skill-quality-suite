@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 88 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 90 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -140,6 +140,8 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 | `EV005` | info | high | low | no | Thin trigger set |
 | `EV006` | info | high | low | no | Routing runner in the tree was not executed |
 | `EV007` | warning | low | high | no | Semantic overlap between two skills |
+| `EV008` | warning | high | low | no | Eval case cannot pass or fail |
+| `EV009` | error | high | low | no | Eval case cannot run as written |
 
 ### EV001 - Routing invariant broken
 
@@ -182,6 +184,18 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 **Why it matters.** Two skills' trigger branches cover the same wording, so only one of them can win a request that names it - this is `EV001`'s claim made without executing the tree's own `run_evals.py`, so it works on any skill tree, not only one that ships its own routing runner.
 
 **Fix.** Read the two descriptions named in the finding; usually one needs to name the other and defer, the way `QL008` and `QL013` already ask for.
+
+### EV008 - Eval case cannot pass or fail
+
+**Why it matters.** A case in `evals/evals.json` carries no `assertions` and no `files`, so nothing decides whether a run of it passed. `eval --runtime` would run it on both arms, spend the money, and report it as `ungraded`.
+
+**Fix.** Add one checkable assertion - a literal the answer must contain, a `re:` pattern, or a file the run has to create.
+
+### EV009 - Eval case cannot run as written
+
+**Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, or carries a `re:` assertion that does not compile. The first measures nothing, the second hands the agent a task about a file it never receives, and the third crashes the grader after both arms have run. `eval --runtime` refuses the whole set until it is fixed.
+
+**Fix.** Fill the draft, add the fixture under the skill or drop it, fix the pattern.
 
 ## publish (PBxxx)
 

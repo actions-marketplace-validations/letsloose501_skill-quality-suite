@@ -165,18 +165,31 @@ that the two passes are then billed down two different paths.
 ```
                            treatment    baseline       delta
   task success                  100%          0%       +100%
+  runs that loaded it              4         n/a         n/a
   tool calls                     1.5         0.5        +1.0
   tokens                      1960.0       815.0     +1145.0
   cost USD                    0.0340      0.0100     +0.0240
   safety violations                0           0           0
 ```
 
-Two rules the numbers obey:
+Three rules the numbers obey:
 
+- a treatment run is credited only when the transcript shows **the skill loading**. The
+  arm has the skill available; that is not the same as using it, and a task the model
+  wins with the skill unread is the model's win. Such runs are counted separately, as
+  `passed_without_skill`, and the report says how many there were - that number is what
+  the delta has to be read against;
 - a task with no assertions comes back **ungraded**, never as a pass. Counting it would
   turn "nobody said what success is" into evidence of success;
 - a metric the provider never reported comes back **`n/a`**, never as zero. A zero is a
   measurement, and inventing one is how a comparison quietly starts lying about cost.
+
+**Nothing is spent on a set that cannot measure.** Before the first run the pass reads
+the set and refuses it when any case is still a draft (a field opening with `TODO`),
+names a fixture that is not in the skill, or carries a `re:` that does not compile - and
+when no case at all has something to grade. The same reading runs free on every `check`
+as `EV008` (a case that cannot pass or fail) and `EV009` (a case that cannot run as
+written), so the refusal is never the first an author hears of it.
 
 Assertions are substrings, regexes behind `re:`, prohibitions behind `not:`, and files
 the run had to create. **Safety violations** are the security module's own command

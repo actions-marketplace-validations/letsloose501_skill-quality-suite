@@ -1,0 +1,39 @@
+{
+  "skill_name": "invoice-totals",
+  "evals": [
+    {
+      "id": "totals-ok",
+      "prompt": "Add up march.csv by supplier",
+      "expected_output": "totals.md with one line per supplier and the grand total printed",
+      "assertions": ["42.40"],
+      "files": ["totals.md"],
+      "fixtures": ["evals/files/march.csv"]
+    },
+    {
+      "id": "totals-vague",
+      "prompt": "Add up march.csv by supplier",
+      "expected_output": "a sensible breakdown",
+      "fixtures": ["evals/files/march.csv"]
+    },
+    {
+      "id": "totals-draft",
+      "prompt": "TODO: a request that should make the skill write totals.md",
+      "expected_output": "the skill writes totals.md",
+      "files": ["totals.md"]
+    },
+    {
+      "id": "totals-april",
+      "prompt": "Add up april.csv by supplier",
+      "expected_output": "totals.md for April",
+      "files": ["totals.md"],
+      "fixtures": ["evals/files/april.csv"]
+    },
+    {
+      "id": "totals-pattern",
+      "prompt": "What is the grand total in march.csv?",
+      "expected_output": "the grand total, with two decimals",
+      "assertions": ["re:total (\\d+\\.\\d{2}"],
+      "fixtures": ["evals/files/march.csv"]
+    }
+  ]
+}

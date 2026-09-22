@@ -125,6 +125,17 @@ def collect_tools(node, tools, skills):
             collect_tools(v, tools, skills)
 
 
+def loaded(run, skill_name):
+    """Whether the transcript shows this skill being loaded.
+
+    Two spellings. A skill in a skills directory is called by its own name; the treatment
+    arm hands the skill over inside a one-skill plugin, and a plugin's skills are called
+    with the plugin's name in front (`sqs-under-test:ledger-lite`). Which one a given
+    client prints has not been watched on a live treatment run, so both count.
+    """
+    return any(s == skill_name or s.endswith(":" + skill_name) for s in run.skills)
+
+
 class Provider:
     """One way to run a task. Subclasses fill in `available` and `run`."""
 

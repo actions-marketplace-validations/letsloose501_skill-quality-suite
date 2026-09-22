@@ -1,0 +1,8 @@
+{
+  "note": "A task set that would spend money measuring nothing. `totals-vague` has no assertion and no file, so no run of it can pass or fail. `totals-draft` still opens with the placeholder `cases --generate` writes, `totals-april` names a fixture that is not in the skill, and `totals-pattern` carries a regex the grader would raise on after both arms had run. `totals-ok` is the silent side: graded, with a fixture that exists.",
+  "command": "evals",
+  "expect": [
+    "EV008",
+    "EV009"
+  ]
+}

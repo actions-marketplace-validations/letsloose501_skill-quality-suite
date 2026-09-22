@@ -19,6 +19,7 @@ import json
 import os
 
 from core import Finding
+from evaluation import tasks as taskmod
 
 QUERIES = "evals/eval_queries.json"
 CASES = "evals/evals.json"
@@ -81,6 +82,26 @@ def check(skill, cfg=None):
             if missing:
                 out.append(Finding("EV004", f"{CASES}: case(s) {missing[:3]} lack a `prompt` "
                                             f"or an `expected_output`", where=CASES))
+            out += _preflight(skill)
+    return out
+
+
+def _preflight(skill):
+    """EV008 / EV009 - the pre-flight gate `eval --runtime` applies, run for free.
+
+    The same reading the paid pass refuses to spend on, so an author sees it on every
+    `check` rather than on the one run that would have cost money. `EV004` already
+    covers the first two things a case needs - an objective and an expected outcome;
+    these are the other two: a decidable pass criterion, and a case that can run as
+    written in both arms.
+    """
+    task_list, problem = taskmod.load(skill.root)
+    if problem:
+        return []                        # EV004 has already said why
+    out = []
+    for task_id, kind, why in taskmod.preflight(skill.root, task_list):
+        code = "EV009" if kind == "unrunnable" else "EV008"
+        out.append(Finding(code, f"case `{task_id}`: {why}", where=CASES))
     return out
 
 
