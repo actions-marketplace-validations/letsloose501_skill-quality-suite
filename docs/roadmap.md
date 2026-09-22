@@ -1,12 +1,10 @@
 ---
 title: "Roadmap - what skill-quality-suite does not do yet"
 description: >-
-  The planned layers of skill-quality-suite: a measured description budget, generating
-  a skill's case set from what you expect of it, from each improvement and from a
-  stranger's promises, an optional LLM review layer, and
-  last of all cross-runtime work - evaluation across engines and porting a skill from
-  one harness to another - plus what Claude Code's own eval runner now covers, and what
-  was rejected and why.
+  The planned layers of skill-quality-suite: a measured description budget, an optional
+  LLM review layer, and last of all cross-runtime work - evaluation across engines and
+  porting a skill from one harness to another - plus what Claude Code's own eval runner
+  now covers, and what was rejected and why.
 ---
 
 # Roadmap
@@ -71,7 +69,64 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
-| 17 | The suite writes the checks | this skill has no case set - what should be true of it, and is it |
+
+Shipped: **the suite writes the checks (17)** - the `cases` module (`scripts/cases.py`,
+prefix `CS`) in every `check` run, plus `sqs.py cases <skill> --generate [--apply]`,
+which drafts `evals/evals.json` out of the three sources. Expectations are read from
+`evals/expectations.md`, one list item per claim - prose around the items is the
+author's note to themselves, which the first version read as three expectations the
+skill had failed to meet. The improvement source is a composition rather than new
+machinery: `--since` from item 16 materialises the earlier skill (`git archive` read
+through `tarfile`, so no `tar` binary is needed on Windows) and the `capabilities`
+module from items 9/10 says which capability is new. The promise source is read out of
+the description's outcome clause.
+
+Three of the table's four rows are visible without running anything and those are the
+rules - `CS001` broken skill, `CS002` wrong skill, `CS003` undeclared capability. The
+fourth row is behaviour, which `eval --runtime` already grades over the set this
+drafts. The three refusals the item named are all kept: not a score, nothing judged by
+a model, and no case per edit - the trigger is a capability changing, not a file.
+
+One deviation from this item as written, stated rather than quietly taken. It said
+prose-to-claims needs a model and is therefore an opt-in layer. What shipped is the
+deterministic subset: the claim *shapes* the item itself enumerates - produces a file,
+calls a tool, the outcome clause of a description - matched by pattern, with their
+reach stated in the docs. The model layer for what a pattern cannot read is still
+unbuilt and still belongs beside `check` rather than inside it.
+
+Five rounds of live calibration, each one a false positive or a dead branch watched
+happening on the 29 installed skills or on a fixture written to fail:
+
+- one finding per *import site* rather than per capability - one skill with eight
+  scripts reading the environment filled the report eight times;
+- `запуск\w*` matches `запуска` and misses `запусти`, the form an instruction is
+  actually written in, so a skill whose every step says "run the script" read as silent
+  about running scripts. Hand-rolled inflection was replaced by the shared stemmer,
+  which is what it exists for;
+- `ANNOUNCE_WORDS` was matched with `quality.WORD_RE`, whose four-letter floor drops
+  every word in it - `api`, `env`, `cli`, `run` - so the branch was unreachable without
+  ever failing;
+- `script` and `run` in `CB002`'s vocabulary made that arm structurally dead: `CB002`
+  only fires because a *bundled* script spawns something, and a skill that bundles a
+  script almost always says so. What goes unmentioned is that the script reaches past
+  itself to a command on the machine, so only wording about an external command counts;
+- a promise read out of the *trigger* branch: "Use when a bank export lands in the
+  downloads folder" parsed as a promise to produce a folder. Promises are now read
+  before `TRIGGER_RE`'s lead-in, the same split `EV007` makes for the same reason, and
+  `export`, `file`, `record`, `store`, `copy` and `move` left the verb list because a
+  word that is a plausible artefact cannot be the evidence that one was produced.
+
+`CB003` - reading the environment - is out of `CS003`'s scope, and that is the finding
+rather than an omission. Three vocabularies were tried and each was wrong in both
+directions: one stray `config` in a reference page about something else silenced a skill
+whose every script reads the environment, and `окружение`/`переменная` - the only words a
+Russian author would use - are ordinary prose in exactly the domain these skills are
+written about ("замыкание помнит окружение", "`snake_case` — переменные"). A fourth
+vocabulary would have been tuning against the examples, which this project's own rules
+about editing a skill forbid. After all five rounds: three findings on the fixture, zero
+on the 29 installed skills, and every one of the eight live capability cases silenced by
+several genuinely relevant words rather than by one coincidence.
+Fixture: `tests/fixtures/case-sources`. Page: `docs/case-sets.md`.
 
 Shipped: **version bump on improvement (16)** - `PB010`/`PB011` in `scripts/publish.py`,
 opt-in behind `--since`, which now takes a directory as well as a git ref. The directory
@@ -174,7 +229,7 @@ and both import forms - `import urllib.request` and `from urllib import request`
 checked against `NETWORK_EXACT` so the split does not silently create a false negative
 in place of the false positive. Fixture: `tests/fixtures/script-capabilities`.
 
-Notes on the harder ones.
+The one note left.
 
 **Description budget (15)** is the gap the registry admits to. `QL001` fires when a
 description is too short to carry triggers and `SP008` fires at the specification's 1024
@@ -184,87 +239,6 @@ guessing: `eval --trigger` already measures precision and recall of activation, 
 same harness run against progressively trimmed descriptions turns a house style into a
 measured threshold. That is also what justifies keeping the expensive half in the same
 repository as the free one - it is where the free half's rules come from.
-
-**The suite writes the checks (17)**. Two ways a skill wastes your time, and neither is
-caught by anything in this repository as it stands.
-
-**It passes every check and still does not deliver.** Intact, safe, well written, visibly
-doing *something* - and not the thing it advertised. That skill is worse than no skill: it
-occupies the routing slot, costs context on every turn, and the failure is silent, because
-nothing about it looks broken. There is no verdict here today that separates a skill that
-works from a skill that is merely well formed.
-
-**You improve it and the improvement is a downgrade.** It answers worse, or takes twice as
-long, or burns three times the tokens for the same answer. Without a set of checks underneath,
-the only detector is you noticing months later, and by then the change that did it is twenty
-commits back. Automated checks are what make an improvement safe to attempt, and their absence
-is why a good skill quietly rots: every edit is a gamble nobody grades.
-
-The machinery for the second one is already built, which is the frustrating part. `--save` and
-`--compare` diff two runs and watch task success, trigger precision and recall, wall time,
-tokens, cost and tool calls; quality falling fails the gate and cost rising is reported, with
-`--fail-on-cost` to move that line. It is a working gate with nothing under it. Every layer
-here assumes a case set that already exists: `--trigger` needs queries somebody wrote,
-`--runtime` needs a task set somebody wrote, the gate needs two runs of that set. A stranger's
-package has no `evals/` at all, and your own has whatever you had patience for on the first
-day. The set is the foundation for everything expensive in this repository, and nothing here
-helps you lay it.
-
-So: given a skill, produce the checks. Three sources for what ought to be true, and they are
-different sources, not three phrasings of one.
-
-- **What you expect of it.** You say in plain words what you want this skill to do for you,
-  and that becomes cases. It is the only source that survives the skill being wrong about
-  itself, and the only one that exists before the skill does - write the expectation first and
-  it is an acceptance test rather than a description of what already happened. For a skill you
-  are adopting, this is the question nobody asks: not "is it good" but "is it the one I need".
-- **Each improvement.** A capability the skill just gained is a thing no existing case
-  exercises, and it is also the cheapest moment to write one, because you still remember what
-  you changed and why. One check per improvement, kept for good. This is how the set accretes
-  instead of standing still: the alternative is the set you wrote on day one, and a regression
-  gate over a frozen set prints "no regression" about behaviour it has never sampled.
-- **What a stranger's skill promises.** The description is a promise - *use me when X, and I
-  will do Y* - and `X` is the only half anything tests today. Turn the description and body
-  into claims: produces a file of this kind, refuses in this situation, calls that tool, its
-  output carries these fields, finishes within this many steps. When you have neither the
-  author nor a written expectation, this is all there is.
-
-Those three disagreeing is the most useful thing the layer can print, and the reason it is one
-item rather than three:
-
-| expectation | promise | behaviour | what it means |
-|---|---|---|---|
-| ✓ | ✗ | - | wrong skill - it never claimed to do what you need |
-| ✓ | ✓ | ✗ | broken skill - or a description that oversold |
-| ✗ | ✓ | ✓ | fine skill, not for you |
-| - | ✗ | ✓ | undeclared capability - it does `Z` and says nothing about it |
-
-The last row is where this meets the capability manifest (10): that one says what a skill
-*can* do to the machine, this says what it *does* and never mentioned.
-
-Design constraints, all three learned from what is already here:
-
-- **Generated is not trusted.** The output is a case file a human reads and edits before it
-  counts. A set nobody can correct is a set nobody will believe, and it would be the same
-  mistake as a linter whose rules cannot be suppressed.
-- **Deterministic first, judged last, never circular.** Most claims reduce to an assertion -
-  file exists, tool called, string present, step count under the cap - and `evals.json` already
-  carries `files`, `assertions`, `forbidden_tools` and `max_tool_calls` for exactly that. A
-  judge only for what no assertion reaches. A model that invents a claim and then grades its
-  own claim has measured nothing, so judged claims are marked and kept apart in the report,
-  the way `DETERMINISTIC` and `LLM REVIEW` are in P2.
-- **Prose to claims needs a model, so it is an opt-in layer** beside `check`, never inside it.
-  The expectation source does not: a sentence you wrote is already the claim.
-
-What it must not become. Not a score - "78% honest" is unactionable and is the one-number
-headline this project already rejected. Not a gate that fails on a judged claim, because an
-opinion does not break a build. Not a case per edit either: a typo owes nobody a check; the
-trigger is a *capability* changing, not a file.
-
-Two fixtures prove it. A skill whose description promises a written file and whose body never
-writes one: it passes `--trigger`, passes a hand-written `--runtime` set, and fails here. And a
-skill that does exactly what it promised while the expectation written beside it asked for
-something else - the case that must be reported as *wrong skill* and not as a defect.
 
 ## P2
 
@@ -286,6 +260,10 @@ something else - the case that must be reported as *wrong skill* and not as a de
   its own code is narrower and checkable: a trigger phrase in the description that no
   instruction in the body serves. The skill fires on that wording and then has nothing to
   do about it, which is the half-working case users report as "it activates and ignores me".
+  Still unbuilt after item 17: `CS001` is the other half of the same promise - *use me when
+  X and I will do Y* - and reads `Y` against the body. This one reads `X`, and the two
+  cannot be folded together, because a trigger nothing serves and an outcome nothing
+  produces are different defects with different fixes.
 
 ## P3 - cross-runtime
 

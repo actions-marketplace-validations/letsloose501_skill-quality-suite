@@ -33,6 +33,7 @@ sys.path.insert(0, HERE)
 
 import baseline as baseline_store                               # noqa: E402
 import capabilities                                             # noqa: E402
+import cases as caseset                                         # noqa: E402
 import compat                                                   # noqa: E402
 import evalcheck                                                # noqa: E402
 import fix as fixer                                             # noqa: E402
@@ -52,7 +53,8 @@ from rules import (MODULES, RULES, at_least, module_of,        # noqa: E402
 _CODES = r"([A-Z]{2}\d{3}(?:\s*,\s*[A-Z]{2}\d{3})*|\*)"
 SUPPRESS_RE = re.compile(r"sqs-allow:\s*" + _CODES)
 SUPPRESS_FILE_RE = re.compile(r"sqs-allow-file:\s*" + _CODES)
-CHECK_MODULES = ("structure", "spec", "quality", "compat", "security", "capabilities")
+CHECK_MODULES = ("structure", "spec", "quality", "compat", "security", "capabilities",
+                 "cases")
 
 
 def skills_dir(arg=None):
@@ -351,6 +353,8 @@ def collect(skill, modules, cfg, skill_registry, engine, world=None):
             out += security.check(skill, cfg)
         elif name == "capabilities":
             out += capabilities.check(skill, cfg)
+        elif name == "cases":
+            out += caseset.check(skill, cfg, cfg.get("descriptions"))
         elif name == "publish":
             out += publish.check(skill, cfg)
         elif name == "evals":
@@ -540,6 +544,71 @@ def cmd_init_evals(skills):
     return 0
 
 
+def cmd_cases(skills, cfg, since, apply_it, fmt="text"):
+    """`sqs.py cases <skill> --generate` - the case set the skill's own sources ask for.
+
+    Every expensive layer here needs a case set and none of them helps you write one.
+    This writes the first draft out of the three sources that can be read without an
+    agent: the expectations you wrote beside the skill, the outcomes its description
+    commits to, and - with `--since` - the capabilities it gained since then.
+
+    It is a draft on purpose. Every case carries `needs_review`, an assertion appears
+    only where the source named something checkable, and the rest is `TODO`: a case
+    that passes without having tested anything is the one output the grader already
+    refuses to produce, and generating a heap of them would be worse than the empty
+    `evals/` it replaced.
+    """
+    import tempfile
+    payloads = []
+    for s in skills:
+        if not s.ok:
+            continue
+        gained = []
+        if since:
+            with tempfile.TemporaryDirectory() as tmp:
+                old_root = publish.previous_copy(s, since, tmp)
+                if old_root:
+                    gained = caseset.gained_capabilities(
+                        s, capabilities.check(Skill(old_root), cfg), cfg)
+        payloads.append((s, caseset.generate(s, gained)))
+
+    if fmt == "json":
+        print(json.dumps({s.folder: p for s, p in payloads}, ensure_ascii=False, indent=2))
+        return 0
+
+    rc = 0
+    for s, payload in payloads:
+        by_source = {}
+        for c in payload["evals"]:
+            by_source.setdefault(c["source"], []).append(c)
+        print(f"\n{s.folder}: {len(payload['evals'])} case(s) drafted")
+        for source in ("expectation", "promise", "improvement"):
+            for c in by_source.get(source, []):
+                print(f"  {source:<12} {c['id']:<22} {c['prompt'][:56]}")
+        if not payload["evals"]:
+            print(f"  nothing to draft - no {caseset.EXPECTATIONS}, and the description "
+                  f"commits to no outcome a pattern can see")
+            continue
+        target = os.path.join(s.root, caseset.CASES_FILE.replace("/", os.sep))
+        if not apply_it:
+            print(f"  would write {caseset.CASES_FILE} (pass --apply)")
+            rc = 1
+            continue
+        if os.path.exists(target):
+            print(f"  {caseset.CASES_FILE} already exists - left alone. Generated is not "
+                  f"trusted, and overwriting a set somebody corrected would prove it")
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        print(f"  wrote {caseset.CASES_FILE}")
+    print("\nEvery case is a draft: fill the TODOs before `sqs.py eval --runtime` means "
+          "anything.\nA case with no assertion and no file is ungraded and stays that way "
+          "in the report.")
+    return rc
+
+
 def cmd_eval(skills, root, a, cfg):
     """The layer that runs an agent: triggering, task success, and the diff between runs.
 
@@ -699,36 +768,17 @@ def cmd_route(skills, prompt, fmt="text"):
     be, so `ROUTE_CAVEAT` prints in every render rather than once in a docstring nobody
     reads at the terminal.
 
-    `stems()`, not `EV007`'s `content_stems()`: that six-letter floor exists to drop
-    scaffolding two DESCRIPTIONS share by house-style construction ("Срабатывай"/"use
-    when"), which a real user prompt does not normally contain. Reusing it here instead
-    dropped short topic nouns - `видео` is five letters - and every skill that happened
-    to share one leftover long word scored the same, so the ranking degenerated into an
-    alphabetical tie-break. Watched doing exactly that against the real skill tree before
-    this comment existed.
+    The comparison itself is `quality.prompt_match`, which carries the calibration -
+    `stems()` rather than `EV007`'s `content_stems()`, and exclusion clauses dropped -
+    and which `cases` now runs an expectation through to ask the same question about a
+    sentence the author wrote instead of one a user typed.
     """
     prompt_stems = quality.stems(prompt)
     rows = []
     for s in skills:
         if not s.ok or s.slash_only or not s.description:
             continue
-        best_score, best_sentence = 0.0, None
-        for sent in quality.SENTENCE_RE.split(s.description):
-            sent = sent.strip(" -—:*")
-            # A sentence that fences work out ("НЕ запускайся на рутине...", "not for
-            # X") is not a route into the skill for that wording - it is the opposite
-            # claim, and counting it as a match is how a genuine exclusion clause,
-            # watched happening against the real skill tree, outscored the skill it
-            # was excluding the wording in favour of.
-            if len(sent) <= 8 or quality.POLARITY_RE.search(sent):
-                continue
-            st = quality.stems(sent)
-            small = min(len(st), len(prompt_stems))
-            if not small:
-                continue
-            score = len(st & prompt_stems) / small
-            if score > best_score:
-                best_score, best_sentence = score, sent
+        best_score, best_sentence = quality.prompt_match(s.description, prompt_stems)
         rows.append((s.name or s.folder, best_score, best_sentence))
     rows.sort(key=lambda r: r[1], reverse=True)
 
@@ -873,6 +923,8 @@ def main(argv=None):
     ap.add_argument("--module", help="rules: only this module")
     ap.add_argument("--audit", action="store_true", help="rules: registry against the engines")
     ap.add_argument("--prompt", help="route: the wording to reason about")
+    ap.add_argument("--generate", action="store_true",
+                    help="cases: draft the case set instead of reporting on it")
     a = ap.parse_args(argv)
 
     if a.command == "explain":
@@ -961,8 +1013,16 @@ def main(argv=None):
     # `--skills-dir`, not the positional target, so checking a directory somewhere else
     # left every skill in it a stranger to the others and the neighbour-aware rules
     # (`QL008`, `QL013`) read a named sibling as an unnamed topic.
-    skill_registry = {s.name or s.folder: s.slash_only
-                      for s in list(discover(root)) + list(skills)}
+    neighbours = list(discover(root)) + list(skills)
+    skill_registry = {s.name or s.folder: s.slash_only for s in neighbours}
+    # The same neighbours, by description rather than by invocation mode: `CS002` has
+    # to be able to say *which* skill does promise the thing you expected, and "the
+    # wrong skill" without naming the right one is half an answer.
+    cfg["descriptions"] = {s.name or s.folder: s.description for s in neighbours}
+
+    # `cases --generate` writes the set the rules would otherwise only report on.
+    if a.command == "cases" and a.generate:
+        return cmd_cases(skills, cfg, cfg.get("since"), a.apply, a.format)
 
     # The compatibility report is a different view of the same analysis, not a
     # different analysis: per harness rather than per finding. `check --harness` still

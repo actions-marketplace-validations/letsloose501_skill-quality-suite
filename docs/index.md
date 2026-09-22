@@ -25,6 +25,7 @@ python skill-quality-suite/scripts/sqs.py check ./my-skill
 | Is it safe to install? | `sqs.py security ./my-skill` | [Skill security](skill-security.md) |
 | What exactly did it find? | `sqs.py explain ST008` | [Quality rules](quality-rules.md) |
 | Will it work on another agent? | `sqs.py compat ./my-skill --harness all` | [Compatibility](compatibility.md) |
+| What should be true of it, and is it? | `sqs.py cases ./my-skill` | [Case sets](case-sets.md) |
 | Does it fire, and does it help? | `sqs.py eval ./my-skill --all` | [Evaluation](evaluation.md) |
 | Is it ready to publish? | `sqs.py all ./my-skill --strict` | [Publishing](publishing.md) |
 

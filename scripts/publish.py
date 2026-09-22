@@ -9,10 +9,12 @@ language the repository is not written in.
 This module is not part of `sqs.py check`. It runs when you ask for it, because half
 its findings are correct-and-intended for a private skill.
 """
+import io
 import json
 import os
 import re
 import subprocess
+import tarfile
 
 from core import Finding, Skill, parse_frontmatter
 from security import PERSONAL, PERSONAL_GENERIC
@@ -274,6 +276,49 @@ def _bytes(path):
             return f.read().replace(b"\r\n", b"\n")
     except OSError:
         return None
+
+
+def previous_copy(skill, spec, workdir):
+    """A directory holding this skill as it was at `--since`, or None.
+
+    The tree form of `--since` already is one. The git form is materialised here with
+    `git archive` read as a tar stream through the standard library, because a caller
+    that wants to know what the skill's *scripts* used to do needs a tree to walk, and
+    `git show` one file at a time cannot hand it one. No `tar` binary is involved: this
+    has to work on a Windows box where nothing was installed.
+    """
+    if spec["kind"] == "tree":
+        for cand in (os.path.join(spec["root"], skill.folder), spec["root"]):
+            if os.path.isfile(os.path.join(cand, "SKILL.md")):
+                return cand
+        return None
+    try:
+        r = subprocess.run(["git", "-C", skill.root, "archive", "--format=tar",
+                            spec["ref"], "--", "."], capture_output=True)
+    except OSError:
+        return None
+    if r.returncode != 0 or not r.stdout:
+        return None
+    target = os.path.join(workdir, skill.folder)
+    os.makedirs(target, exist_ok=True)
+    try:
+        with tarfile.open(fileobj=io.BytesIO(r.stdout)) as tf:
+            for member in tf.getmembers():
+                # A tar out of git cannot climb out of the tree, but a tar reader that
+                # trusts its member names is how every other one has been exploited.
+                dest = os.path.normpath(os.path.join(target, member.name))
+                if not dest.startswith(os.path.normpath(target) + os.sep):
+                    continue
+                # `filter=` landed mid-3.9; the suite claims 3.9 and up, so the path
+                # check above is the guard that has to hold on its own, and the filter
+                # is the belt on top of it where the interpreter has one.
+                try:
+                    tf.extract(member, target, filter="data")
+                except TypeError:
+                    tf.extract(member, target)
+    except (tarfile.TarError, OSError):
+        return None
+    return target if os.path.isfile(os.path.join(target, "SKILL.md")) else None
 
 
 def surface_changes(old_fm, new_fm):

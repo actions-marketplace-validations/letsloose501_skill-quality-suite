@@ -41,7 +41,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 81 rules](docs/quality-rules.md)**
+📋 **[All 84 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|
@@ -53,6 +53,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 | Which skill wins this wording, offline? | `route --prompt "..."` |
 | Does it actually help? | `eval --runtime` |
 | Did the last change make it worse? | `eval --compare v1 v2` |
+| What should be true of it, and is it? | `cases` |
 | Can it be published? | `publish` |
 
 ## Why
@@ -74,6 +75,7 @@ sorts them by *when* they would have bitten:
 | `compat` | what will not survive a move to another agent | on somebody else's machine |
 | `security` | secrets, destructive commands, injection, hidden characters | when you install a stranger's skill |
 | `capabilities` | what a bundled script *can* do - network, subprocess, environment | when you install a stranger's skill |
+| `cases` | a promise with no step behind it, an expectation it never claimed, a capability it never announced | the first time you rely on it |
 | `evals` | the eval files and the routing invariants | when a neighbour's description moves |
 | `eval` | does it fire, does it help, did the last edit make it worse | after every change, if you let it |
 | `publish` | personal paths, missing license, version drift | the moment it leaves your machine |
@@ -161,12 +163,12 @@ table, the source behind each row, and how to add one without guessing.
 - **· info** - a nudge. Real, small, safe to leave.
 
 Every finding carries a rule code. `sqs.py explain ST008` prints the reasoning and the
-fix; `sqs.py rules` lists all 70.
+fix; `sqs.py rules` lists all 84.
 
 ## Commands
 
 ```
-sqs.py check [target]        structure + spec + quality + compat + security
+sqs.py check [target]        structure + spec + quality + compat + security + capabilities + cases
 sqs.py all [target]          the above plus publish
 sqs.py <module> [target]     one module on its own
 sqs.py compat . --harness cursor,codex
@@ -176,6 +178,7 @@ sqs.py rules [--module X]    the registry
 sqs.py harnesses [--show]    the harness adapters and their sources
 sqs.py new <name>            scaffold a skill that already passes
 sqs.py evals . --init        scaffold the eval files
+sqs.py cases ./s --generate  draft the case set out of the skill's own sources
 sqs.py eval ./s --trigger    does it fire, and only when it should
 sqs.py eval ./s --runtime    the task set, with the skill and without it
 sqs.py eval ./s --compare v1 v2    what the last edit moved

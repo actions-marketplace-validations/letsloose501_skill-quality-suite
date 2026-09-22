@@ -176,4 +176,5 @@ between the two, so pick one per skill rather than keeping both.
 - [`references/evaluating.md`](https://github.com/letsloose501/skill-quality-suite/blob/main/references/evaluating.md)
   - the working detail: writing queries, writing assertions, and the part that stays a
   human's job
+- [Case sets](case-sets.md) - where the queries and tasks this page runs come from
 - [Skill validation](skill-validation.md) - the free, offline half

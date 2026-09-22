@@ -198,6 +198,40 @@ def near_duplicates(desc, threshold=0.6):
 SENTENCE_RE = re.compile(r"[.;]\s+|\n")
 
 
+def prompt_match(description, prompt_stems):
+    """(best score, the sentence that scored it) for a prompt against one description.
+
+    The ranking behind `sqs.py route`, and the same comparison `cases` runs an
+    expectation through: *does this skill's description promise the thing that was
+    asked for at all*. It lives here rather than inside either caller because the two
+    would otherwise each carry their own copy of the same calibration, and one place
+    per test is the only thing that stops them drifting.
+
+    `stems()`, not `content_stems()`: the six-letter floor exists to drop scaffolding
+    two DESCRIPTIONS share by house-style construction, and a sentence a human wrote
+    about what they want does not carry that scaffolding - it carries short topic
+    nouns the floor would eat. Watched degenerating into an alphabetical tie-break
+    against the real skill tree before this note existed.
+    """
+    best_score, best_sentence = 0.0, None
+    for sent in SENTENCE_RE.split(description):
+        sent = sent.strip(" -—:*")
+        # A sentence that fences work out ("not for X") is not a route into the skill
+        # for that wording - it is the opposite claim, and counting it as a match is
+        # how a genuine exclusion clause outscored the skill it was excluding the
+        # wording in favour of.
+        if len(sent) <= 8 or POLARITY_RE.search(sent):
+            continue
+        st = stems(sent)
+        small = min(len(st), len(prompt_stems))
+        if not small:
+            continue
+        score = len(st & prompt_stems) / small
+        if score > best_score:
+            best_score, best_sentence = score, sent
+    return best_score, best_sentence
+
+
 def branch_segments(desc):
     """(sentence, content stems, has-negation) for the trigger-branch part of a description.
 

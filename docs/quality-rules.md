@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 81 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 84 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -49,6 +49,34 @@ Each rule carries two gradings that are about **the check**, not about the skill
 **Why it matters.** `os.environ`/`os.getenv` gives a script access to whatever the process's environment carries, which commonly includes API keys and tokens set for other tools.
 
 **Fix.** Not a defect - confirm the script only reads the variables it names needing.
+
+## cases (CSxxx)
+
+
+
+| Code | Severity | Confidence | False positives | Autofix | What it is |
+|---|---|---|---|---|---|
+| `CS001` | warning | medium | medium | no | Promise with no instruction behind it |
+| `CS002` | info | low | medium | no | Expectation the description never claimed |
+| `CS003` | info | low | high | no | Capability the skill never announces |
+
+### CS001 - Promise with no instruction behind it
+
+**Why it matters.** The description commits to leaving something behind - a file, a note, a report - and no step in the body writes, saves or files anything. This skill passes `--trigger`, passes a hand-written `--runtime` set, and still does not deliver what it advertised, which is the failure nothing else here catches because nothing about it looks broken.
+
+**Fix.** Either the body is missing the step that produces it, or the description is promising work the skill does not do. `QL004` reports the same gap as a statistic; this names the clause.
+
+### CS002 - Expectation the description never claimed
+
+**Why it matters.** A sentence in `evals/expectations.md` shares no wording with the description. The top row of the disagreement table: not a broken skill, the wrong skill for what you wrote beside it.
+
+**Fix.** Not a defect. Either you are adopting the wrong skill, or the expectation belongs beside a different one - the finding names the closer skill when the tree holds one.
+
+### CS003 - Capability the skill never announces
+
+**Why it matters.** A bundled script reaches the network (`CB001`) or spawns a process (`CB002`) and no wording anywhere in the skill says so. The bottom row of the disagreement table: it does `Z` and never mentioned it. `capabilities` says what a skill CAN do to the machine; this says you were not told. Reading the environment (`CB003`) is out of scope on purpose - the words an author would announce it with are ordinary prose in the same breath, so the test cannot tell an announcement from the subject matter.
+
+**Fix.** Not a defect - say so in the body, in the sentence that sends the agent to the script.
 
 ## compat (CPxxx)
 
