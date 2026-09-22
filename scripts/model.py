@@ -88,10 +88,34 @@ class SkillModel:
                 Feature("layout-dir", e, "linked" if linked else "unlinked", where=e))
 
     def _tools(self):
-        """Entries of `allowed-tools`, which are harness tool names, not spec vocabulary."""
+        """Entries of `allowed-tools`, which are harness tool names, not spec vocabulary.
+
+        Three spellings, all seen in published skills: an inline list `[Read, Glob]`, a
+        YAML block list that the flat frontmatter parser folds into `- Read - Write -
+        Bash(ls *)`, and scoped entries whose parentheses carry a command pattern rather
+        than part of the name.
+
+        The first version matched `[A-Za-z][\\w:.()-]*`, which stops at the space inside
+        `Bash(ls *)` and yields the tool name `Bash(ls`. Measured against the official
+        plugin marketplace on disk: every scoped entry came out truncated, and one
+        published skill with a long scoped list produced forty "tool names" that were
+        fragments of shell commands - `p`, `null`, `git`, `maxdepth` - each then handed
+        to an adapter to be judged as harness tool vocabulary. The scope belongs in
+        `detail`, where an adapter can ignore it; only the name is the name.
+        """
         raw = self.fields.get("allowed-tools", "")
-        for tool in re.findall(r"[A-Za-z][\w:.()-]*", raw.replace("[", " ").replace("]", " ")):
-            self.features.append(Feature("tool", tool, where="SKILL.md"))
+        if not raw:
+            return
+        raw = re.sub(r"(?:^|\s)-\s+", " ", raw.replace("[", " ").replace("]", " "))
+        scopes = {}
+        for m in re.finditer(r"([A-Za-z][\w:.-]*)(?:\(([^)]*)\))?", raw):
+            name, scope = m.group(1), (m.group(2) or "").strip()
+            scopes.setdefault(name, [])
+            if scope:
+                scopes[name].append(scope)
+        for name, found in scopes.items():
+            detail = "scoped to " + "; ".join(found) if found else ""
+            self.features.append(Feature("tool", name, detail, where="SKILL.md"))
 
     def _paths(self, world):
         """Hard-coded paths into some harness's skill tree.

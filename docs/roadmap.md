@@ -69,7 +69,6 @@ uses. Three formats, one per skill.
 | # | What | The question it answers |
 |---|---|---|
 | 15 | Description budget, measured | how long a description can get before routing degrades |
-| 20 | Declared against actual | does the skill ask for the permissions its own code needs, and no more |
 | 21 | What changed between versions, read as a threat | did this update quietly gain reach it did not have |
 | 22 | The paid layer's two missing gates | is this run measuring the skill, and was this set worth running |
 | 23 | Install command against its own repository | does the README tell a stranger to install from where this actually lives |
@@ -314,23 +313,21 @@ description, so they are a unit check in `tests/run_tests.py` alongside `NEIGHBO
 Fixture: `tests/fixtures/trigger-boundary`, one fuzzy boundary and one sharp one, with
 `QL003` rejected so the case stays about the boundary.
 
-**20. Declared against actual.** Two independent sources converge on the same check:
-compare what a skill *declares* against what its code *does*, over a shared capability
-taxonomy, and require a quoted source span for every declared capability so the declared
-side cannot be invented. One names the failure on the selection stage - *permission
-deception*, a skill declaring fewer permissions than its workflow needs; the other builds
-the declared/actual comparison as its central contribution.
+Deferred on evidence: **declared against actual (20)**, moved to *Deferred, not rejected*
+below, with the measurement that sent it there.
 
-Both halves already exist here and have never been compared: `model.py` parses
-`allowed-tools`, and `capabilities.py` reads what the bundled scripts actually reach for.
-A skill whose frontmatter allows `Read` while its script spawns a process is the case.
-The quoted-span discipline is this suite's own habit already - a finding names the clause
-- so it carries over unchanged. Lands in `scripts/capabilities.py`, which is where both
-sides meet.
-
-Worth recording for calibration: the same source splits its analysis exactly the way
-`capabilities.py` split it independently - an exact parse for Python, pattern matching
-for everything else - and grades the two differently. Convergence, not inspiration.
+What the attempt produced instead was a bug in shipped code, found because reading
+`allowed-tools` on a real corpus was the first step of it. `model.py` matched tool names
+with `[A-Za-z][\w:.()-]*`, which stops at the space inside `Bash(ls *)` and yields the
+tool name `Bash(ls`. Every scoped declaration in the official plugin marketplace came out
+truncated, and one published skill with a long scoped list produced **forty** "tool names"
+that were fragments of shell commands - `p`, `null`, `git`, `maxdepth`, `dev` - each of
+which was then handed to a harness adapter to be judged as tool vocabulary and printed in
+a compatibility report as though it were one. Fixed to parse the three spellings published
+skills actually use, with the scope kept in `detail` where an adapter can ignore it: 40
+bogus names became 8 real ones on that skill. A unit check carries the three spellings,
+because a fixture would only show the result through a compat verdict, where a truncated
+name still reads like a name.
 
 **21. What changed between versions, read as a threat.** The lifecycle taxonomy's last
 stage is the one nobody instruments: a skill keeps the trust it earned on publication
@@ -577,6 +574,33 @@ pays off once two versions of the specification are in the wild and old skills s
 going red for a reason that is not their fault. Today there is effectively one. The form to
 build it in is a versioned schema per specification version, kept as data, rather than a
 version switch threaded through the code.
+
+**Declared against actual (20)** - compare what a skill's `allowed-tools` declares against
+what its code and instructions actually need, in both directions: a tool it needs and did
+not declare (the skill silently half-works), and a privilege it declared that nothing uses
+(the trust boundary widened for no reason). SkillSec-Eval names the first *permission
+deception*; SkillEval's behavioural-integrity check is the second built as a whole system.
+
+Deferred because there is nothing here to calibrate it against, and this page's own rule
+is that a rule is not finished until it has been watched on a real corpus rather than on a
+fixture its author wrote. Both corpora on this machine were probed, and the halves sit on
+opposite sides of the tree: of the 29 installed skills, **none** declares `allowed-tools`
+at all, though nine bundle scripts with real capabilities; of the 31 skills in the official
+plugin marketplace, **eight** declare `allowed-tools` and **none** bundles a script. Not
+one skill anywhere on this machine carries both halves of the comparison.
+
+The probe was still worth running, because it showed the rule would have been mostly
+noise. Inferring *what a skill needs* from its prose is the weak half, and it failed in
+both directions on the eight real declarations: the over-declaration side flagged seven of
+eight, all false - `Read` is declared because the skill obviously reads things, while the
+pattern only counts a need when a `references/` link resolves - and the single
+under-declaration it found was false too, matching the verb in "There's **no** token to
+**save**". The negation trap, twice in one day, in a second module.
+
+What survives for whenever this is picked up: the needs side has to come from resolved
+structure - a bundled script the body points at, a reference link the structure engine
+already follows - and never from prose. That halves the rule and makes the remaining half
+checkable.
 
 ## Rejected, and why
 

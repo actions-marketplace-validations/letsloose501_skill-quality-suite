@@ -276,6 +276,27 @@ def unit_checks():
         if bool(quality.EXCLUSION_RE.search(text)) != want:
             out.append(f"EXCLUSION_RE on {text!r}: expected {want}, got {not want}")
 
+    # `allowed-tools` parsing, across the three spellings published skills actually use.
+    # A fixture would only show the result through a compat verdict, where a truncated
+    # name still reads as a name; the damage is visible only against the list that was
+    # meant. Watched on the official plugin marketplace: `Bash(ls *)` parsed as the tool
+    # `Bash(ls`, and one skill's scoped list produced forty "tools" that were fragments
+    # of shell commands.
+    import model as skill_model
+    for raw, want in (
+            ("[Read, Glob, Grep, Bash]", ["Read", "Glob", "Grep", "Bash"]),
+            ("- Read - Write - Bash(ls *) - Bash(mkdir *)", ["Read", "Write", "Bash"]),
+            ("Bash(python3 ${ROOT}/scripts/render.py)", ["Bash"]),
+            ("Workflow(plugin:scan) Agent(a, b, c)", ["Workflow", "Agent"]),
+            ("", [])):
+        probe = skill_model.SkillModel.__new__(skill_model.SkillModel)
+        probe.fields = {"allowed-tools": raw}
+        probe.features = []
+        probe._tools()
+        got = [f.key for f in probe.features if f.kind == "tool"]
+        if got != want:
+            out.append(f"allowed-tools {raw!r}: expected {want}, got {got}")
+
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when
     # the suite is installed as one, so the probe looks in both.
