@@ -408,7 +408,7 @@ the skill had failed.
 
 *The pre-flight gate* (`tasks.preflight`, shared). SkillTester's four criteria, and two of
 them were already `EV004`: an objective (`prompt`) and an expected outcome. The other two
-are new. A decidable pass criterion - no `assertions` and no `files` - is `EV008`. Runnable
+are new. A decidable pass criterion - no `assertions` and no `files` (now `outputs`) - is `EV008`. Runnable
 as written is `EV009`, and reading for it turned up two failures that were silent today
 rather than merely late: a fixture that does not exist is skipped by `prepare_workdir` with
 no word, so the agent starts a task about a file it never received; and a `re:` that does
@@ -430,6 +430,21 @@ unmatched `{` is a literal - so the first "broken regex" in the fixture was not 
 only reading both sides showed it. Fixture: `tests/fixtures/evals-preflight`; the runtime
 half is covered in `tests/run_tests.py` against the scripted provider, and both gates were
 watched failing with their check switched off.
+
+Shipped after it: **what an output holds, not only that it exists** - `outputs` in
+`evals.json`, where `{"path", "contains"}` reads the created file as UTF-8 text and applies
+the assertion grammar to it; a binary format under `contains` is `EV009`, since no run could
+pass it. Building it turned up a misreading underneath: `tasks.py` says it reads
+skill-creator's `evals.json`, and skill-creator's `files` are *inputs* ("Optional list of
+input file paths (relative to skill root)", its `references/schemas.md`), while this suite
+graded them as outputs. A case written for skill-creator came back 0% on **both** arms
+(scripted run, answer correct) and the agent never received its input; `check` said
+nothing. `files` now means input, an entry that is not a file in the skill is still graded
+as an output - existence decides, the one reading both formats agree on - and `EV011` says
+so instead of a published set changing meaning under its author. The failure report now
+carries the reason with each check (`not in \`ledger.csv\``), without which a content
+check fails indistinguishably from a missing file. Five mutations of the grader and the
+pre-flight, each caught by the corpus. Fixture: `tests/fixtures/evals-files-meaning`.
 
 ### 23. Read from a real skill in the wild
 

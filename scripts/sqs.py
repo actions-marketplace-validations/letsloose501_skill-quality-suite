@@ -604,7 +604,7 @@ def cmd_cases(skills, cfg, since, apply_it, fmt="text"):
             f.write("\n")
         print(f"  wrote {caseset.CASES_FILE}")
     print("\nEvery case is a draft: fill the TODOs before `sqs.py eval --runtime` means "
-          "anything.\nA case with no assertion and no file is ungraded and stays that way "
+          "anything.\nA case with no assertion and no output is ungraded and stays that way "
           "in the report.")
     return rc
 

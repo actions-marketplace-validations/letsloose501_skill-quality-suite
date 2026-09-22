@@ -195,7 +195,7 @@ def render_examples():
         "python scripts/sqs.py fix ./my-skill --apply  # the repairs with one right answer",
         "```", "",
         "## A skill with nothing wrong with it", "",
-        "The negative case for all 70 rules at once. Any finding here would be a false "
+        f"The negative case for all {len(RULES)} rules at once. Any finding here would be a false "
         "positive, which is why the corpus asserts this one reports **nothing at all**.",
         "", fence(clean, "markdown"), "",
         "```", "$ sqs.py check tests/fixtures/clean", case_output("clean") or "(no output)",

@@ -453,19 +453,25 @@ _ROWS = {
               "Read the two descriptions named in the finding; usually one needs to name the "
               "other and defer, the way `QL008` and `QL013` already ask for.", False),
     "EV008": ("warning", "Eval case cannot pass or fail",
-              "A case in `evals/evals.json` carries no `assertions` and no `files`, so nothing "
-              "decides whether a run of it passed. `eval --runtime` would run it on both arms, "
-              "spend the money, and report it as `ungraded`.",
+              "A case in `evals/evals.json` carries no `assertions` and no `outputs`, so "
+              "nothing decides whether a run of it passed. `eval --runtime` would run it on "
+              "both arms, spend the money, and report it as `ungraded`. skill-creator's "
+              "`expectations` do not count: a model grades them there, and nothing reads "
+              "them here.",
               "Add one checkable assertion - a literal the answer must contain, a `re:` "
-              "pattern, or a file the run has to create.", False),
+              "pattern, or an output the run has to create, with `contains` for what has "
+              "to be in it.", False),
     "EV009": ("error", "Eval case cannot run as written",
               "A case is still a draft (a field opens with `TODO`), names a fixture that is "
-              "not in the skill, or carries a `re:` assertion that does not compile. The "
-              "first measures nothing, the second hands the agent a task about a file it "
-              "never receives, and the third crashes the grader after both arms have run. "
-              "`eval --runtime` refuses the whole set until it is fixed.",
-              "Fill the draft, add the fixture under the skill or drop it, fix the pattern.",
-              False),
+              "not in the skill, carries a `re:` assertion that does not compile, or has an "
+              "output that is malformed, outside the run's directory, or a binary format "
+              "checked with `contains`. The first measures nothing, the second hands the "
+              "agent a task about a file it never receives, and the rest crash the grader "
+              "or fail every run on both arms. `eval --runtime` refuses the whole set until "
+              "it is fixed.",
+              "Fill the draft, add the fixture under the skill or drop it, fix the pattern; "
+              "check a binary output by existence, or have the task also write a text "
+              "summary and check that.", False),
 
     "EV010": ("info", "Trigger cases repeat the description",
               "A should-trigger case that contains, word for word, a wording the description "
@@ -476,6 +482,14 @@ _ROWS = {
               "Keep one such case per branch as a sanity check if you like, and write the rest "
               "the way the requests actually arrive - with context, in other words, without "
               "the listed phrase.", False),
+    "EV011": ("warning", "Eval case uses `files` for an output",
+              "In skill-creator's `evals.json`, which this set is read as, `files` are input "
+              "paths inside the skill. This suite used to read them as outputs, so an entry "
+              "that is not a file in the skill is still graded that way - the case runs - "
+              "but the same file means something else to every other tool that reads it, "
+              "and a missing input looks exactly like an old-style output.",
+              "Move outputs to `outputs`. If the entry was an input, put the file under the "
+              "skill at that path.", False),
 
     # ---- CB: capabilities ------------------------------------------------------
     "CB001": ("info", "Bundled script can reach the network",
@@ -644,6 +658,7 @@ GRADES = {
     "EV008": ("high", "low"),    # the absence of two keys, read off the file
     "EV009": ("high", "low"),    # a placeholder, a path and a compile - all exact
     "EV010": ("high", "medium"), # whole-word match is exact; a one-verb fork wording is a fair case
+    "EV011": ("high", "low"),    # a path looked up in the skill - exact
 
     # capabilities: `ast` reads an import or a call exactly, CB002/CB003 only ever fire
     # that way. CB001 also fires off a command-name regex for non-Python scripts, the

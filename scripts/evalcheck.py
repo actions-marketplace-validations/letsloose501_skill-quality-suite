@@ -136,20 +136,22 @@ def restated(description, positives):
 
 
 def _preflight(skill):
-    """EV008 / EV009 - the pre-flight gate `eval --runtime` applies, run for free.
+    """EV008 / EV009 / EV011 - the pre-flight gate `eval --runtime` applies, run for free.
 
     The same reading the paid pass refuses to spend on, so an author sees it on every
     `check` rather than on the one run that would have cost money. `EV004` already
     covers the first two things a case needs - an objective and an expected outcome;
     these are the other two: a decidable pass criterion, and a case that can run as
-    written in both arms.
+    written in both arms. `EV011` is the one the pass does not refuse: a case that runs,
+    under a reading of `files` its author may not have meant.
     """
     task_list, problem = taskmod.load(skill.root)
     if problem:
         return []                        # EV004 has already said why
     out = []
+    codes = {"unrunnable": "EV009", "ungraded": "EV008", "legacy": "EV011"}
     for task_id, kind, why in taskmod.preflight(skill.root, task_list):
-        code = "EV009" if kind == "unrunnable" else "EV008"
+        code = codes[kind]
         out.append(Finding(code, f"case `{task_id}`: {why}", where=CASES))
     return out
 

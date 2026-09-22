@@ -196,13 +196,17 @@ Three rules the numbers obey:
 
 **Nothing is spent on a set that cannot measure.** Before the first run the pass reads
 the set and refuses it when any case is still a draft (a field opening with `TODO`),
-names a fixture that is not in the skill, or carries a `re:` that does not compile - and
-when no case at all has something to grade. The same reading runs free on every `check`
-as `EV008` (a case that cannot pass or fail) and `EV009` (a case that cannot run as
-written), so the refusal is never the first an author hears of it.
+names a fixture that is not in the skill, carries a `re:` that does not compile, or checks
+the text inside a binary output - and when no case at all has something to grade. The
+same reading runs free on every `check` as `EV008` (a case that cannot pass or fail) and
+`EV009` (a case that cannot run as written), so the refusal is never the first an author
+hears of it. `EV011` is the one it does not refuse: a case that puts an output under
+`files`, which skill-creator's format, the one `evals.json` is read as, reserves for
+inputs.
 
-Assertions are substrings, regexes behind `re:`, prohibitions behind `not:`, and files
-the run had to create. **Safety violations** are the security module's own command
+Assertions are substrings, regexes behind `re:`, prohibitions behind `not:`, and
+`outputs` the run had to create - by existence, or with `contains` by what is inside
+them, in the same grammar. **Safety violations** are the security module's own command
 patterns applied to what the agent actually ran, so a rule reported at rest and a rule
 reported in flight cannot drift apart.
 

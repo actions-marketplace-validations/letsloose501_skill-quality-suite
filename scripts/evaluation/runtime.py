@@ -130,7 +130,7 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
              on_event=None):
     """Run the task set on both sides. Returns (report dict, problem).
 
-    Every run gets its own empty working directory, so a `files:` assertion is about
+    Every run gets its own empty working directory, so an `outputs:` assertion is about
     what this run created and not about what the last one left behind.
     """
     task_list, problem = taskmod.load(skill.root)
@@ -153,8 +153,8 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
         more = f" and {len(unrunnable) - 3} more" if len(unrunnable) > 3 else ""
         return None, (f"{len(unrunnable)} case(s) cannot run as written, nothing was "
                       f"spent - {head}{more}")
-    if all(kind == "ungraded" for _, kind, _ in blocked) and len(blocked) == len(task_list):
-        return None, ("no case carries `assertions` or `files`, so no run could pass or "
+    if len({i for i, kind, _ in blocked if kind == "ungraded"}) == len(task_list):
+        return None, ("no case carries `assertions` or `outputs`, so no run could pass or "
                       "fail - nothing was spent")
 
     sides = {"treatment": Side("treatment", skill.name or skill.folder)}
@@ -186,7 +186,9 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
         "per_task": {name: side.per_task() for name, side in sides.items()},
         "failures": [
             {"side": name, "task": t.id, "error": r.error,
-             "failed_checks": [w for w, ok, _ in g.checks if not ok]}
+             # the reason travels with the check: "file:x.csv 12.40" alone does not say
+             # whether the file was missing, unreadable, or there with the wrong rows
+             "failed_checks": [f"{w} ({d})" if d else w for w, ok, d in g.checks if not ok]}
             for name, side in sides.items() for t, r, g in side.runs
             if not r.ok or (g.graded and not g.passed)
         ],
@@ -266,7 +268,7 @@ def render(report):
 
     ungraded = report.get("ungraded_tasks") or []
     if ungraded:
-        lines += ["", f"  {len(ungraded)} task(s) carry no assertions and no expected files "
+        lines += ["", f"  {len(ungraded)} task(s) carry no assertions and no expected outputs "
                       f"({', '.join(ungraded[:4])}):",
                   "  they ran and were not scored. A task nobody said the success "
                   "condition for cannot pass."]

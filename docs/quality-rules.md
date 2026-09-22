@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 95 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 96 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -150,6 +150,7 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 | `EV008` | warning | high | low | no | Eval case cannot pass or fail |
 | `EV009` | error | high | low | no | Eval case cannot run as written |
 | `EV010` | info | high | medium | no | Trigger cases repeat the description |
+| `EV011` | warning | high | low | no | Eval case uses `files` for an output |
 
 ### EV001 - Routing invariant broken
 
@@ -195,21 +196,27 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 
 ### EV008 - Eval case cannot pass or fail
 
-**Why it matters.** A case in `evals/evals.json` carries no `assertions` and no `files`, so nothing decides whether a run of it passed. `eval --runtime` would run it on both arms, spend the money, and report it as `ungraded`.
+**Why it matters.** A case in `evals/evals.json` carries no `assertions` and no `outputs`, so nothing decides whether a run of it passed. `eval --runtime` would run it on both arms, spend the money, and report it as `ungraded`. skill-creator's `expectations` do not count: a model grades them there, and nothing reads them here.
 
-**Fix.** Add one checkable assertion - a literal the answer must contain, a `re:` pattern, or a file the run has to create.
+**Fix.** Add one checkable assertion - a literal the answer must contain, a `re:` pattern, or an output the run has to create, with `contains` for what has to be in it.
 
 ### EV009 - Eval case cannot run as written
 
-**Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, or carries a `re:` assertion that does not compile. The first measures nothing, the second hands the agent a task about a file it never receives, and the third crashes the grader after both arms have run. `eval --runtime` refuses the whole set until it is fixed.
+**Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, carries a `re:` assertion that does not compile, or has an output that is malformed, outside the run's directory, or a binary format checked with `contains`. The first measures nothing, the second hands the agent a task about a file it never receives, and the rest crash the grader or fail every run on both arms. `eval --runtime` refuses the whole set until it is fixed.
 
-**Fix.** Fill the draft, add the fixture under the skill or drop it, fix the pattern.
+**Fix.** Fill the draft, add the fixture under the skill or drop it, fix the pattern; check a binary output by existence, or have the task also write a text summary and check that.
 
 ### EV010 - Trigger cases repeat the description
 
 **Why it matters.** A should-trigger case that contains, word for word, a wording the description quotes as a trigger can pass by string match alone. It shows the listed words are there; it says nothing about the phrasings a person uses that the author did not think to list, which is what a trigger set is for. Measured on a real routing set of 105 positives: 37 were this.
 
 **Fix.** Keep one such case per branch as a sanity check if you like, and write the rest the way the requests actually arrive - with context, in other words, without the listed phrase.
+
+### EV011 - Eval case uses `files` for an output
+
+**Why it matters.** In skill-creator's `evals.json`, which this set is read as, `files` are input paths inside the skill. This suite used to read them as outputs, so an entry that is not a file in the skill is still graded that way - the case runs - but the same file means something else to every other tool that reads it, and a missing input looks exactly like an old-style output.
+
+**Fix.** Move outputs to `outputs`. If the entry was an input, put the file under the skill at that path.
 
 ## publish (PBxxx)
 

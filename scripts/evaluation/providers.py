@@ -397,14 +397,18 @@ class FakeProvider(Provider):
         # script is a file on disk like any other. A path that climbs out of the run's
         # working directory is not a test case, it is the fake provider writing
         # wherever the script says - so the write stays inside `cwd` or does not happen.
+        # An entry is a path, or {"path", "content"} when the grader reads what is inside.
         base = os.path.realpath(cwd or ".")
-        for rel in spec.get("creates") or []:
+        for entry in spec.get("creates") or []:
+            rel, body = ((entry.get("path"), entry.get("content", ""))
+                         if isinstance(entry, dict)
+                         else (entry, "written by the fake provider" + chr(10)))
             full = os.path.realpath(os.path.join(base, rel))
             if full != base and not full.startswith(base + os.sep):
                 raise ValueError(f"`creates` path escapes the run directory: {rel!r}")
             os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
             with open(full, "w", encoding="utf-8") as f:
-                f.write("written by the fake provider" + chr(10))
+                f.write(body)
         skills = spec.get("skills")
         if skills is None and skill is not None:
             skills = [skill.name or skill.folder]

@@ -824,13 +824,75 @@ def evaluation_checks():
                                        "expected_output": "x", "assertions": ["y"],
                                        "fixtures": ["evals/files/receipts.pdf"]}),
                 ("a broken regex", {"id": "r", "prompt": "Sum it", "expected_output": "x",
-                                    "assertions": ["re:(unclosed"]})):
+                                    "assertions": ["re:(unclosed"]}),
+                ("a broken regex inside an output", {
+                    "id": "o", "prompt": "Sum it", "expected_output": "x",
+                    "outputs": [{"path": "sum.md", "contains": ["re:(unclosed"]}]}),
+                ("text checked inside a binary output", {
+                    "id": "b", "prompt": "Sum it", "expected_output": "x",
+                    "outputs": [{"path": "sum.xlsx", "contains": ["12.40"]}]}),
+                ("an output outside the run", {
+                    "id": "e", "prompt": "Sum it", "expected_output": "x",
+                    "outputs": ["../sum.md"]}),
+                ("an output with no path", {
+                    "id": "p", "prompt": "Sum it", "expected_output": "x",
+                    "outputs": [{"contains": ["12.40"]}]})):
             with open(cases_path, "w", encoding="utf-8") as f:
                 json.dump({"skill_name": "ledger-lite", "evals": [case]}, f)
             r = run_eval("script-v1.json", "--runtime")
             if r.returncode != 2 or "nothing was spent" not in r.stderr:
                 out.append(f"pre-flight let {label} through: exit {r.returncode}, "
                            f"{(r.stdout + r.stderr)[-200:]!r}")
+
+        def runtime_of(script, cases):
+            with open(cases_path, "w", encoding="utf-8") as f:
+                json.dump({"skill_name": "ledger-lite", "evals": cases}, f)
+            r = run_eval(script, "--runtime", "--format", "json")
+            try:
+                return json.loads(r.stdout)["runtime"]
+            except (ValueError, KeyError):
+                out.append(f"{script}: no runtime block: {(r.stdout + r.stderr)[-300:]!r}")
+                return None
+
+        # What the file holds, not only that it exists. v1 with one change: the ledger
+        # row carries the wrong amount. The file is still created, so an existence check
+        # passes it; the content check is what has to fail, and say where it looked.
+        ledger = json.loads(good)["evals"][0]
+        with open(os.path.join(tree, "script-v1.json"), encoding="utf-8") as f:
+            wrong = json.load(f)
+        for rule in wrong["rules"]:
+            for entry in (rule.get("run") or {}).get("creates") or []:
+                if isinstance(entry, dict):
+                    entry["content"] = "2026-09-18,Bakery Nord,21.40"
+        with open(os.path.join(tree, "script-wrong-row.json"), "w", encoding="utf-8") as f:
+            json.dump(wrong, f)
+        for script, want in (("script-v1.json", 1.0), ("script-wrong-row.json", 0.0)):
+            rt = runtime_of(script, [ledger])
+            got = rt and rt["sides"]["treatment"].get("success_rate")
+            if rt and got != want:
+                out.append(f"content check: {script} treatment success {got}, "
+                           f"expected {want}")
+        rt = runtime_of("script-wrong-row.json", [ledger])
+        failed = [c for f in (rt or {}).get("failures") or [] if f["side"] == "treatment"
+                  for c in f["failed_checks"]]
+        if rt and set(failed) != {"file:ledger.csv 12.40 (not in `ledger.csv`)"}:
+            out.append(f"content check failed for the wrong reason, or said none: {failed}")
+
+        # skill-creator's `files` are inputs. A case written in that format has to reach
+        # the agent with its input in the run directory - and must not be graded on
+        # having created a file it was given.
+        os.makedirs(os.path.join(tree, "ledger-lite", "evals", "files"), exist_ok=True)
+        with open(os.path.join(tree, "ledger-lite", "evals", "files", "receipt.txt"),
+                  "w", encoding="utf-8") as f:
+            f.write("12.40 EUR Bakery Nord 2026-09-18" + chr(10))
+        creator = {"id": "c", "prompt": "Log this receipt from receipt.txt",
+                   "expected_output": "a row appended", "assertions": ["12.40"],
+                   "files": ["evals/files/receipt.txt"], "outputs": ["receipt.txt"]}
+        rt = runtime_of("script-v1.json", [creator])
+        if rt and rt["sides"]["treatment"].get("success_rate") != 1.0:
+            out.append(f"a skill-creator input was not handed to the run: treatment "
+                       f"{rt['sides']['treatment'].get('success_rate')}, "
+                       f"failures {rt.get('failures')}")
         with open(cases_path, "w", encoding="utf-8") as f:
             f.write(good)
 

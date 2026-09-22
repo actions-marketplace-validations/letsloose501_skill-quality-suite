@@ -9,16 +9,27 @@ read a little more strictly, because a grader needs something it can check:
                 "prompt":  "Convert quarterly.pdf into a spreadsheet",
                 "expected_output": "an .xlsx with one sheet per table",
                 "assertions": ["xlsx", "re:\\\\b3 tables?\\\\b", "not:could not"],
-                "fixtures": ["evals/files/quarterly.pdf"],
-                "files": ["quarterly.xlsx"],
+                "files": ["evals/files/quarterly.pdf"],
+                "outputs": ["quarterly.xlsx",
+                            {"path": "summary.md", "contains": ["re:Q[1-4]"]}],
                 "forbidden_tools": ["WebSearch"],
                 "max_tool_calls": 8}]}
 
 An assertion is a substring by default, a regex behind `re:`, and a prohibition behind
-`not:`. `files` names what the run has to have created in its working directory - the
-only assertion form that survives a model rewording its answer.
+`not:`. `outputs` names what the run has to have created in its working directory - the
+only assertion form that survives a model rewording its answer. A bare path asks only
+that the file exists; `{"path", "contains"}` also reads it as UTF-8 text and applies the
+same assertion grammar to what is inside, because an empty file or a file with the
+wrong rows exists just as well as the right one.
 
-A case with no assertions and no `files` is **ungraded**, and stays that way in the
+`files` means what it means in skill-creator's format: **input** paths relative to the
+skill, copied into the run the way `fixtures` are. Before that was read, this module
+took `files` for outputs, so a set written for skill-creator failed on both arms and
+handed the agent none of its inputs. An old-style entry - one that is not a file inside
+the skill - is still graded as an output, and the pre-flight says so (`EV011`), rather
+than a published set changing its meaning under its author in silence.
+
+A case with no assertions and no `outputs` is **ungraded**, and stays that way in the
 report. Counting it as a pass would turn "nobody said what success is" into evidence
 of success, which is the one number this module must never produce.
 """
@@ -29,27 +40,65 @@ import re
 CASES = os.path.join("evals", "evals.json")
 
 
-class Task:
-    __slots__ = ("id", "prompt", "expected", "assertions", "files", "fixtures",
-                 "forbidden_tools", "max_tool_calls", "timeout")
+def _inside(base, rel):
+    full = os.path.realpath(os.path.join(base, rel))
+    return full == base or full.startswith(base + os.sep)
 
-    def __init__(self, raw, index):
+
+class Task:
+    __slots__ = ("id", "prompt", "expected", "assertions", "outputs", "legacy_outputs",
+                 "fixtures", "forbidden_tools", "max_tool_calls", "timeout",
+                 "expectations")
+
+    def __init__(self, raw, index, skill_root=None):
         self.id = str(raw.get("id") or index)
         self.prompt = raw.get("prompt") or ""
         self.expected = raw.get("expected_output") or ""
         self.assertions = [a for a in (raw.get("assertions") or []) if isinstance(a, str)]
-        self.files = [f for f in (raw.get("files") or []) if isinstance(f, str)]
         # input files, copied from inside the skill into the run's working directory:
         # a task about a PDF needs the PDF, and a task the agent cannot start is not a
         # measurement of anything
         self.fixtures = [f for f in (raw.get("fixtures") or []) if isinstance(f, str)]
+        # a path, or {"path", "contains"} - kept raw here, so a malformed entry reaches
+        # the pre-flight and is refused there with a reason instead of vanishing
+        self.outputs = list(raw.get("outputs") or [])
+        # skill-creator's `files` are inputs. An entry that is a file inside the skill
+        # can only be one; an entry that is not is this suite's old meaning, an output.
+        # Existence decides, because it is the one reading both formats agree on.
+        base = os.path.realpath(skill_root) if skill_root else None
+        self.legacy_outputs = []
+        for f in raw.get("files") or []:
+            if not isinstance(f, str):
+                continue
+            if base and _inside(base, f) and os.path.isfile(os.path.join(base, f)):
+                self.fixtures.append(f)
+            else:
+                self.legacy_outputs.append(f)
+        self.outputs += self.legacy_outputs
+        # skill-creator's model-graded statements. Not read here - noted, so a case that
+        # carries only these is reported as ungraded *for that reason*
+        self.expectations = bool(raw.get("expectations"))
         self.forbidden_tools = raw.get("forbidden_tools") or []
         self.max_tool_calls = raw.get("max_tool_calls")
         self.timeout = raw.get("timeout") or 300
 
     @property
     def graded(self):
-        return bool(self.assertions or self.files)
+        return bool(self.assertions or self.outputs)
+
+
+def output_spec(entry):
+    """(path, [assertion], problem) for one `outputs` entry."""
+    if isinstance(entry, str):
+        return entry, [], ""
+    if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+        return None, [], f"output {entry!r} is neither a path nor {{\"path\": ...}}"
+    contains = entry.get("contains") or []
+    if isinstance(contains, str):
+        contains = [contains]
+    if not isinstance(contains, list) or not all(isinstance(c, str) for c in contains):
+        return entry["path"], [], f"output `{entry['path']}`: `contains` is not a list of strings"
+    return entry["path"], contains, ""
 
 
 class Grade:
@@ -85,28 +134,61 @@ def _dangerous_patterns():
         return []
 
 
+def check_text(a, text, where):
+    """(ok, detail) - one assertion against one text; `where` names it in the detail."""
+    if a.startswith("not:"):
+        body = a[4:]
+        if body.startswith("re:"):
+            hit = re.search(body[3:], text, re.I | re.S) is not None
+        else:
+            hit = body.lower() in text.lower()
+        return not hit, f"found in {where}" if hit else ""
+    if a.startswith("re:"):
+        hit = re.search(a[3:], text, re.I | re.S) is not None
+        return hit, "" if hit else f"no match in {where}"
+    hit = a.lower() in text.lower()
+    return hit, "" if hit else f"not in {where}"
+
+
+def read_text(full):
+    """(text, problem) - a created file as UTF-8, or why it cannot be read as text."""
+    try:
+        with open(full, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        return None, f"unreadable: {e}"
+    if b"\0" in data:
+        return None, "not text - `contains` reads UTF-8 text"
+    try:
+        return data.decode("utf-8-sig"), ""
+    except UnicodeDecodeError:
+        return None, "not UTF-8 text - `contains` reads UTF-8 text"
+
+
 def grade(task, run):
     checks = []
     text = run.text or ""
-    low = text.lower()
     for a in task.assertions:
-        if a.startswith("not:"):
-            body = a[4:]
-            if body.startswith("re:"):
-                hit = re.search(body[3:], text, re.I | re.S) is not None
-            else:
-                hit = body.lower() in low
-            checks.append((a, not hit, "found in the answer" if hit else ""))
-        elif a.startswith("re:"):
-            hit = re.search(a[3:], text, re.I | re.S) is not None
-            checks.append((a, hit, "" if hit else "no match in the answer"))
-        else:
-            hit = a.lower() in low
-            checks.append((a, hit, "" if hit else "not in the answer"))
-    for rel in task.files:
+        ok, detail = check_text(a, text, "the answer")
+        checks.append((a, ok, detail))
+    for entry in task.outputs:
+        rel, contains, _ = output_spec(entry)
+        if rel is None:
+            continue                                  # refused by the pre-flight
         full = os.path.join(run.workdir or ".", rel)
         there = os.path.exists(full)
         checks.append((f"file:{rel}", there, "" if there else "never created"))
+        # A file that is not there fails once, on existence, and not once more per
+        # assertion: the content checks would only repeat the same fact.
+        if not contains or not there:
+            continue
+        body, problem = read_text(full)
+        for a in contains:
+            if body is None:
+                checks.append((f"file:{rel} {a}", False, problem))
+            else:
+                ok, detail = check_text(a, body, f"`{rel}`")
+                checks.append((f"file:{rel} {a}", ok, detail))
 
     used = [name for name, _ in run.tools]
     forbidden = sorted({t for t in task.forbidden_tools if t in used})
@@ -128,40 +210,72 @@ def grade(task, run):
 # TODO list; a draft never starts any other way.
 PLACEHOLDER_RE = re.compile(r"TODO\b")
 
+# Formats that are archives or images on disk: a substring of their bytes is not a
+# substring of what a person sees in them, so `contains` on one can never pass honestly.
+BINARY_RE = re.compile(r"\.(xlsx|xlsm|docx|pptx|odt|ods|pdf|zip|png|jpe?g|gif|webp)$", re.I)
+
+
+def _bad_regex(a):
+    body = a[4:] if a.startswith("not:") else a
+    if body.startswith("re:"):
+        try:
+            re.compile(body[3:])
+        except re.error as e:
+            return f"`{a}` is not a valid regex ({e})"
+    return ""
+
 
 def preflight(skill_root, task_list):
-    """[(task id, "ungraded" | "unrunnable", why)] - what a run would waste money on.
+    """[(task id, "ungraded" | "unrunnable" | "legacy", why)] - what a run would waste
+    money on, or read differently from what its author meant.
 
     Everything here is found today only after the money is spent: an ungraded case shows
     up as `ungraded` in the report, a fixture that is not there is skipped in silence and
     the agent starts a task about a file it was never given, and a broken `re:` raises in
     the grader after both arms have already run. All of it is readable off the file.
+    A case can come back twice - `legacy` with either of the others.
     """
     out = []
     base = os.path.realpath(skill_root)
     for t in task_list:
         why = []
-        fields = [t.prompt, t.expected] + t.assertions + t.files + t.fixtures
+        specs = [output_spec(e) for e in t.outputs]
+        fields = ([t.prompt, t.expected] + t.assertions + t.fixtures
+                  + [p for p, _, _ in specs if p] + [c for _, cs, _ in specs for c in cs])
         if any(PLACEHOLDER_RE.match(f) for f in fields):
             why.append("still a draft - a field opens with `TODO`")
         for rel in t.fixtures:
-            full = os.path.realpath(os.path.join(base, rel))
-            if full != base and not full.startswith(base + os.sep):
+            if not _inside(base, rel):
                 why.append(f"fixture `{rel}` is outside the skill")
-            elif not os.path.exists(full):
+            elif not os.path.exists(os.path.join(base, rel)):
                 why.append(f"fixture `{rel}` does not exist")
-        for a in t.assertions:
-            body = a[4:] if a.startswith("not:") else a
-            if body.startswith("re:"):
-                try:
-                    re.compile(body[3:])
-                except re.error as e:
-                    why.append(f"`{a}` is not a valid regex ({e})")
+        for path, contains, problem in specs:
+            if problem:
+                why.append(problem)
+            if path is None:
+                continue
+            # the run directory stands in for `base`: any directory shows the escape
+            if os.path.isabs(path) or not _inside(base, path):
+                why.append(f"output `{path}` is outside the run's working directory")
+            if contains and BINARY_RE.search(path):
+                why.append(f"output `{path}` is a binary format - `contains` reads text, "
+                           f"so it could never pass")
+        why += [w for w in map(_bad_regex, t.assertions + [c for _, cs, _ in specs
+                                                          for c in cs]) if w]
         if why:
             out.append((t.id, "unrunnable", "; ".join(why)))
         elif not t.graded:
-            out.append((t.id, "ungraded", "no `assertions` and no `files` - nothing "
-                                          "decides whether it passed"))
+            extra = (" - its skill-creator `expectations` are graded by a model there and "
+                     "are not read here" if t.expectations else "")
+            out.append((t.id, "ungraded", "no `assertions` and no `outputs` - nothing "
+                                          f"decides whether it passed{extra}"))
+        if t.legacy_outputs:
+            names = ", ".join(f"`{f}`" for f in t.legacy_outputs)
+            out.append((t.id, "legacy",
+                        f"`files` entry {names} is not a file in the skill, so it is graded "
+                        f"as an output the run must create - the old meaning. In "
+                        f"skill-creator's format `files` are inputs: move outputs to "
+                        f"`outputs`, and if an input was meant, it is missing"))
     return out
 
 
@@ -179,7 +293,7 @@ def load(skill_root, path=None):
     raw = data.get("evals") if isinstance(data, dict) else data
     if not isinstance(raw, list) or not raw:
         return [], f"{CASES} carries no cases"
-    tasks = [Task(r, i + 1) for i, r in enumerate(raw) if isinstance(r, dict)]
+    tasks = [Task(r, i + 1, skill_root) for i, r in enumerate(raw) if isinstance(r, dict)]
     tasks = [t for t in tasks if t.prompt]
     if not tasks:
         return [], f"{CASES}: no case carries a `prompt`"

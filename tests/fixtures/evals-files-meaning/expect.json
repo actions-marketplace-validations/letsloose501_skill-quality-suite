@@ -1,0 +1,11 @@
+{
+  "note": "The same key read two ways. In skill-creator's format `files` are inputs inside the skill: `totals-creator` names `evals/files/march.csv`, which is there, so it is an input and nothing is said. `totals-old` names `totals.md`, which is not in the skill - this suite's old meaning, an output the run must create. It is still graded that way, and `EV011` says so once.",
+  "command": "evals",
+  "expect": [
+    "EV011"
+  ],
+  "reject": [
+    "EV008",
+    "EV009"
+  ]
+}

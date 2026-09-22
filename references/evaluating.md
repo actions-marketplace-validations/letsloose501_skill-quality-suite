@@ -168,22 +168,30 @@ cannot do this says so in its report rather than calling the comparison a baseli
             "prompt": "Log this receipt: 12.40 EUR at Bakery Nord on 2026-09-18",
             "expected_output": "a row appended to ledger.csv and the balance printed",
             "assertions": ["12.40", "re:balance", "not:could not"],
-            "fixtures": ["evals/files/ledger.csv"],
-            "files": ["ledger.csv"],
+            "files": ["evals/files/ledger.csv"],
+            "outputs": [{"path": "ledger.csv", "contains": ["Bakery Nord", "12.40"]}],
             "forbidden_tools": ["WebSearch"],
             "max_tool_calls": 6}]}
 ```
 
 - an assertion is a **substring** by default, a **regex** behind `re:`, a **prohibition**
   behind `not:`;
-- `files` names what the run must have created - the only assertion form that survives a
-  model rewording its answer;
-- `fixtures` are copied into the run's working directory, which is fresh for every run;
+- `outputs` names what the run must have created - the only assertion form that survives
+  a model rewording its answer. A bare path checks that the file exists;
+  `{"path", "contains"}` also reads it as UTF-8 text and applies the assertion grammar to
+  what is inside, because an empty file exists just as well as the right one. Binary
+  formats (`.xlsx`, `.pdf`, images) can only be checked by existence;
+- `files` are **inputs**, as in skill-creator's format: paths inside the skill, copied
+  into the run's working directory, which is fresh for every run. `fixtures` is the same
+  thing under this suite's older name. An entry in `files` that is not a file in the
+  skill is still graded as an output, the meaning it had here before, and `EV011` asks
+  you to move it;
 - `forbidden_tools` and `max_tool_calls` are how "it worked" is told apart from "it
   worked eventually, after eleven tool calls and a web search".
 
-A case with **no assertions and no files is ungraded**, and stays that way in the report.
-Counting it as a pass would turn "nobody said what success is" into evidence of success.
+A case with **no assertions and no outputs is ungraded**, and stays that way in the
+report. Counting it as a pass would turn "nobody said what success is" into evidence of
+success. skill-creator's `expectations` are graded by a model there and are not read here.
 
 Write assertions **after** you have seen the first outputs: you rarely know what good
 looks like before the skill has run. Good assertions are checkable; weak ones are vague
@@ -308,7 +316,7 @@ and body and write the claims out as sentences you could be wrong about: *writes
 *refuses when the folder is empty*, *never calls the network*, *its output carries a total*.
 With no author to ask and no expectation written down, this is all you have.
 
-Turn each sentence into a case with an **assertion, not a rubric**: `files`, `assertions`,
+Turn each sentence into a case with an **assertion, not a rubric**: `outputs`, `assertions`,
 `forbidden_tools` and `max_tool_calls` in `evals.json` cover most of them deterministically,
 and the judge is for what no assertion reaches. Then run it and read what had no evidence.
 

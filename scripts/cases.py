@@ -322,9 +322,9 @@ def _nearest(want, registry, skill):
 TODO = "TODO"
 
 
-def _case(source, ident, prompt, expected, assertions=(), files=()):
+def _case(source, ident, prompt, expected, assertions=(), outputs=()):
     return {"id": ident, "prompt": prompt, "expected_output": expected,
-            "assertions": list(assertions), "files": list(files),
+            "assertions": list(assertions), "outputs": list(outputs),
             "source": source, "needs_review": True}
 
 
@@ -346,13 +346,13 @@ def generate(skill, gained=()):
         ext = EXT_RE.search(want)
         out.append(_case("expectation", f"{name}-exp-{i:02d}", want,
                          f"{TODO}: what the answer has to contain for this to be met",
-                         files=[f"{TODO}{ext.group(0)}"] if ext else ()))
+                         outputs=[f"{TODO}{ext.group(0)}"] if ext else ()))
     for i, (claim, _) in enumerate(promises(skill), 1):
         ext = EXT_RE.search(claim)
         out.append(_case("promise", f"{name}-pro-{i:02d}",
                          f"{TODO}: a request that should make the skill `{claim}`",
                          f"the skill {claim}",
-                         files=[f"{TODO}{ext.group(0)}"] if ext else ()))
+                         outputs=[f"{TODO}{ext.group(0)}"] if ext else ()))
     for i, cap in enumerate(gained, 1):
         out.append(_case("improvement", f"{name}-imp-{i:02d}",
                          f"{TODO}: a request that exercises `{cap}`",

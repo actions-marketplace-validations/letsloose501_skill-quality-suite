@@ -52,7 +52,7 @@ CLI, Antigravity, OpenCode, Cline, Roo Code, Windsurf, GitHub Copilot.**
 
 📖 **[Documentation](https://letsloose501.github.io/skill-quality-suite/)** ·
 🧪 **[Worked examples with real output](examples/)** ·
-📋 **[All 95 rules](docs/quality-rules.md)**
+📋 **[All 96 rules](docs/quality-rules.md)**
 
 | Question | Command |
 |---|---|
@@ -193,7 +193,7 @@ table, the source behind each row, and how to add one without guessing.
 - **· info** - a nudge. Real, small, safe to leave.
 
 Every finding carries a rule code. `sqs.py explain ST008` prints the reasoning and the
-fix; `sqs.py rules` lists all 95.
+fix; `sqs.py rules` lists all 96.
 
 ## Commands
 
@@ -355,7 +355,7 @@ false-positive grading.
 
 **Every rule has been watched firing.** `tests/fixtures/` holds small skills trees with
 an `expect.json` beside each: the codes the run must report, and the codes it must not.
-All 69 rules with an engine have a positive case, and the two cases that matter most -
+All 95 rules with an engine have a positive case, and the two cases that matter most -
 `clean/` and `escape-hatches/` - must report **nothing at all**. A linter is judged by
 what it stays quiet about.
 

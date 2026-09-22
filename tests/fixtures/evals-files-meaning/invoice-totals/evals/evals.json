@@ -1,0 +1,20 @@
+{
+  "skill_name": "invoice-totals",
+  "evals": [
+    {
+      "id": "totals-creator",
+      "prompt": "Add up march.csv by supplier",
+      "expected_output": "the grand total printed",
+      "assertions": ["42.40"],
+      "files": ["evals/files/march.csv"]
+    },
+    {
+      "id": "totals-old",
+      "prompt": "Add up march.csv by supplier and save it",
+      "expected_output": "totals.md written",
+      "assertions": ["42.40"],
+      "files": ["totals.md"],
+      "fixtures": ["evals/files/march.csv"]
+    }
+  ]
+}
