@@ -39,6 +39,9 @@ The suite reports these as `SP001`-`SP019`. The ones worth knowing:
   vendor-neutral validators.
 - `SP018` / `SP019` - an XML tag in a field, or a vendor word in the name. Both refusals
   arrive at upload, after the skill is finished.
+- `SP020` - a bare `<` or `>` in the description, an arrow or a comparison. Not a tag,
+  so `SP018` passes it, but the validator the reference skill-creation tooling ships
+  refuses any angle bracket, and its packager runs that validator first.
 
 ## 2. Will every pointer still resolve
 

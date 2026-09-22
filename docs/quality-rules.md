@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 92 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 93 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -495,6 +495,7 @@ Agent Skills specification conformance. Everything here is something a skill sur
 | `SP017` | warning | high | medium | no | Reference nested too deep |
 | `SP018` | error | high | low | no | XML tag in `name` or `description` |
 | `SP019` | error | high | low | no | Reserved word in `name` |
+| `SP020` | warning | high | low | no | Bare angle bracket in `description` |
 
 ### SP001 - No frontmatter
 
@@ -609,6 +610,12 @@ Agent Skills specification conformance. Everything here is something a skill sur
 **Why it matters.** `anthropic` and `claude` are reserved in a skill name by the validation rules, and the refusal comes at upload time, after the skill is finished.
 
 **Fix.** Rename the skill after what it does.
+
+### SP020 - Bare angle bracket in `description`
+
+**Why it matters.** Not a tag, so `SP018` stays quiet - but the validator the reference skill-creation tooling ships refuses any `<` or `>` in a description, and its packager runs that validator before packaging. An arrow or a `<10MB` is enough for a skill that works locally to be refused there.
+
+**Fix.** Write it out: "to" for an arrow, "under 10 MB" for a comparison.
 
 ## structure (STxxx)
 

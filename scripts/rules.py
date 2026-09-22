@@ -120,6 +120,12 @@ _ROWS = {
               "`anthropic` and `claude` are reserved in a skill name by the validation rules, "
               "and the refusal comes at upload time, after the skill is finished.",
               "Rename the skill after what it does.", False),
+    "SP020": ("warning", "Bare angle bracket in `description`",
+              "Not a tag, so `SP018` stays quiet - but the validator the reference "
+              "skill-creation tooling ships refuses any `<` or `>` in a description, and its "
+              "packager runs that validator before packaging. An arrow or a `<10MB` is enough "
+              "for a skill that works locally to be refused there.",
+              "Write it out: \"to\" for an arrow, \"under 10 MB\" for a comparison.", False),
 
     # ---- ST: structure -------------------------------------------------------
     "ST001": ("error", "Link to a file that does not exist",
@@ -542,6 +548,7 @@ GRADES = {
     "SP014": ("high", "low"),    "SP015": ("high", "low"),
     "SP016": ("high", "medium"), "SP017": ("high", "medium"),
     "SP018": ("high", "low"),    "SP019": ("high", "low"),
+    "SP020": ("high", "low"),    # a character test against the reference validator's own rule
 
     # structure: links resolved against the filesystem, except the text heuristics
     "ST001": ("high", "low"),    "ST002": ("high", "low"),    "ST003": ("high", "low"),

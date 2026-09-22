@@ -293,6 +293,17 @@ def unit_checks():
         if got != want:
             out.append(f"ROUTER_RE on {text!r}: expected {want}, got {got}")
 
+    # SP020: a bare bracket fires, and the two things that look like one do not - the
+    # `>-` of a block scalar, which the parser strips, and a tag, which is SP018's.
+    import spec
+    from core import Skill
+    base = os.path.join(FIXTURES, "spec-frontmatter")
+    for folder, want in (("bare-bracket", True), ("block-scalar", False),
+                         ("claude-reserved", False)):
+        got = any(f.code == "SP020" for f in spec.check(Skill(os.path.join(base, folder))))
+        if got != want:
+            out.append(f"SP020 on {folder}: expected {want}, got {got}")
+
     # SE007: a skill vouching for itself, against the same words used honestly. The
     # second half is lifted from real skills, where these words occur 217 times as what
     # the skill does or where a neighbour came from - and must never read as a badge.
