@@ -524,15 +524,56 @@ def check(skill, cfg=None, registry=None):
             continue
         try:
             with open(f"{skill.root}/{rel}", encoding="utf-8", errors="replace") as fh:
-                lines = fh.read().split("\n")
+                text = fh.read()
         except OSError:
             continue
-        for n, line in enumerate(lines, 1):
-            if line.lstrip().startswith(("#", "//", "*")):
-                continue
-            m = INTERACTIVE_RE.search(line)
-            if m:
-                out.append(Finding("QL011", f"`{m.group(0).strip()}` waits for a human",
-                                   where=rel, line=n))
-                break
+        found = _interactive_call(text) if rel.lower().endswith(".py") else None
+        if found is None:                  # not Python, or Python that does not parse
+            for n, line in enumerate(text.split("\n"), 1):
+                if line.lstrip().startswith(("#", "//", "*")):
+                    continue
+                m = INTERACTIVE_RE.search(line)
+                if m:
+                    found = (m.group(0).strip(), n)
+                    break
+        if found:
+            out.append(Finding("QL011", f"`{found[0]}` waits for a human",
+                               where=rel, line=found[1]))
     return out
+
+
+# The Python calls that stop for a person at a terminal, by the module that owns them.
+PROMPT_CALLS = {"getpass": {"getpass"}, "click": {"prompt", "confirm"},
+                "prompts": {"confirm", "select"}}
+PROMPT_MODULES = {"inquirer", "questionary"}      # every call on these asks something
+
+
+def _interactive_call(text):
+    """(what, line) for the first call that waits for a person, () for none, None if unparsed.
+
+    Read off the syntax tree for Python, where the line pattern misfired on data: a list of
+    standard-library module names carries the word `getpass`, and so does a docstring about
+    passwords, and neither waits for anyone. Only a call counts - `input(...)`,
+    `getpass.getpass(...)` or `getpass(...)` imported by name, `click.prompt(...)`.
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    by_name = {"input", "raw_input"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in PROMPT_CALLS:
+            by_name |= {a.asname or a.name for a in node.names
+                        if a.name in PROMPT_CALLS[node.module]}
+    calls = sorted((n for n in ast.walk(tree) if isinstance(n, ast.Call)),
+                   key=lambda n: (n.lineno, n.col_offset))
+    for node in calls:
+        f = node.func
+        if isinstance(f, ast.Name) and f.id in by_name:
+            return f"{f.id}(", node.lineno
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            base = f.value.id
+            if f.attr in PROMPT_CALLS.get(base, ()) or base in PROMPT_MODULES:
+                return f"{base}.{f.attr}(", node.lineno
+    return ()

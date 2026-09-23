@@ -29,13 +29,30 @@ handed the agent none of its inputs. An old-style entry - one that is not a file
 the skill - is still graded as an output, and the pre-flight says so (`EV011`), rather
 than a published set changing its meaning under its author in silence.
 
-A case with no assertions and no `outputs` is **ungraded**, and stays that way in the
-report. Counting it as a pass would turn "nobody said what success is" into evidence
+`judge` is the third form, for correctness a substring cannot express - a total that has
+to add up, a file that has to parse: a program run after the task, in the run's working
+directory, whose exit code decides. It is an argv list, never a shell line, with `{python}`,
+`{skill}` and `{workdir}` filled in:
+
+    "judge": ["{python}", "{skill}/evals/check_totals.py", "{workdir}/totals.md"]
+
+Deterministic, unlike a model judge, and it is the skill's own code, so a runtime pass
+runs it only under `--trust-target`, like a tree's own routing runner (`EV006`).
+
+A case with no assertions, no `outputs` and no `judge` is **ungraded**, and stays that way
+in the report. Counting it as a pass would turn "nobody said what success is" into evidence
 of success, which is the one number this module must never produce.
 """
 import json
 import os
 import re
+import subprocess
+import sys
+
+# How long a judge program may take. A judge reads what the run left behind; one that is
+# still going after a minute is stuck, and a stuck judge must fail the case, not hang the
+# pass.
+JUDGE_TIMEOUT = 60
 
 CASES = os.path.join("evals", "evals.json")
 
@@ -48,7 +65,7 @@ def _inside(base, rel):
 class Task:
     __slots__ = ("id", "prompt", "expected", "assertions", "outputs", "legacy_outputs",
                  "fixtures", "forbidden_tools", "max_tool_calls", "timeout",
-                 "expectations")
+                 "expectations", "judge")
 
     def __init__(self, raw, index, skill_root=None):
         self.id = str(raw.get("id") or index)
@@ -81,10 +98,44 @@ class Task:
         self.forbidden_tools = raw.get("forbidden_tools") or []
         self.max_tool_calls = raw.get("max_tool_calls")
         self.timeout = raw.get("timeout") or 300
+        # kept raw, like `outputs`: a malformed judge is refused by the pre-flight
+        self.judge = raw.get("judge")
 
     @property
     def graded(self):
-        return bool(self.assertions or self.outputs)
+        return bool(self.assertions or self.outputs or self.judge)
+
+
+def judge_argv(judge, skill_root, workdir):
+    """The judge's argv with its three placeholders filled, or None if it is malformed."""
+    if not isinstance(judge, list) or not judge or not all(isinstance(a, str) for a in judge):
+        return None
+    fill = {"{python}": sys.executable, "{skill}": os.path.abspath(skill_root or "."),
+            "{workdir}": os.path.abspath(workdir or ".")}
+    out = []
+    for arg in judge:
+        for key, value in fill.items():
+            arg = arg.replace(key, value)
+        out.append(arg)
+    return out
+
+
+def run_judge(judge, skill_root, workdir):
+    """(passed, detail) - the judge program's verdict on what the run left behind."""
+    argv = judge_argv(judge, skill_root, workdir)
+    if argv is None:
+        return False, "the judge is not a list of strings"
+    try:
+        r = subprocess.run(argv, cwd=workdir or ".", capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=JUDGE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return False, f"the judge ran past {JUDGE_TIMEOUT}s"
+    except OSError as e:
+        return False, f"the judge could not start: {e}"
+    if r.returncode == 0:
+        return True, ""
+    said = (r.stdout + r.stderr).strip().splitlines()
+    return False, f"exit {r.returncode}" + (f": {said[-1][:120]}" if said else "")
 
 
 def output_spec(entry):
@@ -165,9 +216,12 @@ def read_text(full):
         return None, "not UTF-8 text - `contains` reads UTF-8 text"
 
 
-def grade(task, run):
+def grade(task, run, skill_root=None):
     checks = []
     text = run.text or ""
+    if task.judge is not None:
+        ok, detail = run_judge(task.judge, skill_root, run.workdir)
+        checks.append(("judge", ok, detail))
     for a in task.assertions:
         ok, detail = check_text(a, text, "the answer")
         checks.append((a, ok, detail))
@@ -262,12 +316,25 @@ def preflight(skill_root, task_list):
                            f"so it could never pass")
         why += [w for w in map(_bad_regex, t.assertions + [c for _, cs, _ in specs
                                                           for c in cs]) if w]
+        if t.judge is not None:
+            argv = judge_argv(t.judge, skill_root, ".")
+            if argv is None:
+                why.append("`judge` is not a non-empty list of strings - write it as argv, "
+                           "e.g. [\"{python}\", \"{skill}/evals/check.py\"]")
+            else:
+                # a script the judge names inside the skill has to be there, or every
+                # run of the case fails on both arms for a reason that is not the skill
+                for arg in t.judge:
+                    if arg.startswith("{skill}/"):
+                        rel = arg[len("{skill}/"):]
+                        if not os.path.isfile(os.path.join(base, rel)):
+                            why.append(f"judge script `{rel}` does not exist")
         if why:
             out.append((t.id, "unrunnable", "; ".join(why)))
         elif not t.graded:
             extra = (" - its skill-creator `expectations` are graded by a model there and "
                      "are not read here" if t.expectations else "")
-            out.append((t.id, "ungraded", "no `assertions` and no `outputs` - nothing "
+            out.append((t.id, "ungraded", "no `assertions`, `outputs` or `judge` - nothing "
                                           f"decides whether it passed{extra}"))
         if t.legacy_outputs:
             names = ", ".join(f"`{f}`" for f in t.legacy_outputs)

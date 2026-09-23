@@ -256,13 +256,35 @@ def compare(before, after, quality_drop=QUALITY_DROP, cost_rise=COST_RISE):
         "cost_regressions": [row for row in cost_moves if row[3] > cost_rise],
         "tasks": affected_tasks(before, after),
         "queries": affected_queries(before, after),
+        "environments": _environment_change(before, after),
     }
+
+
+def _environment_change(before, after):
+    """(before, after) when the two runs were measured in different settings, else None.
+
+    A run records its provider, model and runs. When they differ, what moved may be the
+    model and not the skill; the gate still reports the numbers, and says so above them.
+    Runs saved before environments were recorded carry none and are not second-guessed.
+    """
+    b, a = before.get("environment"), after.get("environment")
+    if not b or not a:
+        return None
+    keys = ("provider", "model", "runs")
+    if all(b.get(k) == a.get(k) for k in keys):
+        return None
+    spell = lambda e: ", ".join(f"{k} {e.get(k)}" for k in keys)  # noqa: E731
+    return spell(b), spell(a)
 
 
 def render(diff, fail_on_cost=False):
     head = "REGRESSION DETECTED" if diff["regressions"] or (
         fail_on_cost and diff["cost_regressions"]) else "no regression"
     lines = [f"{head}   {diff['before']} → {diff['after']}", ""]
+    if diff.get("environments"):
+        was, now = diff["environments"]
+        lines += [f"  measured in different settings - {was}  →  {now}.",
+                  "  What moved may be the setting, not the skill.", ""]
     for label, b, a, basis, worse in diff["quality"]:
         mark = "! " if worse else "  "
         tail = f"   ({basis})" if basis else ""

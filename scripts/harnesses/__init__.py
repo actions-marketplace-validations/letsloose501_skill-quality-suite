@@ -69,6 +69,10 @@ class World:
         """Which harnesses document this frontmatter field, whatever the role."""
         return sorted(a.name for a in self if field in a.fields)
 
+    def owners_of_syntax(self, key):
+        """Which harnesses document rewriting this piece of body syntax."""
+        return sorted(a.name for a in self if key in a.body_syntax)
+
     def location_fragments(self):
         """The distinctive head of every documented location, e.g. `.claude/skills`.
 

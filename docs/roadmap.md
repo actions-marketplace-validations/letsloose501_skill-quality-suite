@@ -519,9 +519,21 @@ it: a probe with `` !`echo RAN_FENCED` `` in a plain code block came back as
 `RAN_FENCED`. So that guide runs `npm test $1`, `gh pr view $1` and a set of build
 scripts on load, pre-approves none of them, and by the documented rule aborts outside
 auto mode unless the user's own permissions allow each one. The porting half of the
-same idea - `$ARGUMENTS` and `!` as Claude-only syntax in `compat` - was not built: the
-other runtimes' pages on it were not checked, and an adapter row nobody checked is how
-`cursor.py` once invented an incompatibility.
+same idea - `$ARGUMENTS` and `!` as Claude-only syntax in `compat` - waited for the other
+runtimes' pages to be checked, since an adapter row nobody checked is how `cursor.py` once
+invented an incompatibility. Checked 23.09.2026: Claude Code's page documents
+`$ARGUMENTS`, `$N`, declared `$name`, six `${CLAUDE_*}` variables and both injection forms;
+the nine other pages mention none of them. Shipped as a `body-syntax` feature in
+`model.py`: Claude Code's own extension there, UNKNOWN everywhere else. The first run over
+51 real skills showed why "found" had to mean "used": four marketplace guides write
+"Always use ${CLAUDE_PLUGIN_ROOT} for portability" and "### Using $ARGUMENTS", which name
+the syntax rather than depend on it, and on another harness should stay literal. So a
+variable counts when a path hangs off it, `$ARGUMENTS` outside a heading, `$N` and `$name`
+only when the frontmatter declares arguments, placeholders inside fenced blocks not at all,
+injections everywhere. After that, 32 uses in 7 skills, every one a step - a link into
+`${CLAUDE_SKILL_DIR}/jobs/`, working paths under `${CLAUDE_PLUGIN_DATA}`, arguments parsed
+from `$ARGUMENTS`, and the 14 load-time commands `CB004` had already found. The price is a
+typo in a bare variable, which no longer registers; in a path it still does.
 
 Shipped from a third reading (a security scanner whose change log is a list of evasions
 it learned to see): **indirection in bundled scripts**. A probe of seven Python scripts,
@@ -628,22 +640,20 @@ the rule `SKILL.md` now states for every paid layer.
 
 ### What this changes in the prose, not in the code
 
-Three measured findings worth carrying into the front page and `docs/`, because they
-replace things this project currently asserts without a number:
+Done 23.09.2026: the three findings are on the front page, under "What published
+measurements say about skills", each with its source - which this entry did not carry, and
+two of its numbers needed correcting when the sources were read:
 
-- skills raise **execution reliability, not answer quality**. In one controlled comparison
-  the pass rate among tasks that produced any output was identical with and without skills
-  (57.1% both), while the share of tasks producing output at all went from 46.7% to 72.7%.
-  The whole gain was coverage. That is a sharper answer to "what is a skill for" than this
-  project gives today;
-- **skills written by a model gave no measurable gain**; human-authored ones gave +16.2
-  percentage points on the same benchmark. That is the argument for this repository
-  existing, and it is measured rather than asserted;
-- ecosystem scale and defect rate: one audit found 26.1% of community skills carrying at
-  least one vulnerability; another found 534 critical and 1,467 total defects across 3,984
-  public skills, with 76 confirmed malicious payloads; a marketplace census counted 40,285
-  listings. The `security` module's reason for existing is currently argued from first
-  principles here and could be argued from these instead.
+- skills raise **execution reliability, not answer quality** - SkillAxe
+  (arXiv 2606.10546), in its comparison of SkillAxe-refined skills with no skill: quality
+  among tasks with output 57.1% on both sides, output coverage 46.7% -> 72.7%;
+- **curated skills +16.2 percentage points, self-generated ones no benefit** (-1.3 on
+  average) - SkillsBench, arXiv 2602.12670;
+- **ecosystem defect rate** - 26.1% of 31,132 skills with at least one vulnerability
+  (arXiv 2601.10338); Snyk's ToxicSkills audit of 3,984 skills: 534 with a critical issue,
+  1,467 with at least one issue of any kind - skills, not "defects", as this entry had it -
+  and 76 confirmed malicious payloads. The "40,285 listings" census this entry cited has no
+  source anyone could find, and was left out.
 
 One more number, for item 15 whenever it is revisited: an optimization study reports a
 median final skill length of roughly 920 tokens, with only one to four edits accepted into
@@ -911,18 +921,23 @@ whatever runtime and model it will actually be used on, which is a different que
 "does it pass on mine". Three things stand between here and there, and the first two are
 structural rather than new features.
 
-**Separate what to run from how to run it.** `evals/evals.json` currently holds both: the
-cases and, implicitly, the single environment they run in. There is nowhere to say *which
-engine, which model, which workspace*, so a second engine has no place to be declared. The
-split is a config file for the environment beside a case file for the cases, and it has to
-land before any second provider, or the provider arrives with its settings threaded through
-the command line forever.
+**Separate what to run from how to run it.** Shipped 23.09.2026: `evals/environment.json`
+beside the cases, named environments of `provider`, `model` and `runs`, picked with `--env`
+(`default` when present); a flag still wins over the file. Every saved run records the
+settings that measured it, and `--compare` says when two runs differ in them - a
+regression between two models is not a regression in the skill. The file is read strictly,
+so `"modle"` is refused by name rather than run on the default model. What it deliberately
+does not carry yet is a workspace: nothing here chooses one, and a key nothing reads would
+be a promise. The second provider now has somewhere to be declared.
 
-**A judge that runs a program.** Grading is rule-based today, which in practice means matching
-substrings in the output, and that has a ceiling: anything whose correctness is a property of
-a produced *file* cannot be expressed. A judge that runs a program and takes its exit code
-removes the ceiling and stays deterministic, which the model-based judge never will be. It is
-also the cheapest of the three to build.
+**A judge that runs a program.** Shipped 23.09.2026: a case's `judge` is an argv list with
+`{python}`, `{skill}` and `{workdir}` filled in, run in the run's working directory after the
+task; exit 0 passes it. It removes the substring ceiling and stays deterministic, which the
+model-based judge never will be. It is the skill's own code, so `eval --runtime` refuses a
+judged set without `--trust-target` - the rule `EV006` already applies to a tree's routing
+runner - and the pre-flight refuses a judge written as a shell line or naming a script the
+skill does not have. Scripted end to end: a judge passing the ledger row v1 writes and
+failing the wrong one, five mutations caught.
 
 **The provider itself.** `providers.py` already carries the contract: `available()`, `run()`
 with a `model`, and `isolates_skills`, which declares whether an engine can run a task with a
@@ -949,8 +964,15 @@ possible, and that knowledge is this project's own.
 by a person who can disagree with it. A wrong *port* silently rewrites their file. The adapters
 now record the day they were last read against their page (`checked`, shipped 23.09.2026 -
 see the rejected list below), which was the precondition; the first check is also the measure
-of why it had to be one. Porting still has to decide how old a `checked` it will act on, and
-that is a number nobody has measured yet.
+of why it had to be one.
+
+Shipped 23.09.2026 as an instruction rather than a command: `references/porting.md`. The two
+questions a `port` command would have had to settle - how old a `checked` it may act on, and
+whether the suite should rewrite somebody's file - both go away when the agent reads the
+target's page at the moment of porting and writes a copy on the user's machine after showing
+the plan. The adapter table becomes the starting list; the page is the authority, and a
+difference between them is reported, not silently patched. A `port` command remains possible
+later, if a real port done this way shows which steps are always the same.
 
 **It is also a third position.** The project's front page is being narrowed to reading somebody
 else's skill before trusting it; a porting tool is a different promise to a different person.

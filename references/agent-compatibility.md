@@ -31,7 +31,12 @@ Skill  ->  core.Skill        the file on disk
 ```
 
 A feature is one thing the skill uses: a frontmatter field, a top-level directory, a
-tool name out of `allowed-tools`, a hard-coded path into somebody's skill folder.
+tool name out of `allowed-tools`, a hard-coded path into somebody's skill folder, or body
+text a harness rewrites before the model reads it - `$ARGUMENTS`, a declared `$name`,
+`${CLAUDE_SKILL_DIR}/...`, a load-time `` !`command` ``. Only Claude Code documents those
+(checked against nine other pages, 23.09.2026), so elsewhere they come back UNKNOWN: they may
+reach the model exactly as written. A placeholder counts where its value is used - a path
+under a variable, `$ARGUMENTS` outside a heading - and not where a guide names the syntax.
 Adapters classify features; they never read files. That is what keeps the engine
 ignorant of any particular harness, which in turn is what makes adding one cheap.
 

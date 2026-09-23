@@ -667,7 +667,7 @@ def cmd_eval(skills, root, a, cfg):
     slightly different answer every time. Folding the two together would make the
     cheap half hostage to the expensive one.
     """
-    from evaluation import providers, regression, runtime, triggers  # noqa: PLC0415
+    from evaluation import environment, providers, regression, runtime, triggers  # noqa: PLC0415
 
     if not skills:
         print("eval takes a skill: `sqs.py eval ./my-skill --trigger`", file=sys.stderr)
@@ -713,20 +713,22 @@ def cmd_eval(skills, root, a, cfg):
             queries, qproblem = triggers.load(s.root)
             from evaluation import tasks as taskmod
             task_list, tproblem = taskmod.load(s.root)
-            print(f"{s.folder}:")
-            print(f"    trigger  {len(queries)} quer(y/ies) x {a.runs} runs"
+            env, eproblem = environment.load(s.root, a.env)
+            runs = environment.resolve(env or {}, runs=a.runs)["runs"]
+            print(f"{s.folder}:" + (f"  (environment `{env['name']}`)"
+                                    if env and env.get("name") else ""))
+            if eproblem:
+                print(f"    environment  {eproblem}")
+            print(f"    trigger  {len(queries)} quer(y/ies) x {runs} runs"
                   if not qproblem else f"    trigger  {qproblem}")
-            print(f"    runtime  {len(task_list)} task(s) x {a.runs} runs x 2 sides"
+            print(f"    runtime  {len(task_list)} task(s) x {runs} runs x 2 sides"
                   if not tproblem else f"    runtime  {tproblem}")
         print("\nPick a layer: --trigger, --runtime, or --all. Each one runs the agent, "
               "which costs\nmoney and minutes, so nothing runs until you name it.",
               file=sys.stderr)
         return 2
 
-    provider, why = providers.get(a.provider)
-    if provider is None or why:
-        print(why or f"no provider `{a.provider}`", file=sys.stderr)
-        return 2
+    engines = {}                       # provider name -> (provider, why), built once each
 
     def note(*parts):
         if not a.quiet and not fmt_json:
@@ -735,14 +737,30 @@ def cmd_eval(skills, root, a, cfg):
     rc = 0
     for s in skills:
         name = s.name or s.folder
-        payload = {"skill": name}
+        env, problem = environment.load(s.root, a.env)
+        if problem:
+            print(f"{s.folder}: {problem}", file=sys.stderr)
+            rc = max(rc, 2)
+            continue
+        run_cfg = environment.resolve(env, provider=a.provider,
+                                      model=cfg.get("live_model") or a.model, runs=a.runs)
+        if run_cfg["provider"] not in engines:
+            engines[run_cfg["provider"]] = providers.get(run_cfg["provider"])
+        provider, why = engines[run_cfg["provider"]]
+        if provider is None or why:
+            print(f"{s.folder}: {why or 'no provider ' + run_cfg['provider']}", file=sys.stderr)
+            rc = max(rc, 2)
+            continue
+        runs, model = run_cfg["runs"], run_cfg["model"]
+        # which environment measured this, kept with the run: `--compare` says so when two
+        # runs came from different ones
+        payload = {"skill": name, "environment": run_cfg}
         blocks = []
 
         if want_trigger:
-            note(f"{name}: trigger pass, {a.runs} run(s) per query - this costs money")
+            note(f"{name}: trigger pass, {runs} run(s) per query - this costs money")
             report, problem = triggers.evaluate(
-                s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
-                use_split=not a.no_split)
+                s, provider, runs=runs, model=model, use_split=not a.no_split)
             if problem:
                 print(f"{s.folder}: {problem}", file=sys.stderr)
                 rc = max(rc, 2)
@@ -756,10 +774,10 @@ def cmd_eval(skills, root, a, cfg):
 
         # a neighbour is here for its trigger set; its tasks are not what was edited
         if want_runtime and s.root not in getattr(a, "neighbour_roots", ()):
-            note(f"{name}: runtime pass, {a.runs} run(s) per task"
+            note(f"{name}: runtime pass, {runs} run(s) per task"
                  + (" x 2 sides" if not a.no_baseline else "") + " - this costs money")
             report, problem = runtime.evaluate(
-                s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
+                s, provider, runs=runs, model=model,
                 with_baseline=not a.no_baseline,
                 task_filter=set(a.task) if a.task else None, trusted=a.trust_target)
             if problem:
@@ -781,7 +799,7 @@ def cmd_eval(skills, root, a, cfg):
             print(("\n\n" + "-" * 60 + "\n\n").join(blocks))
 
         label = a.save or ("baseline" if a.baseline else None)
-        if label and len(payload) > 1:
+        if label and len(payload) > 2:
             path = regression.save(root, name, label, payload)
             note(f"{name}: saved as `{label}` in {path}")
     return rc
@@ -1123,7 +1141,10 @@ def main(argv=None):
                     help="eval: run the task set with the skill and without it (costs money)")
     ap.add_argument("--all", dest="all_layers", action="store_true",
                     help="eval: both layers")
-    ap.add_argument("--provider", default="claude", help="eval: which agent to drive")
+    ap.add_argument("--provider", help="eval: which agent to drive (default: the "
+                    "environment's, else claude)")
+    ap.add_argument("--env", help="eval: the environment in evals/environment.json to run "
+                    "in (default: its `default`, if it has one)")
     ap.add_argument("--model", help="eval: model for the runs")
     ap.add_argument("--task", action="append", default=[], help="eval: only this task id")
     ap.add_argument("--no-baseline", action="store_true",
@@ -1135,8 +1156,9 @@ def main(argv=None):
                     help="eval --compare: a cost rise fails the gate too")
     ap.add_argument("--init", action="store_true",
                     help="evals: scaffold the two documented eval files")
-    ap.add_argument("--runs", type=int, default=3,
-                    help="eval: runs per query or per task; the model is not deterministic")
+    ap.add_argument("--runs", type=int,
+                    help="eval: runs per query or per task; the model is not deterministic "
+                         "(default: the environment's, else 3)")
     ap.add_argument("--no-split", action="store_true",
                     help="eval --trigger: measure one set instead of train/validation")
     ap.add_argument("--with-neighbours", type=int, default=0, metavar="N",

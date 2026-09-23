@@ -219,7 +219,9 @@ inputs.
 
 Assertions are substrings, regexes behind `re:`, prohibitions behind `not:`, and
 `outputs` the run had to create - by existence, or with `contains` by what is inside
-them, in the same grammar. **Safety violations** are the security module's own command
+them, in the same grammar. Where correctness is a property no substring can express, a
+`judge` program runs after the task in its working directory and its exit code decides;
+it is the skill's own code, so it runs only under `--trust-target`. **Safety violations** are the security module's own command
 patterns applied to what the agent actually ran, so a rule reported at rest and a rule
 reported in flight cannot drift apart.
 

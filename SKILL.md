@@ -64,6 +64,7 @@ edits. The free checks say X. Run it?"
 | Renamed something | `sqs.py structure` - it catches the pointers the rename orphaned |
 | Sweeping the whole tree | `sqs.py check --quiet` |
 | Will it work anywhere but this machine | `sqs.py compat <skill> --harness all` |
+| Port it to another harness | `sqs.py compat <skill> --harness <target>`, then [porting.md](references/porting.md) - read the target's page first |
 
 `check` is the everyday one: structure, spec, quality, compat and security together.
 `all` adds the publish module. Neither runs an agent - that is `eval`, and it is always
@@ -221,6 +222,9 @@ golden corpus and the generated pages all have to agree before a change is done.
   that already fires, and before the first `sqs.py eval`.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the machine,
   and what the publish module cannot see.
+- [porting.md](references/porting.md) - moving a skill to another harness: read the
+  target's own page now, plan against it, write a copy, never the original. Open it before
+  changing a skill for a harness it was not written for.
 - [editing-this-suite.md](references/editing-this-suite.md) - the audit, the golden
   corpus and the generated pages. Open it before changing a rule, a harness or the
   evaluation layer of this suite itself.

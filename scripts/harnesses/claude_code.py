@@ -63,6 +63,12 @@ class ClaudeCode(HarnessAdapter):
     # Documented not to be required: the directory names the command, `name` the label.
     name_matches_dir = False
     tool_namespace = "claude-code"
+    # The page's "String substitutions" and "dynamic context injection" sections, read
+    # 23.09.2026. Nine other harness pages were asked the same question and none
+    # mentions either, so everywhere else these come back UNKNOWN, not unsupported.
+    body_syntax = ("$ARGUMENTS", "$N", "$name", "!`command`",
+                   "${CLAUDE_SESSION_ID}", "${CLAUDE_EFFORT}", "${CLAUDE_SKILL_DIR}",
+                   "${CLAUDE_PROJECT_DIR}", "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_DATA}")
     notes = (
         "`name` only labels a personal or project skill; the command is the directory "
         "name. In a plugin, `name` sets the command segment after the plugin prefix.",

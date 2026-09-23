@@ -50,6 +50,17 @@ That is the shape of almost every Agent Skill defect. It survives for months bec
 there is nothing to notice. An AI skill checker turns each class of silent breakage
 into a loud one, and sorts them by *when* they would have bitten.
 
+Published measurements point the same way. A skill's gain is reliability, not a better
+answer: in SkillAxe's comparison, quality among tasks with output was 57.1% with and
+without the skill, and the whole gain was output coverage, 46.7% to 72.7%
+([arXiv 2606.10546](https://arxiv.org/abs/2606.10546)) - so a skipped step is the gain
+lost. Authorship matters: curated skills added 16.2 points on SkillsBench, skills the
+model wrote for itself added nothing ([arXiv 2602.12670](https://arxiv.org/abs/2602.12670)).
+And a stranger's skill is a supply-chain input: 26.1% of 31,132 marketplace skills carried
+a vulnerability ([arXiv 2601.10338](https://arxiv.org/abs/2601.10338)), and one audit of
+3,984 found 76 confirmed malicious payloads
+([Snyk](https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/)).
+
 ## The two halves
 
 **Static analysis** is free, offline, deterministic and standard library only: skill

@@ -362,7 +362,10 @@ def unit_checks():
     out += work_checks()
     out += noise_checks()
     out += neighbour_checks()
+    out += environment_checks()
     out += adapter_checks()
+    out += interactive_checks()
+    out += body_syntax_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -796,6 +799,97 @@ def ranking_checks():
     return out
 
 
+def interactive_checks():
+    """QL011 on Python, read off the syntax tree: calls count, words do not.
+
+    The silent rows are the shapes the line pattern misfired on or would have: the word
+    `getpass` in a list of module names, `getpass.getuser()`, a docstring, a method that
+    happens to be called `input`.
+    """
+    import quality
+    rows = [
+        ("name = input('Name? ')", True),
+        ("import getpass" + chr(10) + "pw = getpass.getpass()", True),
+        ("from getpass import getpass as gp" + chr(10) + "pw = gp()", True),
+        ("import click" + chr(10) + "click.confirm('Go?')", True),
+        ("import questionary" + chr(10) + "questionary.select('x', choices=[])", True),
+        ("STDLIB = frozenset({'getpass', 'glob'})", False),
+        ("import getpass" + chr(10) + "user = getpass.getuser()", False),
+        ('"""Asks for input() in the docs only."""', False),
+        ("self.input('field')", False),
+    ]
+    out = []
+    for src, fires in rows:
+        got = quality._interactive_call(src)
+        if bool(got) != fires:
+            out.append(f"QL011 on {src!r}: {got!r}, expected {'a call' if fires else 'none'}")
+    if quality._interactive_call("def (:") is not None:
+        out.append("QL011: a file that does not parse must fall back to the line pattern")
+    # and through the rule itself, which is what decides which reading a file gets
+    from core import Skill
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "probe")
+        os.makedirs(os.path.join(root, "scripts"))
+        with open(os.path.join(root, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: probe\ndescription: Asks for a name. Use when a name is "
+                    "needed.\n---\n\nRun `scripts/ask.py`; `scripts/names.py` lists modules.\n")
+        for rel, body in (("ask.py", "name = input('Name? ')\n"),
+                          ("names.py", "NAMES = ['getpass', 'glob']\n")):
+            with open(os.path.join(root, "scripts", rel), "w", encoding="utf-8") as f:
+                f.write(body)
+        where = sorted(x.where for x in quality.check(Skill(root)) if x.code == "QL011")
+        if where != ["scripts/ask.py"]:
+            out.append(f"QL011 through the rule: {where}, expected only scripts/ask.py")
+    return out
+
+
+def body_syntax_checks():
+    """Body text a harness rewrites: found when it is used, not when it is described.
+
+    The silent rows are the shapes of the marketplace guides that name the syntax - a
+    heading, "use ${VAR} for portability" with no path under it, a price, `$1` in a skill
+    that declares no arguments, a config quoted in a code block.
+    """
+    from harnesses import registry
+    from harnesses.base import HARNESS_SPECIFIC, UNKNOWN
+    from model import model_of
+    world = registry()
+    d, nl = "$", chr(10)
+    front = "---" + nl + "name: s" + nl + "description: Files an issue. Use when asked." + nl
+    rows = [   # (extra frontmatter, body, the keys that must be found)
+        ("argument-hint: [issue]" + nl, "File " + d + "ARGUMENTS, first word " + d + "0.",
+         ["$ARGUMENTS", "$N"]),
+        ("", "Open [the job](" + d + "{CLAUDE_SKILL_DIR}/jobs/a.md).", ["${CLAUDE_SKILL_DIR}"]),
+        ("", "Today: !`date`", ["!`command`"]),
+        ("", "## Using " + d + "ARGUMENTS", []),
+        ("", "Always use " + d + "{CLAUDE_PLUGIN_ROOT} for portability.", []),
+        ("", "Capture arguments with `" + d + "1`, `" + d + "2`.", []),
+        # mentioning $ARGUMENTS does not declare arguments: only it counts, not the $1
+        ("", "Pass `" + d + "ARGUMENTS` on, or capture `" + d + "1`.", ["$ARGUMENTS"]),
+        ("", "The plan costs " + d + "5 a month.", []),
+        ("", "```json" + nl + "{\"c\": \"" + d + "{CLAUDE_PLUGIN_ROOT}/h.sh\"}" + nl + "```", []),
+    ]
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, (extra, body, want) in enumerate(rows):
+            root = os.path.join(tmp, f"s{i}")
+            os.makedirs(root)
+            with open(os.path.join(root, "SKILL.md"), "w", encoding="utf-8") as f:
+                f.write(front + extra + "---" + nl + nl + body + nl)
+            m = model_of(root, world)
+            got = [f.key for f in m.features if f.kind == "body-syntax"]
+            if got != want:
+                out.append(f"body syntax in {body!r}: {got}, expected {want}")
+                continue
+            for f in (x for x in m.features if x.kind == "body-syntax"):
+                on_cc = world.get("claude-code").classify(f, world).status
+                on_cursor = world.get("cursor").classify(f, world).status
+                if (on_cc, on_cursor) != (HARNESS_SPECIFIC, UNKNOWN):
+                    out.append(f"`{f.key}`: Claude Code {on_cc}, Cursor {on_cursor} - "
+                               f"expected Claude Code's own syntax, unknown elsewhere")
+    return out
+
+
 def adapter_checks():
     """The harness adapters: when each was last read, and the two folder rules.
 
@@ -1138,6 +1232,66 @@ def neighbour_checks():
     return out
 
 
+def environment_checks():
+    """`evals/environment.json`: where a run happens, kept apart from what it runs.
+
+    Against the scripted provider, with no `--provider` on the command line - so the only
+    way the run reaches `fake` is through the file.
+    """
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = os.path.join(tmp, "evaluation")
+        shutil.copytree(os.path.join(HERE, "evaluation"), tree)
+        env_path = os.path.join(tree, "ledger-lite", "evals", "environment.json")
+
+        def write(envs):
+            with open(env_path, "w", encoding="utf-8") as f:
+                json.dump({"environments": envs}, f)
+
+        def run(*extra):
+            env = dict(os.environ, PYTHONIOENCODING="utf-8",
+                       SQS_FAKE_RUNS=os.path.join(tree, "script-v1.json"))
+            return subprocess.run([sys.executable, SQS, "eval", "ledger-lite", "--skills-dir",
+                                   tree, "--runtime"] + list(extra), capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", env=env,
+                                  cwd=REPO)
+
+        def runs_of(r):
+            try:
+                payload = json.loads(r.stdout)
+                return payload["environment"]["name"], payload["runtime"]["runs_per_task"]
+            except (ValueError, KeyError):
+                return f"no payload: {(r.stdout + r.stderr)[-160:]!r}", None
+
+        write({"default": {"provider": "fake", "runs": 1},
+               "thorough": {"provider": "fake", "runs": 3}})
+        for extra, want in (((), ("default", 1)), (("--runs", "2"), ("default", 2)),
+                            (("--env", "thorough"), ("thorough", 3))):
+            got = runs_of(run("--format", "json", *extra))
+            if got != want:
+                out.append(f"environment with {extra or 'no flags'}: {got}, expected {want}")
+        r = run("--env", "nightly")
+        if r.returncode != 2 or "thorough" not in r.stderr:
+            out.append(f"an unknown environment was not refused with the known ones named: "
+                       f"exit {r.returncode}, {r.stderr[-160:]!r}")
+        write({"default": {"provider": "fake", "modle": "x"}})
+        r = run()
+        if r.returncode != 2 or "modle" not in r.stderr:
+            out.append(f"a misspelt key ran anyway: exit {r.returncode}, {r.stderr[-160:]!r}")
+
+        # two runs in different settings: the gate still compares them, and says so
+        write({"default": {"provider": "fake", "runs": 1}})
+        run("--save", "e1")
+        run("--runs", "2", "--save", "e2")
+        cmp = subprocess.run([sys.executable, SQS, "eval", "ledger-lite", "--skills-dir", tree,
+                              "--compare", "e1", "e2"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", cwd=REPO,
+                             env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+        if "different settings" not in cmp.stdout:
+            out.append(f"--compare across settings did not say so: {cmp.stdout[:200]!r}")
+    return out
+
+
 def evaluation_checks():
     """The runtime layer against the scripted provider, in a copy nothing else touches."""
     out = []
@@ -1339,6 +1493,45 @@ def evaluation_checks():
             out.append(f"--trust-target did not let the runtime pass run: exit "
                        f"{r.returncode}, {(r.stdout + r.stderr)[-200:]!r}")
         os.remove(hazard)
+
+        # The judge: a program from the skill whose exit code grades the case. It passes
+        # the ledger row v1 writes, fails the wrong row, is refused without
+        # --trust-target, and a malformed one is stopped before anything runs.
+        judge_py = os.path.join(tree, "ledger-lite", "evals", "check_row.py")
+        with open(judge_py, "w", encoding="utf-8") as f:
+            f.write("import sys" + chr(10) + "text = open(sys.argv[1], encoding='utf-8').read()"
+                    + chr(10) + "sys.exit(0 if '12.40' in text else 1)" + chr(10))
+        judged = {"id": "j", "prompt": "Log this receipt: 12.40 EUR at Bakery Nord",
+                  "expected_output": "a ledger row",
+                  "judge": ["{python}", "{skill}/evals/check_row.py", "{workdir}/ledger.csv"]}
+
+        def judged_run(script, case, *extra):
+            with open(cases_path, "w", encoding="utf-8") as f:
+                json.dump({"skill_name": "ledger-lite", "evals": [case]}, f)
+            return run_eval(script, "--runtime", "--format", "json", *extra)
+
+        for script, want in (("script-v1.json", 1.0), ("script-wrong-row.json", 0.0)):
+            r = judged_run(script, judged, "--trust-target")
+            try:
+                got = json.loads(r.stdout)["runtime"]["sides"]["treatment"]["success_rate"]
+            except (ValueError, KeyError):
+                got = f"no runtime block: {(r.stdout + r.stderr)[-200:]!r}"
+            if got != want:
+                out.append(f"judge on {script}: treatment success {got}, expected {want}")
+        r = judged_run("script-v1.json", judged)
+        if r.returncode != 2 or "judge program" not in r.stderr:
+            out.append(f"a judge ran without --trust-target: exit {r.returncode}, "
+                       f"{(r.stdout + r.stderr)[-200:]!r}")
+        for label, bad in (("a judge that is a shell line", "python check_row.py"),
+                           ("a judge naming a missing script",
+                            ["{python}", "{skill}/evals/no_such.py"])):
+            r = judged_run("script-v1.json", dict(judged, judge=bad), "--trust-target")
+            if r.returncode != 2 or "nothing was spent" not in r.stderr:
+                out.append(f"pre-flight let {label} through: exit {r.returncode}, "
+                           f"{(r.stdout + r.stderr)[-200:]!r}")
+        os.remove(judge_py)
+        with open(cases_path, "w", encoding="utf-8") as f:
+            f.write(good)
 
     # the trigger dataset parser must refuse what it cannot read rather than guess
     sys.path.insert(0, os.path.join(REPO, "scripts"))

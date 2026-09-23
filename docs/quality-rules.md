@@ -210,13 +210,13 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 
 ### EV008 - Eval case cannot pass or fail
 
-**Why it matters.** A case in `evals/evals.json` carries no `assertions` and no `outputs`, so nothing decides whether a run of it passed. `eval --runtime` would run it on both arms, spend the money, and report it as `ungraded`. skill-creator's `expectations` do not count: a model grades them there, and nothing reads them here.
+**Why it matters.** A case in `evals/evals.json` carries no `assertions`, `outputs` or `judge`, so nothing decides whether a run of it passed. `eval --runtime` would run it on both arms, spend the money, and report it as `ungraded`. skill-creator's `expectations` do not count: a model grades them there, and nothing reads them here.
 
-**Fix.** Add one checkable assertion - a literal the answer must contain, a `re:` pattern, or an output the run has to create, with `contains` for what has to be in it.
+**Fix.** Add one checkable assertion - a literal the answer must contain, a `re:` pattern, an output the run has to create, with `contains` for what has to be in it, or a `judge` program whose exit code decides.
 
 ### EV009 - Eval case cannot run as written
 
-**Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, carries a `re:` assertion that does not compile, or has an output that is malformed, outside the run's directory, or a binary format checked with `contains`. The first measures nothing, the second hands the agent a task about a file it never receives, and the rest crash the grader or fail every run on both arms. `eval --runtime` refuses the whole set until it is fixed.
+**Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, carries a `re:` assertion that does not compile, or has an output that is malformed, outside the run's directory, or a binary format checked with `contains`, or a `judge` that is not an argv list or names a script the skill does not have. The first measures nothing, the second hands the agent a task about a file it never receives, and the rest crash the grader or fail every run on both arms. `eval --runtime` refuses the whole set until it is fixed.
 
 **Fix.** Fill the draft, add the fixture under the skill or drop it, fix the pattern; check a binary output by existence, or have the task also write a text summary and check that.
 

@@ -11,9 +11,6 @@ Built as the union of `sys.stdlib_module_names` from CPython 3.11.16 and 3.14.7,
 four modules 3.9 still had: `parser`, `symbol` and `formatter` (removed in 3.10, per its
 What's New) and `binhex` (absent from 3.11, and not among the 3.10 removals). Regenerate
 the same way when a new version lands; a name only ever gets added.
-
-sqs-allow-file: QL011
-The list names `getpass` among the rest; nothing here calls it.
 """
 
 STDLIB = frozenset({

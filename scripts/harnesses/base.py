@@ -92,6 +92,10 @@ class HarnessAdapter:
     ignores_unknown_fields = None
     # does the harness document `allowed-tools`, and under whose tool names?
     tool_namespace = None
+    # body text this harness documents rewriting before the model reads it, spelled the
+    # way `model.SkillModel` keys it: "$ARGUMENTS", "$N", "$name", "!`command`",
+    # "${VARIABLE}"
+    body_syntax = ()
     # anything else worth saying in a report, one line each
     notes = ()
 
@@ -187,6 +191,26 @@ class HarnessAdapter:
         return Verdict(UNKNOWN,
                        f"{self.title} does not document `{feature.key}/` and nothing links it",
                        "Link it from SKILL.md, or move it under a documented directory.")
+
+    def _kind_body_syntax(self, feature, world):
+        owners = world.owners_of_syntax(feature.key)
+        if feature.key in self.body_syntax:
+            if owners == [self.name]:
+                return Verdict(HARNESS_SPECIFIC,
+                               f"{self.title} rewrites {feature.label()} before the model "
+                               f"reads it; no other harness documents that",
+                               "Keep it if this harness is a target; elsewhere it may reach "
+                               "the model as written.", supported=True)
+            return Verdict(PORTABLE, f"{self.title} documents {feature.label()}")
+        if owners:
+            return Verdict(UNKNOWN,
+                           f"{feature.label()} is rewritten by {', '.join(owners)}; "
+                           f"{self.title} does not document it, so it may reach the model "
+                           f"as written",
+                           "If the skill has to travel, do not let a step depend on it: say "
+                           "in prose what the value is or how to get it.")
+        return Verdict(UNKNOWN, f"no harness in the registry documents {feature.label()}",
+                       "Check the spelling against the harness that should rewrite it.")
 
     def _kind_tool(self, feature, world):
         if self.tool_namespace is None:

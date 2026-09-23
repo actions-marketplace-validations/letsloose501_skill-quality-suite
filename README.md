@@ -111,6 +111,29 @@ something the first time:
 What did not hold up is written down too: rules that were measured and deferred, and why,
 are in the [roadmap](docs/roadmap.md).
 
+### What published measurements say about skills
+
+Three findings from other people's studies, because they are why the suite checks what it
+checks:
+
+- **A skill buys reliability, not a better answer.** In SkillAxe's comparison, among tasks
+  where the agent produced output at all, quality was 57.1% with the skill and without it;
+  the whole gain came from producing output more often, 46.7% of tasks to 72.7%
+  ([arXiv 2606.10546](https://arxiv.org/abs/2606.10546)). A skill that silently skips a
+  step loses exactly that - which is why broken links and unreachable steps are the first
+  thing `check` looks for.
+- **Who writes the skill matters.** On SkillsBench, curated skills raised the average pass
+  rate by 16.2 percentage points; skills the model wrote for itself gave no benefit on
+  average (-1.3) ([arXiv 2602.12670](https://arxiv.org/abs/2602.12670)). Writing a skill
+  well is the work, and it is the part a linter can help with.
+- **A stranger's skill is a supply-chain input.** One study found at least one
+  vulnerability in 26.1% of 31,132 skills from two marketplaces
+  ([arXiv 2601.10338](https://arxiv.org/abs/2601.10338)); an audit of 3,984 skills found a
+  critical issue in 534 of them and 76 confirmed malicious payloads
+  ([Snyk, ToxicSkills](https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/)).
+  That is what `security` and `capabilities` are for, and why `eval --runtime` will not
+  run such a skill until you say you have read it.
+
 ## Install
 
 As a skill, through the cross-agent installer - it works for Claude Code, Cursor,
@@ -415,6 +438,8 @@ The working detail, written for whoever is editing a skill rather than choosing 
   and the part that stays a human's job.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the
   machine.
+- [porting.md](references/porting.md) - moving a skill to another harness: the target's
+  own page read at the moment of porting, a plan, and a copy - never the original.
 
 ## Notes
 

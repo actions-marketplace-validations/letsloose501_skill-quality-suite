@@ -31,6 +31,7 @@ my-skill/
     │   └── should-not-trigger.yaml   near-misses that must not
     ├── eval_queries.json             the older single-file form, still read
     ├── evals.json                    the task set: does it help
+    ├── environment.json              where it runs: provider, model, runs per case
     └── files/                        inputs a task needs
 ```
 
@@ -46,6 +47,12 @@ sqs.py eval ./my-skill --runtime           the task set, with the skill and with
 sqs.py eval ./my-skill --all --save v1     both, stored under a label
 sqs.py eval ./my-skill --compare v1 v2     what the last edit moved
 ```
+
+`evals/environment.json` holds named settings - `{"environments": {"default":
+{"provider": "claude", "model": "...", "runs": 3}}}` - and `--env NAME` picks one; without
+it `default` is used if present. A flag on the command line wins over the file. Each saved
+run records its settings, and `--compare` says so when two runs differ in them: what
+moved may be the model, not the skill. An unknown key is refused, not guessed.
 
 `eval` with no layer named runs nothing: it prints how many agent runs each layer would
 take and stops. A command that spends money on the strength of a typo is a command
@@ -197,6 +204,10 @@ cannot do this says so in its report rather than calling the comparison a baseli
   thing under this suite's older name. An entry in `files` that is not a file in the
   skill is still graded as an output, the meaning it had here before, and `EV011` asks
   you to move it;
+- `judge` is a program whose exit code grades the case, for correctness no substring can
+  express - a total that has to add up, a file that has to parse. An argv list, never a
+  shell line: `["{python}", "{skill}/evals/check.py", "{workdir}/totals.md"]`. It is the
+  skill's own code, so a runtime pass runs it only under `--trust-target`;
 - `forbidden_tools` and `max_tool_calls` are how "it worked" is told apart from "it
   worked eventually, after eleven tool calls and a web search".
 

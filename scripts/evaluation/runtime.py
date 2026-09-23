@@ -190,8 +190,16 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
         return None, (f"{len(unrunnable)} case(s) cannot run as written, nothing was "
                       f"spent - {head}{more}")
     if len({i for i, kind, _ in blocked if kind == "ungraded"}) == len(task_list):
-        return None, ("no case carries `assertions` or `outputs`, so no run could pass or "
-                      "fail - nothing was spent")
+        return None, ("no case carries `assertions`, `outputs` or `judge`, so no run could "
+                      "pass or fail - nothing was spent")
+    # A judge is a program from the skill, run on this machine after every run; reading a
+    # skill is not a reason to execute one - the rule `EV006` applies to a tree's runner.
+    judged = [t.id for t in task_list if t.judge is not None]
+    if judged and not trusted:
+        return None, (f"{len(judged)} case(s) are graded by a judge program from the skill "
+                      f"({', '.join(judged[:3])}), which would run on this machine - nothing "
+                      f"was run. If the skill is yours or you have read the judge, pass "
+                      f"--trust-target")
 
     sides = {"treatment": Side("treatment", skill.name or skill.folder)}
     if with_baseline:
@@ -208,7 +216,7 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
                                        skill=skill if name == "treatment" else None,
                                        cwd=work, timeout=task.timeout, model=model,
                                        workdir=work)
-                    side.add(task, run, taskmod.grade(task, run))
+                    side.add(task, run, taskmod.grade(task, run, skill.root))
 
     report = {
         "skill": skill.name or skill.folder,
