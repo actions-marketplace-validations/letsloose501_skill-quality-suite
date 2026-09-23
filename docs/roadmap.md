@@ -947,11 +947,10 @@ possible, and that knowledge is this project's own.
 
 **It does not start until the adapters can age visibly.** A wrong compatibility *report* is read
 by a person who can disagree with it. A wrong *port* silently rewrites their file. The adapters
-name their source (`docs = "https://..."`) but record no date of last verification, and
-`cursor.py` already carries in its own docstring the story of being built from the wrong page
-and inventing an incompatibility. Porting on top of that produces broken skills and blames the
-tool that produced them. The precondition is the `checked:` field below: a claim that cannot
-say when it was last true must not be allowed to rewrite anything.
+now record the day they were last read against their page (`checked`, shipped 23.09.2026 -
+see the rejected list below), which was the precondition; the first check is also the measure
+of why it had to be one. Porting still has to decide how old a `checked` it will act on, and
+that is a number nobody has measured yet.
 
 **It is also a third position.** The project's front page is being narrowed to reading somebody
 else's skill before trusting it; a porting tool is a different promise to a different person.
@@ -1049,6 +1048,20 @@ Kept here so they stop coming back.
 - **Visualisation and catalogue integrations** - no question named, so nothing to build
   against.
 - **Dynamic harness registry (11, 12)** - rejected as written; `--format json` already
-  covers the export half. What survives is one field: **`checked:` on every adapter**,
-  printed with the row. A matrix that asserts today's facts without saying when it last
-  looked is a matrix that rots silently, and it is the precondition for porting above.
+  covers the export half. What survived is one field, **`checked:` on every adapter**,
+  printed with the row by `sqs.py harnesses`, in the verbose compat report and in its
+  JSON. Shipped 23.09.2026 by reading all ten pages, and the reading is the argument for the
+  field: four pages had moved (Codex, Antigravity, Roo Code, and Windsurf, which is now
+  Devin Desktop with `.devin/skills` as its folder); six adapters listed `license` or
+  `metadata` as optional where their page never mentions them; Claude Code's own adapter
+  pointed at the product repository and carried the specification's rules as Claude Code's -
+  its page makes `name` optional ("Defaults to the directory name"), takes the command from
+  the directory rather than the field, and states no 64/1024 ceiling; Cline reads
+  `.claude/skills` and `.clinerules/skills`, which the adapter did not know, so a Claude Code
+  skill read as unreachable there; Antigravity's global folder is now `~/.gemini/config/skills`;
+  Cursor requires the name to match the folder, which the adapter had not said. Two rules
+  were added to the base class because pages state them outright: the whole folder is
+  available (Copilot, Windsurf), and files SKILL.md points at are loaded (Claude Code, Roo
+  Code). Every change rests on a quote; three claims a page summary made were checked word
+  for word and dropped when the page did not say them. On the 26 installed skills the
+  verdicts moved for five harnesses, and every move traces to one of these corrections.

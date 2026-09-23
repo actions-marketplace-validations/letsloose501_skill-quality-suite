@@ -147,7 +147,8 @@ def report_text(model, results, verbose=True):
             problems = r.problems()
             if not problems:
                 continue
-            lines += ["", f"{MARK[r.verdict]} {r.adapter.title}  ({r.adapter.docs})"]
+            seen = f", checked {r.adapter.checked}" if r.adapter.checked else ", never checked"
+            lines += ["", f"{MARK[r.verdict]} {r.adapter.title}  ({r.adapter.docs}{seen})"]
             for status, msg, rec in problems:
                 lines.append(f"    [{LABEL[status]}] {msg}")
                 if rec:
@@ -164,6 +165,7 @@ def report_json(model, results):
                 "title": r.adapter.title,
                 "verdict": r.verdict,
                 "docs": r.adapter.docs,
+                "checked": r.adapter.checked,
                 "problems": [{"status": s, "reason": m, "recommendation": rec}
                              for s, m, rec in r.problems()],
             }

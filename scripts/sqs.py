@@ -791,7 +791,10 @@ def cmd_harnesses(world, verbose=False):
     """The adapter registry: what a `--harness` name can be, and what it rests on."""
     for a in world:
         support = {True: "skills", False: "no skills", None: "undocumented"}[a.supports_skills]
-        print(f"{a.name:<14}{a.title:<16}{support:<14}{a.docs}")
+        # when the row was last read against its page: a table without it cannot show it
+        # has gone stale, and pages here move (four of ten in the first check)
+        checked = f"checked {a.checked}" if a.checked else "never checked"
+        print(f"{a.name:<14}{a.title:<16}{support:<14}{checked:<22}{a.docs}")
         if verbose:
             for loc in a.locations:
                 print(f"    {loc}")

@@ -9,7 +9,7 @@ whether it works anywhere else is a question your setup can never answer. This i
 module that answers it, and the rules it plays by.
 
 ```
-python scripts/sqs.py harnesses               the registry, with the page each row rests on
+python scripts/sqs.py harnesses               the registry: each row's page, and the day it was last read
 python scripts/sqs.py harnesses --show        plus locations, discovery and caveats
 python scripts/sqs.py compat <skill> --harness all
 python scripts/sqs.py compat <skill> --harness cursor,codex --format json

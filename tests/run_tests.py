@@ -362,6 +362,7 @@ def unit_checks():
     out += work_checks()
     out += noise_checks()
     out += neighbour_checks()
+    out += adapter_checks()
     import security
     for text, want in (
             ("100% safe and verified by Anthropic", True),
@@ -792,6 +793,54 @@ def ranking_checks():
             if bool(got) != fires:
                 out.append(f"SE007 ranking on {desc!r}: expected "
                            f"{'a finding' if fires else 'silence'}, got {[x.msg for x in got]}")
+    return out
+
+
+def adapter_checks():
+    """The harness adapters: when each was last read, and the two folder rules.
+
+    `checked` is a date or None, never a date that has not happened yet, and the
+    registry table prints it on every row - a table that cannot say when it was last
+    true is the one that rots unnoticed. The folder rules, one harness each way:
+    Copilot documents the whole folder as available, Claude Code documents linked
+    files as loaded, Cline documents neither.
+    """
+    import datetime
+    import re
+    from harnesses import registry
+    from harnesses.base import ADAPTABLE, PORTABLE, UNKNOWN
+    from model import Feature
+    out = []
+    world = registry()
+    today = datetime.date.today()
+    for a in world:
+        if a.checked is None:
+            continue
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(a.checked)):
+            out.append(f"{a.name}: `checked` is {a.checked!r}, not YYYY-MM-DD")
+        elif datetime.date.fromisoformat(a.checked) > today:
+            out.append(f"{a.name}: `checked` {a.checked} is in the future")
+    r = subprocess.run([sys.executable, SQS, "harnesses"], capture_output=True, text=True,
+                       encoding="utf-8", cwd=REPO, env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    rows = [l for l in r.stdout.splitlines() if l[:1].strip() and "harnesses ·" not in l]
+    stamped = [l for l in rows if re.search(r"checked \d{4}-\d{2}-\d{2}|never checked", l)]
+    if not rows or len(stamped) != len(rows):
+        out.append(f"`sqs.py harnesses` does not say when every row was checked: {rows[:2]}")
+
+    cases = [   # (harness, directory, linked from SKILL.md, verdict it must get)
+        ("copilot", "vendor", False, PORTABLE),
+        ("claude-code", "references", True, PORTABLE),
+        ("claude-code", "notes", False, UNKNOWN),
+        ("cline", "references", True, ADAPTABLE),
+        ("cline", "notes", False, UNKNOWN),
+        ("roo-code", "templates", True, PORTABLE),
+    ]
+    for name, key, linked, want in cases:
+        got = world.get(name).classify(
+            Feature("layout-dir", key, "linked" if linked else ""), world).status
+        if got != want:
+            out.append(f"{name} on `{key}/` ({'linked' if linked else 'not linked'}): "
+                       f"{got}, expected {want}")
     return out
 
 
