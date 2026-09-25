@@ -28,6 +28,7 @@ import shutil
 import statistics
 import tempfile
 
+from . import providers
 from . import tasks as taskmod
 
 
@@ -47,10 +48,19 @@ def total(values):
 
 
 class Side:
-    """One arm of the comparison, aggregated over every run of every task."""
+    """One arm of the comparison, aggregated over every run of every task.
 
-    def __init__(self, label):
+    The treatment arm is built with the name of the skill under test, and on that arm a
+    passed task counts only when the transcript shows the skill loading. Without that
+    gate the arm can win a task the model would have won anyway, with the skill sitting
+    unread in the plugin, and the delta is then credited to a skill that did nothing.
+    The uncredited passes are still counted, as `passed_without_skill`: they are the
+    model's own ability, and a reader needs that number to read the delta at all.
+    """
+
+    def __init__(self, label, skill_name=None):
         self.label = label
+        self.skill_name = skill_name
         self.runs = []                       # [(task, run, grade)]
 
     def add(self, task, run, grade):
@@ -60,17 +70,28 @@ class Side:
     def usable(self):
         return [(t, r, g) for t, r, g in self.runs if r.ok]
 
+    def credited(self, run, grade):
+        return grade.passed and (self.skill_name is None
+                                 or providers.loaded(run, self.skill_name))
+
     def metrics(self):
         usable = self.usable
         graded = [(t, r, g) for t, r, g in usable if g.graded]
+        gated = self.skill_name is not None
         m = {
             "runs": len(self.runs),
             "failed_runs": len(self.runs) - len(usable),
             "failure_rate": (len(self.runs) - len(usable)) / len(self.runs) if self.runs else None,
             "graded_runs": len(graded),
             "ungraded_runs": len(usable) - len(graded),
-            "success_rate": (sum(1 for _, _, g in graded if g.passed) / len(graded)
+            "success_rate": (sum(1 for _, r, g in graded if self.credited(r, g)) / len(graded)
                              if graded else None),
+            "skill_loaded_runs": (sum(1 for _, r, _ in usable
+                                      if providers.loaded(r, self.skill_name))
+                                  if gated else None),
+            "passed_without_skill": (sum(1 for _, r, g in graded
+                                         if g.passed and not self.credited(r, g))
+                                     if gated else None),
             "tool_calls": mean([len(r.tools) for _, r, _ in usable]),
             "turns": mean([r.turns for _, r, _ in usable]),
             "duration_s": mean([r.duration_s for _, r, _ in usable]),
@@ -88,7 +109,7 @@ class Side:
             row = out.setdefault(t.id, {"runs": 0, "ok": 0, "passed": 0, "graded": g.graded})
             row["runs"] += 1
             row["ok"] += int(r.ok)
-            row["passed"] += int(g.passed)
+            row["passed"] += int(self.credited(r, g))
         for row in out.values():
             row["success_rate"] = (row["passed"] / row["ok"]) if row["ok"] else None
         return out
@@ -105,13 +126,49 @@ def prepare_workdir(task, skill, parent):
     return work
 
 
+# What a runtime run would let the skill do to the machine. The treatment arm runs the
+# agent with every permission check bypassed - the CLI's own help recommends that "only
+# for sandboxes with no internet access" - and the only isolation is a fresh working
+# directory. So a skill that can reach the network, spawn a process, run commands on
+# load, hide what it runs, or carries text aimed at the agent gets to do all of it here.
+# Reading environment variables (CB003) is not on the list: on its own it reaches
+# nothing, and with a way out it is already here as CB001 or CB002.
+HAZARDS = ("CB001", "CB002", "CB004", "CB005",
+           "SE002", "SE003", "SE004", "SE005", "SE008")
+
+
+def hazards(skill):
+    """The findings that make running this skill unattended a decision, not a default.
+
+    Read from the engines directly, not through `check`: an `sqs-allow` waiver or a
+    config switch is written by the same author whose skill is in question, and a gate
+    that its subject can switch off is not a gate.
+    """
+    import capabilities                                            # noqa: PLC0415
+    import security                                                # noqa: PLC0415
+    return [f for f in capabilities.check(skill) + security.check(skill)
+            if f.code in HAZARDS]
+
+
 def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filter=None,
-             on_event=None):
+             on_event=None, trusted=False):
     """Run the task set on both sides. Returns (report dict, problem).
 
-    Every run gets its own empty working directory, so a `files:` assertion is about
+    Every run gets its own empty working directory, so an `outputs:` assertion is about
     what this run created and not about what the last one left behind.
+
+    `trusted` is `--trust-target`: the person says the skill is theirs or has been read.
+    Without it a skill with any of `HAZARDS` is refused before anything runs.
     """
+    if not trusted:
+        found = hazards(skill)
+        if found:
+            head = "; ".join(f"{f.code} {f.where}:{f.line} {f.msg}" for f in found[:3])
+            more = f" and {len(found) - 3} more" if len(found) > 3 else ""
+            return None, (f"{len(found)} finding(s) say this skill can act on the machine - "
+                          f"{head}{more}. The runtime pass runs it with permission checks "
+                          f"bypassed, so nothing was run. Read them; if the skill is yours "
+                          f"or you have read it, pass --trust-target")
     task_list, problem = taskmod.load(skill.root)
     if problem:
         return None, problem
@@ -120,7 +177,31 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
         if not task_list:
             return None, f"no task matches {', '.join(sorted(task_filter))}"
 
-    sides = {"treatment": Side("treatment")}
+    # The pre-flight gate: nothing is spent on a set that cannot produce a measurement.
+    # One case that cannot run as written stops the pass, because the alternative is a
+    # report that mixes measured cases with a skipped fixture or a grader crash halfway
+    # through. An ungraded case alone does not - it still says something about cost and
+    # tool use - but a set where every case is ungraded measures nothing at all.
+    blocked = taskmod.preflight(skill.root, task_list)
+    unrunnable = [(i, why) for i, kind, why in blocked if kind == "unrunnable"]
+    if unrunnable:
+        head = "; ".join(f"{i}: {why}" for i, why in unrunnable[:3])
+        more = f" and {len(unrunnable) - 3} more" if len(unrunnable) > 3 else ""
+        return None, (f"{len(unrunnable)} case(s) cannot run as written, nothing was "
+                      f"spent - {head}{more}")
+    if len({i for i, kind, _ in blocked if kind == "ungraded"}) == len(task_list):
+        return None, ("no case carries `assertions`, `outputs` or `judge`, so no run could "
+                      "pass or fail - nothing was spent")
+    # A judge is a program from the skill, run on this machine after every run; reading a
+    # skill is not a reason to execute one - the rule `EV006` applies to a tree's runner.
+    judged = [t.id for t in task_list if t.judge is not None]
+    if judged and not trusted:
+        return None, (f"{len(judged)} case(s) are graded by a judge program from the skill "
+                      f"({', '.join(judged[:3])}), which would run on this machine - nothing "
+                      f"was run. If the skill is yours or you have read the judge, pass "
+                      f"--trust-target")
+
+    sides = {"treatment": Side("treatment", skill.name or skill.folder)}
     if with_baseline:
         sides["baseline"] = Side("baseline")
 
@@ -135,7 +216,7 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
                                        skill=skill if name == "treatment" else None,
                                        cwd=work, timeout=task.timeout, model=model,
                                        workdir=work)
-                    side.add(task, run, taskmod.grade(task, run))
+                    side.add(task, run, taskmod.grade(task, run, skill.root))
 
     report = {
         "skill": skill.name or skill.folder,
@@ -149,7 +230,9 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
         "per_task": {name: side.per_task() for name, side in sides.items()},
         "failures": [
             {"side": name, "task": t.id, "error": r.error,
-             "failed_checks": [w for w, ok, _ in g.checks if not ok]}
+             # the reason travels with the check: "file:x.csv 12.40" alone does not say
+             # whether the file was missing, unreadable, or there with the wrong rows
+             "failed_checks": [f"{w} ({d})" if d else w for w, ok, d in g.checks if not ok]}
             for name, side in sides.items() for t, r, g in side.runs
             if not r.ok or (g.graded and not g.passed)
         ],
@@ -161,6 +244,7 @@ def evaluate(skill, provider, runs=1, model=None, with_baseline=True, task_filte
 
 ROWS = [
     ("success_rate", "task success", "pct"),
+    ("skill_loaded_runs", "runs that loaded it", "int"),
     ("failure_rate", "runs that failed", "pct"),
     ("tool_calls", "tool calls", "num"),
     ("turns", "turns", "num"),
@@ -217,9 +301,18 @@ def render(report):
                 row += f"{'n/a':>12}"
         lines.append(row)
 
+    treat = sides["treatment"]
+    if treat.get("passed_without_skill"):
+        lines += ["", f"  {treat['passed_without_skill']} treatment run(s) passed without "
+                      f"loading the skill and were not counted",
+                  "  as success: that is the model's own ability, not the skill's."]
+    if treat.get("skill_loaded_runs") == 0 and treat.get("runs"):
+        lines += ["", "  The skill loaded in no treatment run. This column measures the "
+                      "model alone."]
+
     ungraded = report.get("ungraded_tasks") or []
     if ungraded:
-        lines += ["", f"  {len(ungraded)} task(s) carry no assertions and no expected files "
+        lines += ["", f"  {len(ungraded)} task(s) carry no assertions and no expected outputs "
                       f"({', '.join(ungraded[:4])}):",
                   "  they ran and were not scored. A task nobody said the success "
                   "condition for cannot pass."]

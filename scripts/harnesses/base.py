@@ -63,6 +63,11 @@ class HarnessAdapter:
     name = ""                 # stable id used on the command line
     title = ""                # what a human calls it
     docs = ""                 # the official page every row below rests on
+    # The day every row below was last read against `docs`, as YYYY-MM-DD, or None for
+    # never. A table that cannot say when it was last true rots without a sign: four of
+    # the ten pages had moved by 23.09.2026, and fields had come and gone, while the
+    # report read the same. Set it after reading the page, never as part of an edit.
+    checked = None
     supports_skills = None    # True / False / None when the docs do not say
 
     skill_format = "SKILL.md with YAML frontmatter"
@@ -73,6 +78,12 @@ class HarnessAdapter:
     fields = {}
     # documented subdirectories inside a skill
     dirs = ()
+    # does the harness document that every file in the skill's folder is available once
+    # it loads? Then no directory name is a portability question
+    reads_whole_folder = None
+    # does it document that a file SKILL.md points at is loaded when needed? Then a
+    # directory the skill links is not a question either, named or not
+    loads_linked_files = None
     # documented ceilings; a field absent here has no documented limit
     limits = {}
     # does the harness document that `name` has to equal the folder name?
@@ -81,6 +92,10 @@ class HarnessAdapter:
     ignores_unknown_fields = None
     # does the harness document `allowed-tools`, and under whose tool names?
     tool_namespace = None
+    # body text this harness documents rewriting before the model reads it, spelled the
+    # way `model.SkillModel` keys it: "$ARGUMENTS", "$N", "$name", "!`command`",
+    # "${VARIABLE}"
+    body_syntax = ()
     # anything else worth saying in a report, one line each
     notes = ()
 
@@ -106,6 +121,7 @@ class HarnessAdapter:
         """Everything a report needs to explain a verdict."""
         return {
             "name": self.name, "title": self.title, "docs": self.docs,
+            "checked": self.checked,
             "supports_skills": self.supports_skills, "format": self.skill_format,
             "locations": list(self.locations), "discovery": self.discovery,
             "fields": dict(self.fields), "dirs": list(self.dirs),
@@ -159,6 +175,13 @@ class HarnessAdapter:
     def _kind_layout_dir(self, feature, world):
         if feature.key in self.dirs:
             return Verdict(PORTABLE, f"{self.title} documents `{feature.key}/`")
+        if self.reads_whole_folder:
+            return Verdict(PORTABLE, f"{self.title} documents that every file in the "
+                                     f"skill's folder is available")
+        if feature.detail == "linked" and self.loads_linked_files:
+            return Verdict(PORTABLE, f"{self.title} documents that files SKILL.md points "
+                                     f"at are loaded when needed, and SKILL.md links "
+                                     f"`{feature.key}/`")
         if feature.detail == "linked":
             return Verdict(ADAPTABLE,
                            f"{self.title} does not name `{feature.key}/`, and SKILL.md links "
@@ -168,6 +191,26 @@ class HarnessAdapter:
         return Verdict(UNKNOWN,
                        f"{self.title} does not document `{feature.key}/` and nothing links it",
                        "Link it from SKILL.md, or move it under a documented directory.")
+
+    def _kind_body_syntax(self, feature, world):
+        owners = world.owners_of_syntax(feature.key)
+        if feature.key in self.body_syntax:
+            if owners == [self.name]:
+                return Verdict(HARNESS_SPECIFIC,
+                               f"{self.title} rewrites {feature.label()} before the model "
+                               f"reads it; no other harness documents that",
+                               "Keep it if this harness is a target; elsewhere it may reach "
+                               "the model as written.", supported=True)
+            return Verdict(PORTABLE, f"{self.title} documents {feature.label()}")
+        if owners:
+            return Verdict(UNKNOWN,
+                           f"{feature.label()} is rewritten by {', '.join(owners)}; "
+                           f"{self.title} does not document it, so it may reach the model "
+                           f"as written",
+                           "If the skill has to travel, do not let a step depend on it: say "
+                           "in prose what the value is or how to get it.")
+        return Verdict(UNKNOWN, f"no harness in the registry documents {feature.label()}",
+                       "Check the spelling against the harness that should rewrite it.")
 
     def _kind_tool(self, feature, world):
         if self.tool_namespace is None:

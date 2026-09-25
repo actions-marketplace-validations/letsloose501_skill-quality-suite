@@ -24,6 +24,24 @@ TRIGGER_RE = re.compile(
     r"срабатыв\w*|когда|если|триггер\w*|вызывай|зови|по словам|при\b)",
     re.I)
 
+# Wording that only makes sense addressed to the router: an order to fire or not to fire,
+# the user spoken of in the third person, the house phrase for a trigger list. Narrower
+# than TRIGGER_RE on purpose - "use when you need a spec" reads as naturally to a person
+# choosing from a menu as to a model, so it proves nothing about who the text is for.
+# The verb has to be an order, not a description: "hooks that trigger on save" and
+# "хуки, которые не срабатывают" are about a hook, and a menu entry may well say so.
+# Same split QL014 needed between `do not fire` and `does not fire`. The noun
+# `триггер` is out for the same reason - "настроить триггер CI" is a menu line.
+ROUTER_RE = re.compile(
+    r"\b(?:this skill should be used when|(?<!that )(?<!which )(?<!who )trigger (?:on|when)|"
+    r"invoke (?:this |me )?when|(?:do not|don't|never) (?:fire|trigger|activate)|"
+    r"(?:when|if) the user|user asks|"
+    r"срабатыва(?:й|ть)\b|вызывай|зови|по словам|"
+    r"(?:когда|если) (?:он|она|пользователь)\b)", re.I)
+# A quoted wording, the other shape a trigger list takes: «...», "...", “...”.
+QUOTED_RE = re.compile(r"«[^»]{2,60}»|\"[^\"]{2,60}\"|“[^”]{2,60}”")
+QUOTED_MIN = 3
+
 # Kept narrow on purpose. `WIP`, `ПОТОМ` and `ЗАГЛУШКА` were in this set: they matched a
 # bad-commit example, the ordinary Russian word for "afterwards", and a sentence
 # explaining what a placeholder looks like. A marker that also reads as content is not
@@ -119,6 +137,7 @@ UNPINNED_RE = re.compile(
 SCRIPT_EXT = (".py", ".sh", ".bash", ".ps1", ".js", ".ts", ".rb")
 
 WORD_RE = re.compile(r"[^\W\d_]{4,}", re.U)
+WORD_RE_LONG = re.compile(r"[^\W\d_]{6,}", re.U)
 
 
 def stems(text):
@@ -130,6 +149,37 @@ def stems(text):
     """
     return {unicodedata.normalize("NFC", w).casefold()[:5]
             for w in WORD_RE.findall(text)}
+
+
+# The stems of `TRIGGER_RE`'s own lead-in words, read out of that pattern rather than
+# copied by hand so the two cannot drift apart. `срабатывай`/`триггер`/`вызывай` and
+# `trigger`/`invoke` are all six letters or longer, so they survive `content_stems`'s
+# length floor - and, being the literal words every skill in this house style opens its
+# trigger clause with, they are shared by construction between any two skills that use
+# it. Watched turning into a false `EV007` between two otherwise unrelated skills before
+# this set existed: both open with "Срабатывай", and that one shared scaffolding word
+# was most of what crossed the threshold.
+TRIGGER_LEAD_STEMS = {unicodedata.normalize("NFC", w).casefold()[:6]
+                      for w in WORD_RE_LONG.findall(TRIGGER_RE.pattern)}
+
+
+def content_stems(text):
+    """Stems of words carrying topical weight - short scaffolding words dropped.
+
+    `stems()`'s four-letter floor is right for comparing segments of ONE description:
+    the topic word is what differs there, and connective scaffolding - "when", "user",
+    "asks", "where" - repeats identically across every segment of that same skill and
+    cancels out of the comparison. Between two DIFFERENT skills the scaffolding is what
+    repeats - it is the shared house style of writing a trigger clause - and the topic
+    word is what would actually prove a collision. Watched on this project's own test
+    fixtures: an invoice skill and a downloads skill, both phrased "use when ... or when
+    the user asks where ... went", cleared the four-letter threshold on `when`/`user`/
+    `asks`/`where`/`went` alone with no topic word shared at all. Six letters is short
+    enough to keep real topic words in both languages and long enough to drop those;
+    `TRIGGER_LEAD_STEMS` catches the lead-in words long enough to survive that floor too.
+    """
+    return ({unicodedata.normalize("NFC", w).casefold()[:6]
+            for w in WORD_RE_LONG.findall(text)} - TRIGGER_LEAD_STEMS)
 
 
 SEGMENT_RE = re.compile(r"[,;·]|\.\s|«|»|\"")
@@ -163,6 +213,178 @@ def near_duplicates(desc, threshold=0.6):
     return pairs
 
 
+# A clause that fences work OUT, which is not the same thing as a clause containing a
+# negation. `POLARITY_RE` answers "do these two segments disagree", which is all
+# `near_duplicates` needs to avoid pairing opposites; asked instead to classify a segment
+# as an exclusion it is wrong most of the time. Measured on 29 real descriptions: of the
+# seven segments it marked negative, none was an exclusion branch, and two - "что не так
+# с этим текстом", "не звучит как я" - are wordings a user types that SHOULD fire the
+# skill, so the label inverted their meaning.
+#
+# What separates the two is not the negation but what the negation governs. Three
+# grammatical roles, not three examples: the act of using the skill, the purpose it would
+# be used for, and the neighbour it defers to instead.
+# The lookbehinds keep the third person out: `do not fire` is an instruction to the
+# router, `a skill does not fire` is a situation somebody describes - and this project's
+# own description contains the second, so without them the rule mislabels its own
+# strongest trigger phrase as an exclusion.
+EXCLUSION_RE = re.compile(
+    r"(?<!does )(?<!did )\b(?:do not|don't|dont|never|not)\s+"
+    r"(?:use|trigger|fire|invoke|call|run|reach|apply)\b"
+    r"|\b(?:not|never)\s+(?:for|about|when)\b"
+    r"|\bне\s+(?:для|под|про)\b"
+    r"|\bне\s+(?:запускайся|запускай|срабатывай|триггерь|вызывай|зови|бери|используй|"
+    r"применяй)\b"
+    r"|\bне\s+(?:путать|подменяет|подменяй|заменяет|заменяй)\b"
+    r"|\bdo(?:es)?\s+not\s+(?:replace|substitute|cover)\b"
+    r"|\bnot\s+to\s+be\s+confused\b",
+    re.I)
+
+
+def boundary_pairs(desc, threshold=0.6):
+    """(fires-on phrase, does-not-fire-on phrase, overlap) where the line is too faint.
+
+    The pair `near_duplicates` above deliberately skips. That rule asks *is one branch
+    written twice*, so a pair disagreeing about polarity is two branches and not its
+    business. Asked a different question - *is the line between fire and do-not-fire
+    sharp enough to hold* - the same pair is the whole answer, and it is the one worth
+    the most: a description can separate its branches well on average and still be
+    misrouted catastrophically by a single exclusion that reads almost exactly like an
+    activation.
+
+    Only the worst pair is reported, not an average over all of them. An average would
+    be a statistic with nothing to point at, which is the complaint `QL004` already
+    earns; a pair can be read and disagreed with.
+
+    `content_stems`, not `stems`: within one description the connective scaffolding -
+    `when`, `user`, `asks` - repeats across every branch by construction, so a
+    four-letter floor lets an activation and an exclusion match on nothing but the
+    house style. That is the same confound `EV007` was calibrated against, in the one
+    place where it bites hardest, because here both halves come from the same author.
+
+    `EXCLUSION_RE`, not `POLARITY_RE`: see the note on that pattern. A segment is an
+    exclusion because of what its negation governs, not because it contains one.
+    """
+    segs = [s.strip(" -—:") for s in SEGMENT_RE.split(desc)]
+    known = [(s, content_stems(s), bool(EXCLUSION_RE.search(s))) for s in segs
+             if len(s) > 8]
+    fires = [(s, st) for s, st, neg in known if not neg and st]
+    quiet = [(s, st) for s, st, neg in known if neg and st]
+    out = []
+    for a, sa in fires:
+        for b, sb in quiet:
+            small = min(len(sa), len(sb))
+            if small >= 2 and len(sa & sb) / small >= threshold:
+                out.append((a[:48], b[:48], len(sa & sb) / small))
+    return sorted(out, key=lambda r: -r[2])
+
+
+SENTENCE_RE = re.compile(r"[.;]\s+|\n")
+
+
+def prompt_match(description, prompt_stems):
+    """(best score, the sentence that scored it) for a prompt against one description.
+
+    The ranking behind `sqs.py route`, and the same comparison `cases` runs an
+    expectation through: *does this skill's description promise the thing that was
+    asked for at all*. It lives here rather than inside either caller because the two
+    would otherwise each carry their own copy of the same calibration, and one place
+    per test is the only thing that stops them drifting.
+
+    `stems()`, not `content_stems()`: the six-letter floor exists to drop scaffolding
+    two DESCRIPTIONS share by house-style construction, and a sentence a human wrote
+    about what they want does not carry that scaffolding - it carries short topic
+    nouns the floor would eat. Watched degenerating into an alphabetical tie-break
+    against the real skill tree before this note existed.
+    """
+    best_score, best_sentence = 0.0, None
+    for sent in SENTENCE_RE.split(description):
+        sent = sent.strip(" -—:*")
+        # A sentence that fences work out ("not for X") is not a route into the skill
+        # for that wording - it is the opposite claim, and counting it as a match is
+        # how a genuine exclusion clause outscored the skill it was excluding the
+        # wording in favour of.
+        if len(sent) <= 8 or POLARITY_RE.search(sent):
+            continue
+        st = stems(sent)
+        small = min(len(st), len(prompt_stems))
+        if not small:
+            continue
+        score = len(st & prompt_stems) / small
+        if score > best_score:
+            best_score, best_sentence = score, sent
+    return best_score, best_sentence
+
+
+def branch_segments(desc):
+    """(sentence, content stems, has-negation) for the trigger-branch part of a description.
+
+    House style - the `TEMPLATE` in `sqs.py` states it directly - is one sentence on
+    what the skill is, then the branches that should trigger it. `TRIGGER_RE` finds the
+    lead-in into that second part; everything before it is the topic sentence and stays
+    out of the comparison, because two skills sharing a topic word is not a collision
+    and two skills whose *branches* cover one wording is.
+
+    Split at sentence boundaries, not `near_duplicates`' comma-level ones: a real corpus
+    of skills that name their own neighbours (`⚠️ Not this, see `other-skill``)
+    keeps that whole disclaimer in one sentence, and `NAMED_THING_RE` then drops the
+    sentence entirely. Splitting on commas instead cut a disclaimer like `X - see
+    `konspekt`, and not this` into a bare quoted trigger phrase in one fragment and the
+    neighbour's name in the next, which is how the first version of this function turned
+    every skill that disambiguates against a neighbour into a false collision with that
+    neighbour - watched happening on the 28 skills actually installed here.
+    """
+    m = TRIGGER_RE.search(desc)
+    if not m:
+        return []
+    zone = desc[m.start():]
+    out = []
+    for s in SENTENCE_RE.split(zone):
+        s = s.strip(" -—:*")
+        if len(s) <= 8 or NAMED_THING_RE.search(s):
+            continue
+        out.append((s, content_stems(s), bool(POLARITY_RE.search(s))))
+    return out
+
+
+def cross_overlap(skills, threshold=0.6):
+    """EV007 - pairs of skills whose trigger branches claim the same wording.
+
+    The within-one-description version of this comparison is `QL003`/`near_duplicates`;
+    this runs the identical stem-overlap-with-polarity test between the branch segments
+    of every pair of *different* skills instead of between segments of one description.
+    A skill compares against itself constantly by construction (every segment shares
+    stems with the rest of its own list) - `na == nb` is what keeps that out.
+    """
+    entries = []
+    for s in skills:
+        if not s.ok or s.slash_only or not s.description:
+            continue
+        name = s.name or s.folder
+        for seg, st, neg in branch_segments(s.description):
+            entries.append((name, s.folder, s.root, seg, st, neg))
+    out, seen = [], set()
+    for i, (na, fa, ra, sa, sta, nega) in enumerate(entries):
+        for nb, fb, rb, sb, stb, negb in entries[i + 1:]:
+            if na == nb or nega != negb:
+                continue
+            small = min(len(sta), len(stb))
+            if small < 3 or len(sta & stb) / small < threshold:
+                continue
+            pair = tuple(sorted((na, nb)))
+            key = pair + (sa[:48], sb[:48])
+            if key in seen:
+                continue
+            seen.add(key)
+            f = Finding("EV007",
+                       f"`{na}` \"{sa[:48]}\" and `{nb}` \"{sb[:48]}\" claim the same "
+                       f"wording - only one can win", severity="warning",
+                       where="SKILL.md", skill=fa)
+            f.root = ra
+            out.append(f)
+    return out
+
+
 def lines_of(pattern, text, limit=3):
     """Line numbers of the first `limit` matches, for a message that can be checked."""
     out = []
@@ -182,6 +404,20 @@ def check(skill, cfg=None, registry=None):
         return out
     desc = skill.description
 
+    # QL015 - QL002 turned round. With `disable-model-invocation: true` the description
+    # never reaches the model's context, so routing wording in it is addressed to a reader
+    # who is not there, spent where the only reader left needs a line about what the
+    # command does.
+    if desc and skill.slash_only:
+        m = ROUTER_RE.search(desc)
+        quoted = QUOTED_RE.findall(desc)
+        if m or len(quoted) >= QUOTED_MIN:
+            what = (f'"{m.group(0)}"' if m else
+                    f"{len(quoted)} quoted wordings ({', '.join(quoted[:2])}, ...)")
+            out.append(Finding("QL015", f"{what} - this skill is user-invoked only, so the "
+                                        f"model never sees its description; routing "
+                                        f"wording here has no reader", where="SKILL.md"))
+
     # QL002 / QL003 / QL009 - the description as a context pointer
     if desc and not skill.slash_only:
         if not TRIGGER_RE.search(desc):
@@ -190,6 +426,11 @@ def check(skill, cfg=None, registry=None):
         for a, b in near_duplicates(desc)[:2]:
             out.append(Finding("QL003", f"\"{a}\" and \"{b}\" are the same branch written "
                                         f"twice", where="SKILL.md"))
+        # QL014 - the pair QL003 skips, asked the other question
+        for a, b, overlap in boundary_pairs(desc)[:1]:
+            out.append(Finding("QL014", f"\"{b}\" fences out wording that \"{a}\" claims "
+                                        f"({overlap:.0%} of the shorter phrase's topic "
+                                        f"words are shared)", where="SKILL.md"))
         if re.search(r"\b" + re.escape(skill.folder) + r"\b", desc, re.I):
             out.append(Finding("QL009", f"description repeats `{skill.folder}`", where="SKILL.md"))
         m = SELF_TALK_RE.search(desc)
@@ -283,15 +524,56 @@ def check(skill, cfg=None, registry=None):
             continue
         try:
             with open(f"{skill.root}/{rel}", encoding="utf-8", errors="replace") as fh:
-                lines = fh.read().split("\n")
+                text = fh.read()
         except OSError:
             continue
-        for n, line in enumerate(lines, 1):
-            if line.lstrip().startswith(("#", "//", "*")):
-                continue
-            m = INTERACTIVE_RE.search(line)
-            if m:
-                out.append(Finding("QL011", f"`{m.group(0).strip()}` waits for a human",
-                                   where=rel, line=n))
-                break
+        found = _interactive_call(text) if rel.lower().endswith(".py") else None
+        if found is None:                  # not Python, or Python that does not parse
+            for n, line in enumerate(text.split("\n"), 1):
+                if line.lstrip().startswith(("#", "//", "*")):
+                    continue
+                m = INTERACTIVE_RE.search(line)
+                if m:
+                    found = (m.group(0).strip(), n)
+                    break
+        if found:
+            out.append(Finding("QL011", f"`{found[0]}` waits for a human",
+                               where=rel, line=found[1]))
     return out
+
+
+# The Python calls that stop for a person at a terminal, by the module that owns them.
+PROMPT_CALLS = {"getpass": {"getpass"}, "click": {"prompt", "confirm"},
+                "prompts": {"confirm", "select"}}
+PROMPT_MODULES = {"inquirer", "questionary"}      # every call on these asks something
+
+
+def _interactive_call(text):
+    """(what, line) for the first call that waits for a person, () for none, None if unparsed.
+
+    Read off the syntax tree for Python, where the line pattern misfired on data: a list of
+    standard-library module names carries the word `getpass`, and so does a docstring about
+    passwords, and neither waits for anyone. Only a call counts - `input(...)`,
+    `getpass.getpass(...)` or `getpass(...)` imported by name, `click.prompt(...)`.
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    by_name = {"input", "raw_input"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in PROMPT_CALLS:
+            by_name |= {a.asname or a.name for a in node.names
+                        if a.name in PROMPT_CALLS[node.module]}
+    calls = sorted((n for n in ast.walk(tree) if isinstance(n, ast.Call)),
+                   key=lambda n: (n.lineno, n.col_offset))
+    for node in calls:
+        f = node.func
+        if isinstance(f, ast.Name) and f.id in by_name:
+            return f"{f.id}(", node.lineno
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            base = f.value.id
+            if f.attr in PROMPT_CALLS.get(base, ()) or base in PROMPT_MODULES:
+                return f"{base}.{f.attr}(", node.lineno
+    return ()

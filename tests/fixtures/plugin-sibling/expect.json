@@ -1,0 +1,7 @@
+{
+  "note": "A skill that points at a sibling command one directory up. It passes the structure rules because the pointer leaves the skill, and stops working the moment it is installed on its own.",
+  "command": "publish",
+  "expect": [
+    "PB008"
+  ]
+}

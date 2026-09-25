@@ -10,8 +10,8 @@
         "re:balance",
         "not:could not"
       ],
-      "files": [
-        "ledger.csv"
+      "outputs": [
+        {"path": "ledger.csv", "contains": ["Bakery Nord", "12.40"]}
       ],
       "max_tool_calls": 6
     },

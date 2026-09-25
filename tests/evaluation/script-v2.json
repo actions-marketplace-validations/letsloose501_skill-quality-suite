@@ -31,13 +31,16 @@
           ]
         ],
         "creates": [
-          "ledger.csv"
+          {"path": "ledger.csv", "content": "2026-09-18,Bakery Nord,12.40"}
         ],
         "duration_s": 5.0,
         "tokens_in": 2900,
         "tokens_out": 260,
         "cost_usd": 0.015,
-        "turns": 2
+        "turns": 2,
+        "skills": [
+          "sqs-under-test:ledger-lite"
+        ]
       },
       "bare": true
     },
@@ -75,7 +78,10 @@
         "tokens_in": 2400,
         "tokens_out": 60,
         "cost_usd": 0.012,
-        "turns": 1
+        "turns": 1,
+        "skills": [
+          "ledger-lite"
+        ]
       },
       "bare": true
     },

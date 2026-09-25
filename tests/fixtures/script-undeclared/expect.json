@@ -1,0 +1,6 @@
+{
+  "note": "`export.py` needs `openpyxl`, `requests` and `yaml`, and the skill says so nowhere. The prose is built to collide: it says YAML (the format) and requests (the English word), which a plain word match reads as declaring both packages - watched doing exactly that on real skills. Only a line that installs or imports a package counts.",
+  "expect": [
+    "CB006"
+  ]
+}

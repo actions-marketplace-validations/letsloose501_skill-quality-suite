@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 72 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 99 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -21,6 +21,83 @@ Each rule carries two gradings that are about **the check**, not about the skill
 - **false positives** - when the thing *is* there, how often it is nonetheless intended. `README.md` inside a skill folder is a finding and also exactly what a repository-shaped skill does.
 
 `--min-confidence high` keeps the facts and drops the heuristics, which is the gate you can leave switched on in CI.
+
+## capabilities (CBxxx)
+
+
+
+| Code | Severity | Confidence | False positives | Autofix | What it is |
+|---|---|---|---|---|---|
+| `CB001` | info | medium | medium | no | Bundled script can reach the network |
+| `CB002` | info | high | low | no | Bundled script can spawn a process |
+| `CB003` | info | high | low | no | Bundled script can read the environment |
+| `CB004` | info | high | low | no | Commands run when the skill loads |
+| `CB005` | warning | high | low | no | Bundled script's capabilities cannot be read |
+| `CB006` | warning | high | low | no | Bundled script needs a package the skill never names |
+
+### CB001 - Bundled script can reach the network
+
+**Why it matters.** An import or a command a bundled script carries - `requests`, `socket`, `curl` - gives it the ability to reach the network, independent of whether the specific call looks dangerous. `security` flags a call that is dangerous on its own; this names the capability so an installer can decide before reading every line.
+
+**Fix.** Not a defect - confirm the destination matches what the skill claims to do.
+
+### CB002 - Bundled script can spawn a process
+
+**Why it matters.** An import of `subprocess`/`multiprocessing`, or a call to `os.system`/`os.popen`/`os.exec*`, gives the script the ability to run another program with the permissions the agent has.
+
+**Fix.** Not a defect - confirm the process it spawns matches what the skill claims to do.
+
+### CB003 - Bundled script can read the environment
+
+**Why it matters.** `os.environ`/`os.getenv` gives a script access to whatever the process's environment carries, which commonly includes API keys and tokens set for other tools.
+
+**Fix.** Not a defect - confirm the script only reads the variables it names needing.
+
+### CB004 - Commands run when the skill loads
+
+**Why it matters.** `!`command`` in the body, and every line of a block opened with ```!, runs on the machine before the model is sent the skill - the output replaces the placeholder. It never prompts: a permission rule or the skill's own `allowed-tools` lets it through, or the invocation aborts. A skill that pre-approves its own injected commands runs them silently on every load, before anything in it has been read. A plain code block does not stop it: watched, an injection inside one ran like any other.
+
+**Fix.** Read each command as you would a hook. If the skill pre-approves them in `allowed-tools`, that approval is the author's, not yours.
+
+### CB005 - Bundled script's capabilities cannot be read
+
+**Why it matters.** The script imports a module by a name it computes, reaches into `os`, `subprocess` or `builtins` by a computed attribute name, or passes code built at run time to `exec`/`eval`. Whatever that line does is decided by data, not by the file, so the other capability rules stay silent about it - and a silent manifest reads as "can do nothing". The same indirection written with constants is followed and reported as the capability it spells.
+
+**Fix.** Write the import or the call out plainly. If the name really has to come from data, check it against a fixed list first, and say in the skill what the list is.
+
+### CB006 - Bundled script needs a package the skill never names
+
+**Why it matters.** A script imports a package outside the standard library, outside `try: ... except ImportError`, and neither the skill's text, a requirements file nor the script's inline PEP 723 block names it. The agent finds out halfway through the task, as a traceback, on every machine that does not happen to have it - and the author's machine always does.
+
+**Fix.** Name the package where the agent reads before running the script - a line in SKILL.md ("needs `pymupdf`: `pip install pymupdf`"), a requirements file, or a PEP 723 block the script runs under with `uv run`. If the script can do without it, import it inside `try`/`except ImportError`.
+
+## cases (CSxxx)
+
+
+
+| Code | Severity | Confidence | False positives | Autofix | What it is |
+|---|---|---|---|---|---|
+| `CS001` | warning | medium | medium | no | Promise with no instruction behind it |
+| `CS002` | info | low | medium | no | Expectation the description never claimed |
+| `CS003` | info | low | high | no | Capability the skill never announces |
+
+### CS001 - Promise with no instruction behind it
+
+**Why it matters.** The description commits to leaving something behind - a file, a note, a report - and no step in the body writes, saves or files anything. This skill passes `--trigger`, passes a hand-written `--runtime` set, and still does not deliver what it advertised, which is the failure nothing else here catches because nothing about it looks broken.
+
+**Fix.** Either the body is missing the step that produces it, or the description is promising work the skill does not do. `QL004` reports the same gap as a statistic; this names the clause.
+
+### CS002 - Expectation the description never claimed
+
+**Why it matters.** A sentence in `evals/expectations.md` shares no wording with the description. The top row of the disagreement table: not a broken skill, the wrong skill for what you wrote beside it.
+
+**Fix.** Not a defect. Either you are adopting the wrong skill, or the expectation belongs beside a different one - the finding names the closer skill when the tree holds one.
+
+### CS003 - Capability the skill never announces
+
+**Why it matters.** A bundled script reaches the network (`CB001`) or spawns a process (`CB002`) and no wording anywhere in the skill says so. The bottom row of the disagreement table: it does `Z` and never mentioned it. `capabilities` says what a skill CAN do to the machine; this says you were not told. Reading the environment (`CB003`) is out of scope on purpose - the words an author would announce it with are ordinary prose in the same breath, so the test cannot tell an announcement from the subject matter.
+
+**Fix.** Not a defect - say so in the body, in the sentence that sends the agent to the script.
 
 ## compat (CPxxx)
 
@@ -83,6 +160,11 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 | `EV004` | warning | high | low | no | Malformed evals |
 | `EV005` | info | high | low | no | Thin trigger set |
 | `EV006` | info | high | low | no | Routing runner in the tree was not executed |
+| `EV007` | warning | low | high | no | Semantic overlap between two skills |
+| `EV008` | warning | high | low | no | Eval case cannot pass or fail |
+| `EV009` | error | high | low | no | Eval case cannot run as written |
+| `EV010` | info | high | medium | no | Trigger cases repeat the description |
+| `EV011` | warning | high | low | no | Eval case uses `files` for an output |
 
 ### EV001 - Routing invariant broken
 
@@ -120,6 +202,36 @@ Whether anything would notice the skill breaking: the eval files, the routing in
 
 **Fix.** If the tree is yours, pass `--trust-target`. If it is not, a missing routing report is the correct outcome.
 
+### EV007 - Semantic overlap between two skills
+
+**Why it matters.** Two skills' trigger branches cover the same wording, so only one of them can win a request that names it - this is `EV001`'s claim made without executing the tree's own `run_evals.py`, so it works on any skill tree, not only one that ships its own routing runner.
+
+**Fix.** Read the two descriptions named in the finding; usually one needs to name the other and defer, the way `QL008` and `QL013` already ask for.
+
+### EV008 - Eval case cannot pass or fail
+
+**Why it matters.** A case in `evals/evals.json` carries no `assertions`, `outputs` or `judge`, so nothing decides whether a run of it passed. `eval --runtime` would run it on both arms, spend the money, and report it as `ungraded`. skill-creator's `expectations` do not count: a model grades them there, and nothing reads them here.
+
+**Fix.** Add one checkable assertion - a literal the answer must contain, a `re:` pattern, an output the run has to create, with `contains` for what has to be in it, or a `judge` program whose exit code decides.
+
+### EV009 - Eval case cannot run as written
+
+**Why it matters.** A case is still a draft (a field opens with `TODO`), names a fixture that is not in the skill, carries a `re:` assertion that does not compile, or has an output that is malformed, outside the run's directory, or a binary format checked with `contains`, or a `judge` that is not an argv list or names a script the skill does not have. The first measures nothing, the second hands the agent a task about a file it never receives, and the rest crash the grader or fail every run on both arms. `eval --runtime` refuses the whole set until it is fixed.
+
+**Fix.** Fill the draft, add the fixture under the skill or drop it, fix the pattern; check a binary output by existence, or have the task also write a text summary and check that.
+
+### EV010 - Trigger cases repeat the description
+
+**Why it matters.** A should-trigger case that contains, word for word, a wording the description quotes as a trigger can pass by string match alone. It shows the listed words are there; it says nothing about the phrasings a person uses that the author did not think to list, which is what a trigger set is for. Measured on a real routing set of 105 positives: 37 were this.
+
+**Fix.** Keep one such case per branch as a sanity check if you like, and write the rest the way the requests actually arrive - with context, in other words, without the listed phrase.
+
+### EV011 - Eval case uses `files` for an output
+
+**Why it matters.** In skill-creator's `evals.json`, which this set is read as, `files` are input paths inside the skill. This suite used to read them as outputs, so an entry that is not a file in the skill is still graded that way - the case runs - but the same file means something else to every other tool that reads it, and a missing input looks exactly like an old-style output.
+
+**Fix.** Move outputs to `outputs`. If the entry was an input, put the file under the skill at that path.
+
 ## publish (PBxxx)
 
 What has to be true before the skill leaves the machine it was written on. Half of these are correct-and-intended for a skill that stays home.
@@ -132,6 +244,14 @@ What has to be true before the skill leaves the machine it was written on. Half 
 | `PB004` | warning | high | medium | no | Text not in the declared publication language |
 | `PB005` | warning | high | low | no | Version drift |
 | `PB006` | info | medium | medium | no | Private material in a skill about to be published |
+| `PB007` | info | high | low | no | Package wires hooks beside this skill |
+| `PB008` | warning | medium | medium | no | Skill points at a package sibling |
+| `PB009` | info | high | low | no | Package installed from an unreviewed checkout |
+| `PB010` | warning | high | medium | no | Instructions changed, the version did not |
+| `PB011` | warning | medium | medium | no | Call surface changed, the version moved by a patch |
+| `PB012` | warning | medium | medium | no | Update reaches further than the version before it |
+| `PB013` | warning | high | low | no | Version went backwards |
+| `PB014` | warning | medium | medium | no | README installs from somewhere this does not ship |
 
 ### PB001 - No license
 
@@ -169,6 +289,54 @@ What has to be true before the skill leaves the machine it was written on. Half 
 
 **Fix.** Strip it, or keep the skill unpublished.
 
+### PB007 - Package wires hooks beside this skill
+
+**Why it matters.** `hooks/hooks.json` runs a command on its event whether or not the model ever routes to this skill. A clean verdict on SKILL.md next to an unread hooks/ directory is the most convincing wrong answer the suite can give.
+
+**Fix.** Not a defect - read hooks/hooks.json before trusting the package, the way you would read a script this skill calls.
+
+### PB008 - Skill points at a package sibling
+
+**Why it matters.** A command, agent or script one directory above `skills/<name>/`, or a path through `${CLAUDE_PLUGIN_ROOT}`. The structure rules only resolve pointers inside the skill, so this one is invisible to them and breaks in silence the moment the skill is copied out of the plugin.
+
+**Fix.** Declare the dependency in prose, or bring what it needs inside the skill.
+
+### PB009 - Package installed from an unreviewed checkout
+
+**Why it matters.** The marketplace entry's `source` names a remote repository, archive or command - the files under review may be a checkout nobody has looked at.
+
+**Fix.** Not a defect - a fact about where the package came from.
+
+### PB010 - Instructions changed, the version did not
+
+**Why it matters.** A skill that was improved and still carries its old version is a skill nobody can tell apart from the one they installed. `PB005` catches two files contradicting each other; this catches a number that contradicts nothing and describes nothing, which is why it goes unnoticed for months.
+
+**Fix.** Bump the patch, `0.0.1` at a time. Nothing rewrites it for you - the version is your claim about your own work.
+
+### PB011 - Call surface changed, the version moved by a patch
+
+**Why it matters.** `name`, the invocation mode and `allowed-tools` decide how a skill is called. Moving one of them and bumping only the patch tells every reader the upgrade is safe to take without reading it.
+
+**Fix.** Bump the minor or the major, whichever the break deserves.
+
+### PB012 - Update reaches further than the version before it
+
+**Why it matters.** A skill keeps the trust it earned when somebody read it and installed it, while its content moves underneath. This update pre-approves a tool or a scope the earlier copy did not, or a bundled script gained network access or started spawning processes. Either one is a decision the person who installed the earlier copy never made.
+
+**Fix.** Read the new reach before taking the update. If it is yours and intended, say so in the changelog and bump the minor - the reader deciding whether to update is the one who needs to know.
+
+### PB013 - Version went backwards
+
+**Why it matters.** The declared version is lower than the one at `--since`. Replacing a patched release with an older one that still looks correctly published is how a fixed hole comes back without anybody editing anything.
+
+**Fix.** If the rollback is deliberate, ship it as a new, higher version that carries the old content. A number that only ever rises is what lets a reader trust it.
+
+### PB014 - README installs from somewhere this does not ship
+
+**Why it matters.** An install command in the README names this project under an owner its own git remotes and marketplace entry do not know, or installs this plugin from a marketplace other than the one listing it. A project that moved while its instructions did not sends every new user to an account that is no longer the author's, and whoever takes that name next receives the installs.
+
+**Fix.** Point the command at where the project lives now. If this is a fork telling people to install upstream, add upstream as a git remote and the finding goes away on its own.
+
 ## quality (QLxxx)
 
 Whether the instructions read like instructions. The module with the most room to lie, so every rule here names a file and a line.
@@ -188,6 +356,8 @@ Whether the instructions read like instructions. The module with the most room t
 | `QL011` | error | medium | medium | no | Bundled script waits for input |
 | `QL012` | info | high | low | no | Unpinned one-off command |
 | `QL013` | info | medium | medium | no | Description rules out a topic |
+| `QL014` | warning | medium | medium | no | Fuzzy boundary between fire and do-not-fire |
+| `QL015` | warning | medium | low | no | User-invoked skill's description is written for the router |
 
 ### QL001 - Description too short to carry triggers
 
@@ -267,6 +437,18 @@ Whether the instructions read like instructions. The module with the most room t
 
 **Fix.** Move the boundary into the body, which is read after the skill has already been chosen. Keep it in the description only when a model-invoked neighbour would otherwise take the work, and then name that neighbour rather than its topic.
 
+### QL014 - Fuzzy boundary between fire and do-not-fire
+
+**Why it matters.** An exclusion clause in the description shares its topic words with a clause that claims the work. A description can separate its branches well on average and still be misrouted by one pair like this, because the router matches wording and a negation does not reverse a match. `QL003` compares two clauses that agree and calls the second redundant; this compares two that disagree, where the second reads as a reason to fire rather than a reason to stay quiet.
+
+**Fix.** Make the two sides differ in topic words, not only in the negation - or move the exclusion into the body, which is read after the skill has been chosen.
+
+### QL015 - User-invoked skill's description is written for the router
+
+**Why it matters.** With `disable-model-invocation: true` the description is not in the model's context at all. Trigger wordings, orders to fire or not to fire, and the user spoken of in the third person are addressed to a reader who never sees them - and they take the place of the one thing the remaining reader needs: what the command does when you run it.
+
+**Fix.** Rewrite the description as a one-line menu entry for a person. Keep the routing boundary, if it matters, in the body.
+
 ## security (SExxx)
 
 What an installed skill can do to the machine that loads it. A skill is executable text, and an installed skill is a supply chain.
@@ -279,6 +461,8 @@ What an installed skill can do to the machine that loads it. A skill is executab
 | `SE004` | error | high | low | yes | Hidden or bidirectional Unicode |
 | `SE005` | warning | medium | medium | no | Outbound network call carrying local data |
 | `SE006` | info | high | medium | no | Absolute path naming a user account |
+| `SE007` | info | medium | low | no | Skill vouches for itself |
+| `SE008` | error | medium | low | no | Code decoded before it runs |
 
 ### SE001 - Secret in the skill text
 
@@ -316,6 +500,18 @@ What an installed skill can do to the machine that loads it. A skill is executab
 
 **Fix.** Use `~`, or an environment variable.
 
+### SE007 - Skill vouches for itself
+
+**Why it matters.** A guarantee of safety, an endorsement by a named vendor, a count of users who trust it, or an invitation to skip review. Nothing in a skill can certify the skill: whoever wrote the files wrote the badge too. It is aimed at the router choosing between skills and at the person deciding whether to install, and it asks both to take on faith what they should check. The router's half is a description that ranks the skill above its neighbours ("the best tool", "better than any other"): rewriting a tool's description that way moved its selection rate from about 20% to 81% in one published attack.
+
+**Fix.** Remove the claim, or replace it with something a reader can verify - a link to an audit, a test suite, a repository with history. In a description, say when the skill applies, not how it compares.
+
+### SE008 - Code decoded before it runs
+
+**Why it matters.** A script or an instruction decodes text - base64, hex, a compressed or marshalled blob - and executes the result: a decoder piped into a shell, PowerShell's encoded-command switch, `eval` over a decoded string, or Python's `exec`/`eval` over a decoder's output. Nothing on the page says what runs, which is the purpose of writing it that way; no instruction a person has to trust needs to be unreadable to them.
+
+**Fix.** Put the code in the file in plain text. If it is a vendored binary or data, ship it as a file with its source named, not as a string that is executed.
+
 ## spec (SPxxx)
 
 Agent Skills specification conformance. Everything here is something a skill survives locally and fails on publication, which is why it is a separate pass: the author never sees it until it is too late.
@@ -341,6 +537,7 @@ Agent Skills specification conformance. Everything here is something a skill sur
 | `SP017` | warning | high | medium | no | Reference nested too deep |
 | `SP018` | error | high | low | no | XML tag in `name` or `description` |
 | `SP019` | error | high | low | no | Reserved word in `name` |
+| `SP020` | warning | high | low | no | Bare angle bracket in `description` |
 
 ### SP001 - No frontmatter
 
@@ -455,6 +652,12 @@ Agent Skills specification conformance. Everything here is something a skill sur
 **Why it matters.** `anthropic` and `claude` are reserved in a skill name by the validation rules, and the refusal comes at upload time, after the skill is finished.
 
 **Fix.** Rename the skill after what it does.
+
+### SP020 - Bare angle bracket in `description`
+
+**Why it matters.** Not a tag, so `SP018` stays quiet - but the validator the reference skill-creation tooling ships refuses any `<` or `>` in a description, and its packager runs that validator before packaging. An arrow or a `<10MB` is enough for a skill that works locally to be refused there.
+
+**Fix.** Write it out: "to" for an arrow, "under 10 MB" for a comparison.
 
 ## structure (STxxx)
 

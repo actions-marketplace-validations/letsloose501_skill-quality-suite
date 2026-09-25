@@ -1,5 +1,5 @@
 {
-  "note": "One violation family per skill folder, so a failure names the rule rather than a pile. The folders are deliberately ordinary otherwise.",
+  "note": "One violation family per skill folder, so a failure names the rule rather than a pile. The folders are deliberately ordinary otherwise. `bare-bracket` carries an arrow in its description: not a tag, and still refused by the reference packager.",
   "expect": [
     "SP001",
     "SP004",
@@ -9,7 +9,8 @@
     "SP015",
     "SP017",
     "SP018",
-    "SP019"
+    "SP019",
+    "SP020"
   ],
   "reject": [
     "SP002",

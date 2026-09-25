@@ -65,6 +65,41 @@ the finding and by the fixer.
 An absolute path naming whoever wrote the skill. Harmless at home, and information
 disclosure once published.
 
+### A skill vouching for itself (`SE007`)
+
+A safety guarantee ("100% safe"), an endorsement by a named vendor ("verified by ..."), a
+count of users who trust it, an invitation to skip review. Nothing in a skill can certify
+the skill: whoever wrote the files wrote the badge. The claim works on the router choosing
+between skills and on the person deciding whether to install, and it asks both to accept
+what they should check.
+
+The words themselves are everywhere in honest skills - across 57 real ones, `verified`,
+`safe`, `official` and their Russian kin occur 217 times, as what a skill does ("each
+verified by a panel of agents") or where a neighbour came from. Only the self-certifying
+shapes count, and a quoted one is exempt, the same way `SE003` exempts a quotation: a skill
+that warns a reader about such badges has to be able to write one down. `info`, because
+the finding is a claim to verify, not a verdict.
+
+### Commands that run on load (`CB004`)
+
+Claude Code runs `` !`command` `` in a skill's body, and every line of a block opened
+with ` ```! `, before the model is sent the skill: the output replaces the placeholder.
+It never prompts. A permission rule or the skill's own `allowed-tools` lets the command
+through, or the invocation aborts - so a skill that pre-approves its own injected
+commands runs them silently on every load, before a word of it has been read. That is
+the count the finding leads with.
+
+Reported from the `capabilities` module - `sqs.py capabilities` or any `check`, not
+`sqs.py security` - at `info`, one finding per skill: a skill that
+documents the syntax carries dozens of examples. **A plain code block does not stop an
+injection.** The documentation does not say so either way, so it was watched: a probe
+skill with `` !`echo RAN_FENCED` `` inside an ordinary code block came back to the model
+as `RAN_FENCED`. The finding still says how many sit in code blocks, because those read
+as examples to whoever wrote them - and a command without permission aborts the load
+outside auto mode, so a guide to the syntax can fail to load on its own examples;
+`KEY=!`cmd`` is not counted at all, because the documentation says the inline form
+counts only at a line start or after whitespace.
+
 ## What a finding looks like
 
 Every one of them names a file and a line, so every one is checkable:

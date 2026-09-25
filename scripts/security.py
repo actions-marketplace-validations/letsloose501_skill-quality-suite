@@ -14,6 +14,7 @@ a dangerous pattern avoids being reported for containing it.
 sqs-allow-file: SE001, SE002, SE003, SE005
 This module holds the patterns it hunts for, so it matches every one of them.
 """
+import ast
 import re
 
 from core import Finding
@@ -105,11 +106,133 @@ EXFIL = re.compile(
     r"(?:curl|wget)[^\n]{0,200}?(?:--data-binary|--data|-d|-F|--upload-file|-T)\s+[\"']?[@<][^\s\"']+"
     r"|Invoke-RestMethod[^\n]{0,200}-InFile", re.I)
 
-# An absolute path that names whoever wrote the skill.
+# An absolute path that names whoever wrote the skill. The name needs one character that
+# is not a dot: `C:\Users\...\Downloads` is the ordinary way documentation elides an
+# account, and reading `...` as the account's name was a finding against every such page.
 PERSONAL = re.compile(
-    r"(?:[A-Za-z]:\\Users\\|/home/|/Users/)([A-Za-z0-9._-]+)")
+    r"(?:[A-Za-z]:\\Users\\|/home/|/Users/)([A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*)")
 PERSONAL_GENERIC = {"user", "username", "you", "youruser", "runner", "root", "me", "name",
                     "administrator", "public", "default", "shared"}
+
+
+# The skill vouching for itself: a safety guarantee, an endorsement by a named vendor, a
+# user count, an invitation to skip review. A selection-stage attack - it works on the
+# router and on the person deciding whether to install - and the claim is exactly the
+# thing a reader has to verify rather than accept.
+#
+# Narrow on purpose. The words are everywhere in honest skills: measured on 308 texts
+# across 57 real skills, `verified`, `safe`, `official`, `проверено` and their kin occur
+# 217 times, as what the skill DOES ("each verified by a panel of agents", "проверено
+# 12.09.2026") or as a neighbour's provenance ("official, already installed"). Only the
+# self-certifying shapes below count, and none of those 217 matches one.
+TRUST_RE = re.compile(
+    r"\b(?:100\s*%|completely|totally|fully|guaranteed)\s+(?:safe|secure|harmless|trusted)\b"
+    r"|\b(?:certified|verified|approved|endorsed|audited|vetted|reviewed)\s+(?:and\s+\w+\s+)?"
+    r"by\s+(?:anthropic|openai|google|microsoft|github|the\s+(?:claude|security)\s+team)\b"
+    r"|\btrusted\s+by\s+(?:over\s+|more\s+than\s+)?[\d,.]+\s*[km]?\+?\s*"
+    r"(?:users|developers|teams|companies)\b"
+    r"|\b(?:no\s+need|not\s+necessary|unnecessary)\s+to\s+(?:review|audit|inspect|check)\b"
+    r"|\bsafe\s+to\s+(?:run|install|use)\s+without\s+(?:review|reading|checking)\b"
+    r"|\bofficial(?:ly)?\s+(?:certified|verified|endorsed|approved)\b"
+    r"|(?:100\s*%|\bполностью|\bабсолютно|\bгарантированно)\s+безопас\w*"
+    r"|\b(?:проверен|одобрен|сертифицирован)\w*\s+(?:anthropic|openai|google|microsoft|github)\b"
+    r"|\bне\s+(?:нужно|надо|требуется)\s+(?:проверять|ревьюить|читать\s+перед)", re.I)
+
+
+# Code that arrives encoded and is run once decoded: nothing on the page says what it
+# does, and no honest skill needs its instructions unreadable. The shell, PowerShell and
+# JavaScript shapes are read by pattern; Python is read by `ast` below, so these are not
+# applied to `.py` files. In a `.md` the Python shape is a pattern too - an instruction
+# telling the agent to run `python -c "exec(base64...)"` is the same payload.
+DECODE_EXEC = re.compile(
+    r"base64\s+(?:-d|-D|--decode)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba|z|k|da)?sh\b"
+    r"|\beval\b[^\n]{0,40}\$\([^\n)]*base64\s+(?:-d|-D|--decode)"
+    r"|\b(?:ba|z)?sh\s+-c\s+[\"']?\$\([^\n)]*base64\s+(?:-d|-D|--decode)"
+    r"|\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]*\s-e(?:nc|ncodedcommand)?\s+[A-Za-z0-9+/]{16,}={0,2}"
+    r"|FromBase64String[^\n]*\|\s*(?:iex|Invoke-Expression)\b"
+    r"|\b(?:iex|Invoke-Expression)\b[^\n]*FromBase64String"
+    r"|\b(?:eval|Function)\s*\(\s*(?:atob|Buffer\.from)\s*\("
+    r"|\b(?:exec|eval)\s*\(\s*(?:base64\.\w*decode|codecs\.decode|bytes\.fromhex"
+    r"|zlib\.decompress|marshal\.loads|binascii\.(?:a2b_\w+|unhexlify))", re.I)
+
+# Modules whose job is turning bytes nobody can read into bytes something can run.
+DECODE_MODULES = {"base64", "codecs", "binascii", "zlib", "bz2", "lzma", "gzip", "marshal"}
+
+
+def _py_decode_exec(text):
+    """[(line, what)] - `exec`/`eval` whose code came out of a decoder, in a Python file.
+
+    Followed through one kind of indirection only: a name assigned from a decoder call
+    anywhere in the file. That is the shape a payload is written in; data flow through
+    functions is beyond what a syntax tree can promise, and claiming it would be a guess.
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    decoders = set()                  # `from base64 import b64decode` and friends
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in DECODE_MODULES:
+            decoders |= {a.asname or a.name for a in node.names}
+
+    def decoder_in(expr):
+        for n in ast.walk(expr):
+            if not isinstance(n, ast.Call):
+                continue
+            f = n.func
+            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and (
+                    f.value.id in DECODE_MODULES or (f.value.id == "bytes"
+                                                     and f.attr == "fromhex")):
+                return f"{f.value.id}.{f.attr}"
+            if isinstance(f, ast.Name) and f.id in decoders:
+                return f.id
+        return None
+
+    tainted = {}
+    for _ in range(2):                # a second pass carries `a = decode(); b = a`
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                src = decoder_in(node.value) or next(
+                    (tainted[n.id] for n in ast.walk(node.value)
+                     if isinstance(n, ast.Name) and n.id in tainted), None)
+                if src:
+                    for t in node.targets:
+                        if isinstance(t, ast.Name):
+                            tainted[t.id] = src
+    out = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in ("exec", "eval") and node.args):
+            arg = node.args[0]
+            src = decoder_in(arg) or next((tainted[n.id] for n in ast.walk(arg)
+                                           if isinstance(n, ast.Name) and n.id in tainted),
+                                          None)
+            if src:
+                out.append((node.lineno, f"`{node.func.id}` runs code decoded by `{src}`"))
+    return out
+
+
+# The description ranking the skill above the others it competes with. The same claim as
+# TRUST_RE's, aimed at the router rather than the installer: rewriting a tool's name and
+# description moved its selection rate from about 20% to 81% (ToolTweak, arXiv 2510.02554),
+# and "best" is the word the preference-manipulation work found models reward.
+#
+# Read in the description only. The router sees nothing else when it chooses, and the
+# bodies are full of the same words about their subject - measured over 324 skill texts,
+# "truly the best option", "Best choice for local tools", "| Best Tool |": four matches,
+# none of them a skill praising itself. Over the 57 descriptions here and 200 earlier
+# versions of them in git: none. "best practices" is a topic, not a ranking, and does not
+# match.
+RANK_RE = re.compile(
+    r"\b(?:the\s+)?(?:best|most\s+(?:powerful|capable|reliable|accurate|advanced))\s+"
+    r"(?:skill|tool|plugin|choice|option|agent)s?\b"
+    r"|\bbetter\s+than\s+(?:any|all|every|other|the\s+other)\b"
+    r"|\bthe\s+only\s+(?:skill|tool|plugin)\b"
+    r"|\bprefer\s+this\s+(?:skill|tool|plugin)\b"
+    r"|\binstead\s+of\s+(?:any|all|other)\s+(?:other\s+)?(?:skill|tool|plugin)s?\b"
+    r"|\bлучш(?:ий|ая|ее)\s+(?:скилл|инструмент|выбор|плагин)\w*"
+    r"|\bвместо\s+(?:любого|любых|других|остальных)\s+(?:скилл|инструмент|плагин)\w*"
+    r"|\bединственн\w+\s+(?:скилл|инструмент|плагин)\w*", re.I)
 
 
 QUOTED_RE = re.compile(r"«[^»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|'[^'\n]{4,}'")
@@ -120,9 +243,16 @@ def quoted_spans(line):
     return [(m.start(), m.end()) for m in QUOTED_RE.finditer(line)]
 
 
-def scan_line(line):
-    """Every finding a single line carries, as (code, message)."""
+def scan_line(line, python=False):
+    """Every finding a single line carries, as (code, message).
+
+    `python` says the line is from a `.py` file, where `SE008` is read off the syntax
+    tree instead - the pattern would see the same call twice under two wordings.
+    """
     out = []
+    if not python and DECODE_EXEC.search(line):
+        out.append(("SE008", "runs code that is decoded first - what it does is not on "
+                             "the page"))
     for label, rx in SECRETS:
         if rx.search(line):
             out.append(("SE001", f"{label} committed in the text"))
@@ -141,6 +271,11 @@ def scan_line(line):
         if m and not any(a <= m.start() and m.end() <= b for a, b in spans):
             out.append(("SE003", "text addressed at the agent, overriding its instructions"))
             break
+    # SE007 takes the same quotation exemption as SE003: a skill that teaches a reviewer
+    # to distrust «100% safe» has to be able to write the phrase down.
+    m = TRUST_RE.search(line)
+    if m and not any(a <= m.start() and m.end() <= b for a, b in spans):
+        out.append(("SE007", f"\"{m.group(0)}\" - the skill vouches for itself"))
     found = hidden_in(line)
     if found:
         out.append(("SE004", "hidden characters: " + ", ".join(sorted(found))))
@@ -162,16 +297,34 @@ def check(skill, cfg=None):
             continue
         try:
             with open(f"{skill.root}/{rel}", encoding="utf-8", errors="replace") as f:
-                lines = f.read().split("\n")
+                text = f.read()
         except OSError:
             continue
+        python = rel.lower().endswith(".py")
+        if python:
+            for n, what in _py_decode_exec(text):
+                out.append(Finding("SE008", what, where=rel, line=n))
         seen = set()
-        for n, line in enumerate(lines, 1):
-            for code, msg in scan_line(line):
+        for n, line in enumerate(text.split("\n"), 1):
+            for code, msg in scan_line(line, python):
                 # One line of each kind per file: a path repeated forty times is one
                 # decision to make, not forty.
                 if (code, msg) in seen:
                     continue
                 seen.add((code, msg))
                 out.append(Finding(code, msg, where=rel, line=n))
-    return out
+    return out + _self_ranking(skill)
+
+
+def _self_ranking(skill):
+    """SE007, the router's half - the description placing this skill above the others."""
+    desc = skill.description or ""
+    spans = quoted_spans(desc)
+    m = next((m for m in RANK_RE.finditer(desc)
+              if not any(a <= m.start() and m.end() <= b for a, b in spans)), None)
+    if not m:
+        return []
+    line = next((n for n, l in enumerate(skill.text.split("\n"), 1)
+                 if l.lstrip().startswith("description")), None)
+    return [Finding("SE007", f"\"{m.group(0)}\" - the description ranks the skill above "
+                             f"the ones it competes with", where="SKILL.md", line=line)]

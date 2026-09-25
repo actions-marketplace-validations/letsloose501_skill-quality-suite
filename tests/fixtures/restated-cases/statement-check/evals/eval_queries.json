@@ -1,0 +1,6 @@
+[
+  {"query": "reconcile my statement please", "should_trigger": true},
+  {"query": "can you check the bank export against my ledger", "should_trigger": true},
+  {"query": "the numbers in March.csv and my books disagree, find where", "should_trigger": true},
+  {"query": "what's a good budgeting app", "should_trigger": false}
+]

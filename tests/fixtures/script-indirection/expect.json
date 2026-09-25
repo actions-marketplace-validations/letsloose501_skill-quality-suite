@@ -1,0 +1,14 @@
+{
+  "note": "Every capability in `report.py` is reached by indirection - `getattr(os, 'sys' + 'tem')`, `__import__('urllib.request')`, `from os import environ` - which the plain-import reading missed entirely, and one attribute is picked by the caller, so what it reaches cannot be read at all (CB005). `unpack.py` and `unpack.sh` run code that is decoded first; they are generated at run time, so the repository never carries an executable encoded payload.",
+  "expect": [
+    "CB001",
+    "CB002",
+    "CB003",
+    "CB005",
+    "SE008"
+  ],
+  "generate": [
+    {"path": "folder-report/scripts/unpack.py", "append_payload": "decode_exec_py"},
+    {"path": "folder-report/scripts/unpack.sh", "append_payload": "decode_exec_sh"}
+  ]
+}

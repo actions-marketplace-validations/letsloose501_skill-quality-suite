@@ -35,6 +35,12 @@ THRESHOLD = 0.5
 TRAIN_SHARE = 0.6
 # The guidance asks for about twenty queries, eight to ten on each side.
 SIDE_MIN = 8
+# A per-run spend cap. The routing decision lands in the first turn or two, and the rest
+# of a run is the skill doing its job - work this pass pays for and throws away. Measured
+# on a real tree: one uncapped query cost $0.62 over 19 turns against $0.14 over 4 with
+# the cap on, and both answered the only question being asked. It is a ceiling, not a
+# spend: raise it for a skill whose routing decision genuinely takes longer to appear.
+RUN_BUDGET_USD = 0.12
 
 
 class DatasetError(ValueError):
@@ -55,7 +61,7 @@ def parse_simple_yaml(text, source="<yaml>"):
     items = []
     current = None
     for n, raw in enumerate(text.split("\n"), 1):
-        line = raw.split("#", 1)[0].rstrip() if not raw.strip().startswith("#") else ""
+        line = _strip_comment(raw).rstrip()
         if not line.strip():
             continue
         if line.startswith("- "):
@@ -78,6 +84,26 @@ def parse_simple_yaml(text, source="<yaml>"):
         raise DatasetError(f"{source}:{n}: only a list of `- prompt: ...` items is "
                            f"supported here, got {line.strip()[:40]!r}")
     return items
+
+
+def _strip_comment(raw):
+    """The line without its comment, by YAML's own rule.
+
+    A comment opens at a `#` outside quotes that starts the line or follows whitespace.
+    This used to cut at the first `#` anywhere, so `- prompt: "fix issue #12"` read as
+    `"fix issue` with a stray quote and no error - a real prompt silently rewritten,
+    which is the one failure this parser exists to refuse. `C#` was cut the same way.
+    """
+    quote = None
+    for i, ch in enumerate(raw):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'" and (i == 0 or raw[i - 1] in " \t:-"):
+            quote = ch
+        elif ch == "#" and (i == 0 or raw[i - 1] in " \t"):
+            return raw[:i]
+    return raw
 
 
 def _scalar(value, line, source):
@@ -177,7 +203,8 @@ def measure(queries, skill_name, provider, runs, model, on_event=None):
         for attempt in range(runs):
             if on_event:
                 on_event(q, attempt + 1, runs)
-            run = provider.run(q.text, skill=None, bare=False, model=model, timeout=180)
+            run = provider.run(q.text, skill=None, bare=False, model=model, timeout=180,
+                               max_budget_usd=RUN_BUDGET_USD)
             if not run.ok:
                 continue
             usable += 1
@@ -240,6 +267,10 @@ def evaluate(skill, provider, runs=3, model=None, use_split=True, seed=0, on_eve
             "cases": [{"prompt": q.text, "expected": "trigger" if q.want else "no-trigger",
                        "rate": rate, "runs": usable} for q, rate, usable in rows],
         }
+    if "train" in out["sets"]:
+        from . import regression                                  # noqa: PLC0415
+        gap = regression.split_gap(out)
+        out["split_gap"] = ({"lower": gap[0], "noise": gap[1]} if gap else None)
     return out, ""
 
 
@@ -281,6 +312,14 @@ def render(report):
             why = "did not fire" if c["expected"] == "trigger" else "fired when it should not"
             lines.append(f"      [{c['rate']:.2f}] {why}: {c['prompt'][:66]}")
         lines.append("")
+    gap = report.get("split_gap")
+    if gap and gap["lower"] > 0:
+        lines += [f"  Train F1 is above validation by more than the runs vary (at least "
+                  f"{gap['lower']:.0%}).",
+                  "  One study of production descriptions reads that as scopes that "
+                  "genuinely overlap -",
+                  "  a neighbour covers the same requests - which rewording does not "
+                  "fix: draw the boundary", "  between the two skills instead.", ""]
     lines += ["  F1 is printed, not scored: it treats a miss and a false fire as equally "
               "bad, and in a",
               "  tree of skills they are not. Tune the description against the train "

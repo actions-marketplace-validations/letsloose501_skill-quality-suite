@@ -1,0 +1,9 @@
+{
+  "note": "The two skills the disagreement table is named after, plus the row that meets the capability manifest. `summary-writer` promises a written summary and every step in its body only reads and answers - it passes --trigger, it would pass a hand-written --runtime set, and it never delivers what it advertised. `chart-plotter` does exactly what it promised, and the expectation written beside it asked for something else entirely: reported as the wrong skill, not as a defect, and it names the sibling that is closer. `chart-plotter` also shells out to a plotting binary and never says so anywhere.",
+  "command": "cases",
+  "expect": [
+    "CS001",
+    "CS002",
+    "CS003"
+  ]
+}

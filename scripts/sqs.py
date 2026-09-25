@@ -3,10 +3,11 @@
 
     sqs.py check                     structure + spec + quality + compat + security
     sqs.py check my-skill --strict   one skill, warnings count as failures
-    sqs.py structure|spec|quality|compat|security|publish|evals|fix  one module
+    sqs.py structure|spec|quality|compat|security|capabilities|publish|evals|fix  one module
     sqs.py explain ST008             what a code means and how to fix it
     sqs.py rules --module quality    the registry
     sqs.py new my-skill              scaffold a skill that already passes
+    sqs.py route --prompt "..."      which skill this wording resembles, offline
 
 The modules are separate because they fail at different moments. Structure breaks
 today, silently. Spec breaks on publication. Compat breaks on somebody else's machine.
@@ -31,6 +32,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import baseline as baseline_store                               # noqa: E402
+import capabilities                                             # noqa: E402
+import cases as caseset                                         # noqa: E402
 import compat                                                   # noqa: E402
 import evalcheck                                                # noqa: E402
 import fix as fixer                                             # noqa: E402
@@ -50,7 +53,8 @@ from rules import (MODULES, RULES, at_least, module_of,        # noqa: E402
 _CODES = r"([A-Z]{2}\d{3}(?:\s*,\s*[A-Z]{2}\d{3})*|\*)"
 SUPPRESS_RE = re.compile(r"sqs-allow:\s*" + _CODES)
 SUPPRESS_FILE_RE = re.compile(r"sqs-allow-file:\s*" + _CODES)
-CHECK_MODULES = ("structure", "spec", "quality", "compat", "security")
+CHECK_MODULES = ("structure", "spec", "quality", "compat", "security", "capabilities",
+                 "cases")
 
 
 def skills_dir(arg=None):
@@ -347,6 +351,10 @@ def collect(skill, modules, cfg, skill_registry, engine, world=None):
             out += compat.check(skill, cfg, world)
         elif name == "security":
             out += security.check(skill, cfg)
+        elif name == "capabilities":
+            out += capabilities.check(skill, cfg)
+        elif name == "cases":
+            out += caseset.check(skill, cfg, cfg.get("descriptions"))
         elif name == "publish":
             out += publish.check(skill, cfg)
         elif name == "evals":
@@ -536,6 +544,121 @@ def cmd_init_evals(skills):
     return 0
 
 
+def cmd_cases(skills, cfg, since, apply_it, fmt="text"):
+    """`sqs.py cases <skill> --generate` - the case set the skill's own sources ask for.
+
+    Every expensive layer here needs a case set and none of them helps you write one.
+    This writes the first draft out of the three sources that can be read without an
+    agent: the expectations you wrote beside the skill, the outcomes its description
+    commits to, and - with `--since` - the capabilities it gained since then.
+
+    It is a draft on purpose. Every case carries `needs_review`, an assertion appears
+    only where the source named something checkable, and the rest is `TODO`: a case
+    that passes without having tested anything is the one output the grader already
+    refuses to produce, and generating a heap of them would be worse than the empty
+    `evals/` it replaced.
+    """
+    import tempfile
+    payloads = []
+    for s in skills:
+        if not s.ok:
+            continue
+        gained = []
+        if since:
+            with tempfile.TemporaryDirectory() as tmp:
+                old_root = publish.previous_copy(s, since, tmp)
+                if old_root:
+                    gained = caseset.gained_capabilities(
+                        s, capabilities.check(Skill(old_root), cfg), cfg)
+        payloads.append((s, caseset.generate(s, gained)))
+
+    if fmt == "json":
+        print(json.dumps({s.folder: p for s, p in payloads}, ensure_ascii=False, indent=2))
+        return 0
+
+    rc = 0
+    for s, payload in payloads:
+        by_source = {}
+        for c in payload["evals"]:
+            by_source.setdefault(c["source"], []).append(c)
+        print(f"\n{s.folder}: {len(payload['evals'])} case(s) drafted")
+        for source in ("expectation", "promise", "improvement"):
+            for c in by_source.get(source, []):
+                print(f"  {source:<12} {c['id']:<22} {c['prompt'][:56]}")
+        if not payload["evals"]:
+            print(f"  nothing to draft - no {caseset.EXPECTATIONS}, and the description "
+                  f"commits to no outcome a pattern can see")
+            continue
+        target = os.path.join(s.root, caseset.CASES_FILE.replace("/", os.sep))
+        if not apply_it:
+            print(f"  would write {caseset.CASES_FILE} (pass --apply)")
+            rc = 1
+            continue
+        if os.path.exists(target):
+            print(f"  {caseset.CASES_FILE} already exists - left alone. Generated is not "
+                  f"trusted, and overwriting a set somebody corrected would prove it")
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        print(f"  wrote {caseset.CASES_FILE}")
+    print("\nEvery case is a draft: fill the TODOs before `sqs.py eval --runtime` means "
+          "anything.\nA case with no assertion and no output is ungraded and stays that way "
+          "in the report.")
+    return rc
+
+
+def cmd_cases_history(skills, history_dir, apply_it, fmt="text"):
+    """`sqs.py cases <skill> --from-history` - trigger queries in the user's own words.
+
+    A trigger set the author writes tends to restate the description; the phrasings that
+    test it are the ones people typed. This drafts `evals/eval_queries.json` out of the
+    local transcripts - see `evaluation/history.py` for what counts as a routing
+    decision - prints it for review, and writes it only with `--apply`, only where the
+    skill has no trigger set yet. What it prints is private: the user's own prompts.
+    """
+    from evaluation import history, triggers  # noqa: PLC0415
+    rc = 0
+    results = {}
+    for s in skills:
+        if not s.ok:
+            continue
+        h = history.harvest(s, history_dir)
+        results[s.folder] = h
+        if fmt == "json":
+            continue
+        print(f"\n{s.folder}: {len(h['positive'])} prompt(s) that loaded it first, "
+              f"{len(h['near_miss'])} near miss(es) a neighbour won "
+              f"({h['transcripts']} transcripts read)")
+        for p in h["positive"]:
+            print(f"  +  {' '.join(p.split())[:90]}")
+        for n in h["near_miss"]:
+            print(f"  -  {' '.join(n['query'].split())[:70]}   -> {n['went_to']}")
+        target = os.path.join(s.root, "evals", "eval_queries.json")
+        existing = [q for q in (target, os.path.join(s.root, triggers.TRIGGER_DIR))
+                    if os.path.exists(q)]
+        if not h["positive"] and not h["near_miss"]:
+            continue
+        if not apply_it:
+            print("  would write evals/eval_queries.json (pass --apply) - these are your own "
+                  "words; read them before they go anywhere")
+            rc = 1
+            continue
+        if existing:
+            print(f"  a trigger set already exists ({os.path.relpath(existing[0], s.root)}) "
+                  f"- left alone; merge by hand")
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(history.as_query_set(h), f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        print("  wrote evals/eval_queries.json")
+    if fmt == "json":
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    return rc
+
+
 def cmd_eval(skills, root, a, cfg):
     """The layer that runs an agent: triggering, task success, and the diff between runs.
 
@@ -544,7 +667,7 @@ def cmd_eval(skills, root, a, cfg):
     slightly different answer every time. Folding the two together would make the
     cheap half hostage to the expensive one.
     """
-    from evaluation import providers, regression, runtime, triggers  # noqa: PLC0415
+    from evaluation import environment, providers, regression, runtime, triggers  # noqa: PLC0415
 
     if not skills:
         print("eval takes a skill: `sqs.py eval ./my-skill --trigger`", file=sys.stderr)
@@ -572,8 +695,12 @@ def cmd_eval(skills, root, a, cfg):
                 rc = max(rc, 2)
                 continue
             diff = regression.compare(before, after)
+            diff["skill"] = name
+            # with neighbours in the run there is more than one block, and an unnamed one
+            # says a recall fell without saying whose
+            head = f"{name}\n" if len(skills) > 1 else ""
             print(json.dumps(diff, ensure_ascii=False, indent=2) if fmt_json
-                  else regression.render(diff, a.fail_on_cost))
+                  else head + regression.render(diff, a.fail_on_cost))
             if regression.failed(diff, a.fail_on_cost):
                 rc = max(rc, 1)
         return rc
@@ -586,20 +713,22 @@ def cmd_eval(skills, root, a, cfg):
             queries, qproblem = triggers.load(s.root)
             from evaluation import tasks as taskmod
             task_list, tproblem = taskmod.load(s.root)
-            print(f"{s.folder}:")
-            print(f"    trigger  {len(queries)} quer(y/ies) x {a.runs} runs"
+            env, eproblem = environment.load(s.root, a.env)
+            runs = environment.resolve(env or {}, runs=a.runs)["runs"]
+            print(f"{s.folder}:" + (f"  (environment `{env['name']}`)"
+                                    if env and env.get("name") else ""))
+            if eproblem:
+                print(f"    environment  {eproblem}")
+            print(f"    trigger  {len(queries)} quer(y/ies) x {runs} runs"
                   if not qproblem else f"    trigger  {qproblem}")
-            print(f"    runtime  {len(task_list)} task(s) x {a.runs} runs x 2 sides"
+            print(f"    runtime  {len(task_list)} task(s) x {runs} runs x 2 sides"
                   if not tproblem else f"    runtime  {tproblem}")
         print("\nPick a layer: --trigger, --runtime, or --all. Each one runs the agent, "
               "which costs\nmoney and minutes, so nothing runs until you name it.",
               file=sys.stderr)
         return 2
 
-    provider, why = providers.get(a.provider)
-    if provider is None or why:
-        print(why or f"no provider `{a.provider}`", file=sys.stderr)
-        return 2
+    engines = {}                       # provider name -> (provider, why), built once each
 
     def note(*parts):
         if not a.quiet and not fmt_json:
@@ -608,14 +737,30 @@ def cmd_eval(skills, root, a, cfg):
     rc = 0
     for s in skills:
         name = s.name or s.folder
-        payload = {"skill": name}
+        env, problem = environment.load(s.root, a.env)
+        if problem:
+            print(f"{s.folder}: {problem}", file=sys.stderr)
+            rc = max(rc, 2)
+            continue
+        run_cfg = environment.resolve(env, provider=a.provider,
+                                      model=cfg.get("live_model") or a.model, runs=a.runs)
+        if run_cfg["provider"] not in engines:
+            engines[run_cfg["provider"]] = providers.get(run_cfg["provider"])
+        provider, why = engines[run_cfg["provider"]]
+        if provider is None or why:
+            print(f"{s.folder}: {why or 'no provider ' + run_cfg['provider']}", file=sys.stderr)
+            rc = max(rc, 2)
+            continue
+        runs, model = run_cfg["runs"], run_cfg["model"]
+        # which environment measured this, kept with the run: `--compare` says so when two
+        # runs came from different ones
+        payload = {"skill": name, "environment": run_cfg}
         blocks = []
 
         if want_trigger:
-            note(f"{name}: trigger pass, {a.runs} run(s) per query - this costs money")
+            note(f"{name}: trigger pass, {runs} run(s) per query - this costs money")
             report, problem = triggers.evaluate(
-                s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
-                use_split=not a.no_split)
+                s, provider, runs=runs, model=model, use_split=not a.no_split)
             if problem:
                 print(f"{s.folder}: {problem}", file=sys.stderr)
                 rc = max(rc, 2)
@@ -627,13 +772,14 @@ def cmd_eval(skills, root, a, cfg):
                     if m["false_positive"] or m["false_negative"]:
                         rc = max(rc, 1)
 
-        if want_runtime:
-            note(f"{name}: runtime pass, {a.runs} run(s) per task"
+        # a neighbour is here for its trigger set; its tasks are not what was edited
+        if want_runtime and s.root not in getattr(a, "neighbour_roots", ()):
+            note(f"{name}: runtime pass, {runs} run(s) per task"
                  + (" x 2 sides" if not a.no_baseline else "") + " - this costs money")
             report, problem = runtime.evaluate(
-                s, provider, runs=a.runs, model=cfg.get("live_model") or a.model,
+                s, provider, runs=runs, model=model,
                 with_baseline=not a.no_baseline,
-                task_filter=set(a.task) if a.task else None)
+                task_filter=set(a.task) if a.task else None, trusted=a.trust_target)
             if problem:
                 print(f"{s.folder}: {problem}", file=sys.stderr)
                 rc = max(rc, 2)
@@ -653,7 +799,7 @@ def cmd_eval(skills, root, a, cfg):
             print(("\n\n" + "-" * 60 + "\n\n").join(blocks))
 
         label = a.save or ("baseline" if a.baseline else None)
-        if label and len(payload) > 1:
+        if label and len(payload) > 2:
             path = regression.save(root, name, label, payload)
             note(f"{name}: saved as `{label}` in {path}")
     return rc
@@ -663,7 +809,10 @@ def cmd_harnesses(world, verbose=False):
     """The adapter registry: what a `--harness` name can be, and what it rests on."""
     for a in world:
         support = {True: "skills", False: "no skills", None: "undocumented"}[a.supports_skills]
-        print(f"{a.name:<14}{a.title:<16}{support:<14}{a.docs}")
+        # when the row was last read against its page: a table without it cannot show it
+        # has gone stale, and pages here move (four of ten in the first check)
+        checked = f"checked {a.checked}" if a.checked else "never checked"
+        print(f"{a.name:<14}{a.title:<16}{support:<14}{checked:<22}{a.docs}")
         if verbose:
             for loc in a.locations:
                 print(f"    {loc}")
@@ -675,6 +824,81 @@ def cmd_harnesses(world, verbose=False):
     if not verbose:
         print(f"\n{len(world)} harnesses · `--harness <name>` or `--harness all` · "
               f"`sqs.py harnesses --show` for locations and caveats")
+    return 0
+
+
+ROUTE_CAVEAT = ("offline reasoning over descriptions, not a live run - `eval --trigger` "
+                "is the thing that actually sends the wording to the agent and can "
+                "disagree with this")
+
+
+def nearest_neighbours(skill, tree, n):
+    """[(score, skill)] - the `n` skills whose descriptions share most with this one's.
+
+    Only skills with a trigger set of their own count: a neighbour is here to be
+    measured, and one without queries cannot be. The comparison is `route`'s, run with
+    this description standing in for the prompt - the requests a widened description
+    would take are the ones worded like it.
+    """
+    from evaluation import triggers                                 # noqa: PLC0415
+    own = quality.stems(skill.description or "")
+    rows = []
+    for s in tree:
+        if s.root == skill.root or not s.ok or s.slash_only or not s.description:
+            continue
+        if triggers.load(s.root)[1]:
+            continue
+        score, _ = quality.prompt_match(s.description, own)
+        if score > 0:
+            rows.append((score, s))
+    rows.sort(key=lambda r: -r[0])
+    return rows[:n]
+
+
+def cmd_route(skills, prompt, fmt="text"):
+    """`sqs.py route --prompt "..."` - the offline, weaker sibling of `eval --trigger`.
+
+    `eval --trigger` runs the agent and observes which skill it actually reaches for.
+    This reasons about the descriptions instead: the same stem-overlap comparison `EV007`
+    runs between two skills, run here between the prompt and every sentence of each
+    skill's description, keeping the best-matching sentence per skill so the report can
+    name it - a score with nothing to point at is unactionable, the same complaint that
+    shaped `EV007`. It is cheaper and it can be wrong in a way the live pass would not
+    be, so `ROUTE_CAVEAT` prints in every render rather than once in a docstring nobody
+    reads at the terminal.
+
+    The comparison itself is `quality.prompt_match`, which carries the calibration -
+    `stems()` rather than `EV007`'s `content_stems()`, and exclusion clauses dropped -
+    and which `cases` now runs an expectation through to ask the same question about a
+    sentence the author wrote instead of one a user typed.
+    """
+    prompt_stems = quality.stems(prompt)
+    rows = []
+    for s in skills:
+        if not s.ok or s.slash_only or not s.description:
+            continue
+        best_score, best_sentence = quality.prompt_match(s.description, prompt_stems)
+        rows.append((s.name or s.folder, best_score, best_sentence))
+    rows.sort(key=lambda r: r[1], reverse=True)
+
+    if fmt == "json":
+        print(json.dumps({"prompt": prompt, "caveat": ROUTE_CAVEAT,
+                          "ranking": [{"skill": n, "score": round(sc, 3), "matched": sent}
+                                     for n, sc, sent in rows]},
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    print(f'route: "{prompt}"')
+    print(f"({ROUTE_CAVEAT})\n")
+    scored = [r for r in rows if r[1] > 0]
+    if not scored:
+        print("no skill's description shares enough wording with this prompt to rank.")
+        return 0
+    for i, (name, score, sentence) in enumerate(scored[:10], 1):
+        print(f"{i}. {name:<28}{score:.2f}  \"{sentence[:70]}\"")
+    if len(scored) > 1:
+        margin = scored[0][1] - scored[1][1]
+        print(f"\n`{scored[0][0]}` wins by {margin:.2f} over `{scored[1][0]}`")
     return 0
 
 
@@ -721,6 +945,144 @@ stays here; material only some branches reach goes into references/ behind a poi
 """
 
 
+PAID_OFFER = ("Not run, and not run without your say-so: `eval --trigger` measures what "
+              "actually loads, at about $0.21 per run (measured 23.09.2026) and sixty runs "
+              "for a proper set. It pays off only over time - repeated across edits, "
+              "against the last saved run - not as one number today.")
+
+
+def cmd_improve(skills, results, history_dir, fmt="text"):
+    """`sqs.py improve <skill>` - what to change, from the skill and from your requests.
+
+    Two sources, and only what each can say reliably. The skill itself: every finding,
+    grouped by what to fix first, with the fix the registry already states. Your
+    requests: the prompts that really routed to it, and the ones a neighbour won that
+    this skill's description also covers - read off the transcripts, the way
+    `cases --from-history` does.
+
+    What it does not do is judge intent. Whether a prompt nothing loaded for was *meant*
+    for this skill is a question stems cannot answer - tried on 1,058 real prompts, and
+    the "missed" list was mostly conversation, not requests. That judgement belongs to a
+    model, which is paid, so it is offered at the end and never started from here.
+    """
+    from evaluation import history  # noqa: PLC0415
+    findings = dict(results)
+    report = {}
+    for s in skills:
+        if not s.ok:
+            continue
+        fs = findings.get(s.folder, [])
+        by_code = {}
+        for f in fs:
+            by_code.setdefault(f.code, []).append(f)
+        fix = []
+        for code, group in by_code.items():
+            rule = RULES.get(code)
+            fix.append({"code": code, "severity": group[0].severity, "count": len(group),
+                        "title": rule.title if rule else "", "fix": rule.how if rule else "",
+                        "example": group[0].msg})
+        fix.sort(key=lambda r: (RANK.get(r["severity"], 3), r["code"]))
+        h = history.harvest(s, history_dir, limit=1000)
+        report[s.folder] = {"fix": fix, "work": history.work_after_load(s, history_dir),
+                            "routed_here": len(h["positive"]),
+                            "examples": h["positive"][:5],
+                            "neighbours_won": h["near_miss"][:5],
+                            "has_trigger_set": os.path.exists(
+                                os.path.join(s.root, "evals", "eval_queries.json"))
+                            or os.path.isdir(os.path.join(s.root, "evals", "trigger")),
+                            "paid_offer": PAID_OFFER}
+    if fmt == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+    for folder, r in report.items():
+        print(f"\n{folder}")
+        serious = [x for x in r["fix"] if x["severity"] in ("error", "warning")]
+        minor = [x for x in r["fix"] if x not in serious]
+        print("  1. Fix first" if serious else "  1. Nothing to fix first")
+        for x in serious:
+            times = f" x{x['count']}" if x["count"] > 1 else ""
+            print(f"     {x['code']}{times}  {x['title']}")
+            print(f"            {x['example'][:100]}")
+            print(f"            fix: {x['fix'][:160]}")
+        if minor:
+            print(f"     and {len(minor)} note(s): " + ", ".join(x["code"] for x in minor)
+                  + " - `sqs.py explain <CODE>` for each")
+        print(f"  2. What your requests say - {r['routed_here']} prompt(s) in your history "
+              f"loaded it first")
+        for p in r["examples"]:
+            print(f"     +  {' '.join(p.split())[:90]}")
+        if r["neighbours_won"]:
+            print("     a neighbour won these; this description shares words with them, "
+                  "closest first - check the boundary on the top ones:")
+            for n in r["neighbours_won"]:
+                print(f"     -  {' '.join(n['query'].split())[:70]}   -> {n['went_to']}")
+        if not r["has_trigger_set"] and (r["routed_here"] or r["neighbours_won"]):
+            print("     no trigger set yet: `sqs.py cases <skill> --from-history --apply` "
+                  "drafts one from exactly these")
+        _print_work(r["work"])
+        print(f"  4. Paid, only if you want it. {r['paid_offer']}")
+    return 0
+
+
+def _print_work(w):
+    """Section 3 of `improve`: where the agent's work went after the skill loaded."""
+    if not w.get("loads"):
+        print("  3. Where the work went - it never loaded in your history")
+        return
+    print(f"  3. Where the work went - {w['loads']} load(s) in {w['sessions']} session(s), "
+          f"median {w['median_fresh_tokens']} fresh input and {w['median_output_tokens']} "
+          f"output tokens a load")
+    print("     counted from the load to your next message, so a turn that moved on to "
+          "other work is in here too")
+    for x in w["lookups"]:
+        print(f"     looked up again in {x['sessions']} sessions - write the answer into "
+              f"the skill:")
+        print(f"        {x['command'][:110]}")
+    for x in w["heavy_reads"]:
+        print(f"     read in full: {x['chars']} chars over {x['reads']} read(s) - a grep, "
+              f"a section or a script would do: {x['file'][-80:]}")
+    for x in w["rereads"]:
+        print(f"     read again with no edit between: {x['times']}x {x['file'][-80:]}")
+
+
+def cmd_new_seeded(seeds, history_dir):
+    """`sqs.py new <name> --seed WORD ...` - what you already ask that it would take.
+
+    A skill that does not exist yet has no loads to learn from, so the user names a few
+    words it would be asked with, and this shows the prompts in their history that carry
+    them - and which skill each one reached instead. Most of them landing on one existing
+    skill is the finding: that skill may want a new branch rather than a new neighbour.
+    """
+    from evaluation import history  # noqa: PLC0415
+    hits = history.search(seeds, history_dir)
+    print(f"\n{len(hits)} prompt(s) in your history carry {', '.join(seeds)}")
+    if not hits:
+        print("  nothing to learn from yet - write the description from a real run of the "
+              "work, and `cases --from-history` will find its first routes later")
+        return
+    unrouted = "(first action was not a skill - mostly mid-conversation)"
+    went = {}
+    for p, loaded in hits:
+        went.setdefault(loaded or unrouted, []).append(p)
+    for target, ps in sorted(went.items(), key=lambda kv: -len(kv[1])):
+        print(f"  {len(ps):3}  {'went to ' + target if target != unrouted else target}")
+        for p in ps[:3]:
+            print(f"         {' '.join(p.split())[:80]}")
+    # The advice counts only the prompts that did reach a skill: the rest were said in the
+    # middle of other work, and a majority of those says nothing about routing. Two is the
+    # floor, because one prompt going somewhere is an anecdote.
+    routed = {k: v for k, v in went.items() if k != unrouted}
+    total = sum(len(v) for v in routed.values())
+    if routed:
+        top, ps = max(routed.items(), key=lambda kv: len(kv[1]))
+        if len(ps) >= 2 and len(ps) * 2 > total:
+            print(f"  Of the {total} that reached a skill, {len(ps)} reached `{top}`. Before "
+                  f"adding a neighbour, ask whether `{top}` needs a new branch instead - two "
+                  f"skills claiming one wording is the collision `EV007` reports.")
+    print("  These are candidate trigger wordings in your own words: read them before any "
+          "of them goes into the new description or its trigger set.")
+
+
 def cmd_new(root, name):
     target = os.path.join(root, name)
     if os.path.exists(target):
@@ -739,13 +1101,15 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sqs.py", add_help=True,
                                  description="quality suite for Agent Skills")
     ap.add_argument("command", help="check | all | " + " | ".join(sorted(MODULES.values()))
-                    + " | fix | eval | baseline | explain | rules | harnesses | new")
+                    + " | fix | eval | baseline | explain | rules | harnesses | new | route"
+                    + " | improve")
     ap.add_argument("args", nargs="*", help="skill names, a rule code, or a new skill's name")
     ap.add_argument("--skills-dir")
     ap.add_argument("--trust-target", action="store_true",
                     help="the tree is yours: let its own check_skills.py and "
-                         "evals/run_evals.py run. Off by default - reading a skill is "
-                         "not a reason to execute one")
+                         "evals/run_evals.py run, and let `eval --runtime` run a skill "
+                         "that can reach the network or spawn processes. Off by default "
+                         "- reading a skill is not a reason to execute one")
     ap.add_argument("--config")
     ap.add_argument("--format", choices=("text", "json", "github", "sarif", "board"),
                     default="text", help="sarif for code-scanning, board for the layer view")
@@ -758,7 +1122,11 @@ def main(argv=None):
     ap.add_argument("--baseline-file", help="where the baseline lives (default .sqs-baseline.json)")
     ap.add_argument("--changed", action="store_true",
                     help="only skills touched by the git diff against --since")
-    ap.add_argument("--since", default="HEAD", help="--changed: what to diff against")
+    ap.add_argument("--since", help="the earlier state to compare against: a git ref, or a "
+                                    "directory holding an earlier copy of the tree. Selects "
+                                    "the skills for --changed, and is what PB010-PB013 read "
+                                    "the previous version off (default HEAD for --changed, "
+                                    "and PB010-PB013 stay off until it is given)")
     ap.add_argument("--strict", action="store_true", help="warnings count as failures")
     ap.add_argument("--quiet", action="store_true", help="print nothing when clean")
     ap.add_argument("--harness", action="append", default=[],
@@ -773,7 +1141,10 @@ def main(argv=None):
                     help="eval: run the task set with the skill and without it (costs money)")
     ap.add_argument("--all", dest="all_layers", action="store_true",
                     help="eval: both layers")
-    ap.add_argument("--provider", default="claude", help="eval: which agent to drive")
+    ap.add_argument("--provider", help="eval: which agent to drive (default: the "
+                    "environment's, else claude)")
+    ap.add_argument("--env", help="eval: the environment in evals/environment.json to run "
+                    "in (default: its `default`, if it has one)")
     ap.add_argument("--model", help="eval: model for the runs")
     ap.add_argument("--task", action="append", default=[], help="eval: only this task id")
     ap.add_argument("--no-baseline", action="store_true",
@@ -785,14 +1156,30 @@ def main(argv=None):
                     help="eval --compare: a cost rise fails the gate too")
     ap.add_argument("--init", action="store_true",
                     help="evals: scaffold the two documented eval files")
-    ap.add_argument("--runs", type=int, default=3,
-                    help="eval: runs per query or per task; the model is not deterministic")
+    ap.add_argument("--runs", type=int,
+                    help="eval: runs per query or per task; the model is not deterministic "
+                         "(default: the environment's, else 3)")
     ap.add_argument("--no-split", action="store_true",
                     help="eval --trigger: measure one set instead of train/validation")
+    ap.add_argument("--with-neighbours", type=int, default=0, metavar="N",
+                    help="eval --trigger: also run the N skills whose descriptions share "
+                         "most with this one, so --compare shows whether an edit took "
+                         "their requests")
     ap.add_argument("--live", action="store_true", help="evals: ask the model, not the invariants")
     ap.add_argument("--apply", action="store_true", help="fix: write the repairs")
     ap.add_argument("--module", help="rules: only this module")
     ap.add_argument("--audit", action="store_true", help="rules: registry against the engines")
+    ap.add_argument("--prompt", help="route: the wording to reason about")
+    ap.add_argument("--generate", action="store_true",
+                    help="cases: draft the case set instead of reporting on it")
+    ap.add_argument("--from-history", action="store_true",
+                    help="cases: draft trigger queries from your own Claude Code transcripts "
+                         "- prompts that loaded the skill, and near misses a neighbour won")
+    ap.add_argument("--seed", action="append", default=[],
+                    help="new: a word the new skill would be asked with; shows the prompts in "
+                         "your history that carry it and where they went (repeatable)")
+    ap.add_argument("--history-dir", help="cases --from-history: where the transcripts are "
+                                          "(default ~/.claude/projects)")
     a = ap.parse_args(argv)
 
     if a.command == "explain":
@@ -808,7 +1195,12 @@ def main(argv=None):
         print(f"no skills directory at {root}", file=sys.stderr)
         return 2
     if a.command == "new":
-        return cmd_new(root, a.args[0]) if a.args else 2
+        if not a.args:
+            return 2
+        rc = cmd_new(root, a.args[0])
+        if rc == 0 and a.seed:
+            cmd_new_seeded(a.seed, a.history_dir)
+        return rc
 
     cfg = load_config(root, a.config)
     picked = []
@@ -818,13 +1210,50 @@ def main(argv=None):
         cfg["harnesses"] = picked
     if a.lang:
         cfg["lang"] = a.lang
+    # `--since` is resolved once, here, because the interesting half of the answer is
+    # the failure: a ref nobody can find would otherwise leave PB010-PB013 silently
+    # not running, and a rule that quietly did not run reads exactly like a rule that
+    # found nothing.
+    if a.since:
+        spec, note = publish.resolve_since(a.since, root)
+        if spec:
+            cfg["since"] = spec
+        if note and not a.quiet:
+            print(note, file=sys.stderr)
 
     if a.command == "eval":
         names = [n for n in a.args if n not in set(cfg.get("ignore", []))]
         picked_skills, notes = resolve_targets(names, root)
         for note in notes:
             print(note, file=sys.stderr)
+        a.neighbour_roots = set()
+        if a.with_neighbours and names:
+            have = {s.root for s in picked_skills}
+            for s in list(picked_skills):
+                for score, n in nearest_neighbours(s, discover(root), a.with_neighbours):
+                    if n.root in have:
+                        continue
+                    have.add(n.root)
+                    a.neighbour_roots.add(n.root)
+                    picked_skills.append(n)
+                    print(f"{s.folder}: neighbour `{n.folder}` joins the trigger pass "
+                          f"(description overlap {score:.2f}) - its recall across your edit "
+                          f"is what says whether this description took its requests; it "
+                          f"adds its own queries x runs to the cost", file=sys.stderr)
+            if not a.neighbour_roots:
+                print("no neighbour with a trigger set of its own shares words with this "
+                      "description - nothing to measure it against", file=sys.stderr)
         return cmd_eval(picked_skills, root, a, cfg)
+
+    if a.command == "route":
+        if not a.prompt:
+            print("route needs --prompt \"...\"", file=sys.stderr)
+            return 2
+        names = [n for n in a.args if n not in set(cfg.get("ignore", []))]
+        picked_skills, notes = resolve_targets(names, root)
+        for note in notes:
+            print(note, file=sys.stderr)
+        return cmd_route(picked_skills, a.prompt, a.format)
 
     if a.command == "check":
         modules = list(CHECK_MODULES)
@@ -832,6 +1261,8 @@ def main(argv=None):
         modules = list(CHECK_MODULES) + ["publish"]
     elif a.command == "baseline":
         modules = list(CHECK_MODULES)
+    elif a.command == "improve":
+        modules = list(CHECK_MODULES) + ["evals"]
     elif a.command in set(MODULES.values()) | {"fix"}:
         modules = [a.command]
     else:
@@ -851,7 +1282,7 @@ def main(argv=None):
     skills, notes = resolve_targets(names, root)
     skills = [s for s in skills if s.folder not in ignore]
     if a.changed:
-        skills, note = changed_skills(skills, a.since)
+        skills, note = changed_skills(skills, a.since or "HEAD")
         if not a.quiet:
             print(note, file=sys.stderr)
     for note in notes:
@@ -861,8 +1292,18 @@ def main(argv=None):
     # `--skills-dir`, not the positional target, so checking a directory somewhere else
     # left every skill in it a stranger to the others and the neighbour-aware rules
     # (`QL008`, `QL013`) read a named sibling as an unnamed topic.
-    skill_registry = {s.name or s.folder: s.slash_only
-                      for s in list(discover(root)) + list(skills)}
+    neighbours = list(discover(root)) + list(skills)
+    skill_registry = {s.name or s.folder: s.slash_only for s in neighbours}
+    # The same neighbours, by description rather than by invocation mode: `CS002` has
+    # to be able to say *which* skill does promise the thing you expected, and "the
+    # wrong skill" without naming the right one is half an answer.
+    cfg["descriptions"] = {s.name or s.folder: s.description for s in neighbours}
+
+    # `cases --generate` writes the set the rules would otherwise only report on.
+    if a.command == "cases" and a.from_history:
+        return cmd_cases_history(skills, a.history_dir, a.apply, a.format)
+    if a.command == "cases" and a.generate:
+        return cmd_cases(skills, cfg, cfg.get("since"), a.apply, a.format)
 
     # The compatibility report is a different view of the same analysis, not a
     # different analysis: per harness rather than per finding. `check --harness` still
@@ -909,6 +1350,8 @@ def main(argv=None):
 
     results = [(s.folder, collect(s, modules, cfg, skill_registry, engine, world))
                for s in skills]
+    if a.command == "improve":
+        return cmd_improve(skills, results, a.history_dir, a.format)
 
     # A duplicate `name` is only visible from above: one skill shadows the other and
     # which one wins is not knowable in advance.
@@ -926,8 +1369,33 @@ def main(argv=None):
         # a CI annotation - has somewhere to put it
         f.skill, f.root = d[0], by_folder.get(d[0])
         dupes.append(f)
-    if dupes or eval_findings:
-        results.append(("(all skills)", dupes + eval_findings))
+
+    # EV007 - the static sibling of EV001: two skills' trigger branches cover the same
+    # wording, found by comparing descriptions instead of executing the tree's own
+    # `run_evals.py`. Runs unconditionally, the way ST014 above does - it is a property
+    # of the skills being checked together, not of one module.
+    overlaps = quality.cross_overlap(skills)
+
+    # Whole-tree findings never passed through `collect()`, so the config's `rules: {off
+    # | severity}` and a line's `sqs-allow` waived every per-skill finding and silently
+    # did nothing for these three - the escape hatch a "high false-positive risk" rule
+    # like EV007 depends on. `suppressed()` needs the actual `Skill` the finding is
+    # attached to, to read the line it names; `skills_by_folder` is that lookup.
+    overrides = cfg.get("rules", {})
+    skills_by_folder = {s.folder: s for s in skills}
+    whole_tree = []
+    for f in dupes + eval_findings + overlaps:
+        if overrides.get(f.code) == "off":
+            continue
+        owner = skills_by_folder.get(f.skill)
+        if owner and suppressed(owner, f):
+            continue
+        if f.code in overrides:
+            f.severity = overrides[f.code]
+        whole_tree.append(f)
+
+    if whole_tree:
+        results.append(("(all skills)", whole_tree))
 
     # A confidence floor filters by how much of the judgement is the machine's. It is
     # not a severity filter: `--min-confidence high` keeps the facts and drops the
@@ -966,8 +1434,11 @@ def main(argv=None):
             print(f"no baseline at {baseline_store.path_for(root, a.baseline_file)} - "
                   f"`sqs.py baseline create` writes one", file=sys.stderr)
             return 2
-        results, suppressed, fixed = baseline_store.split(results, data)
-        baseline_note = baseline_store.summary(suppressed, fixed, data)
+        # Not named `suppressed`: that name is the module-level line-waiver function,
+        # and any local assignment to it anywhere in `main()` would shadow the function
+        # for the whole body, including the call above this baseline branch.
+        results, baseline_waived, fixed = baseline_store.split(results, data)
+        baseline_note = baseline_store.summary(baseline_waived, fixed, data)
 
     flat = [f for _, found in results for f in found]
     failures = sum(1 for f in flat

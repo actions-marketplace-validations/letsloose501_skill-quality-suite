@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""OpenCode. Source: https://opencode.ai/docs/skills/"""
+"""OpenCode. Source: https://opencode.ai/docs/skills/
+
+Read again 23.09.2026 and unchanged: the six locations, the five fields, "Unknown
+frontmatter fields are ignored", a name of 1-64 characters matching its directory, and a
+description of 1-1024.
+"""
 from .base import OPTIONAL, REQUIRED, HarnessAdapter
 
 
@@ -7,6 +12,7 @@ class OpenCode(HarnessAdapter):
     name = "opencode"
     title = "OpenCode"
     docs = "https://opencode.ai/docs/skills/"
+    checked = "2026-09-23"
     supports_skills = True
 
     locations = (

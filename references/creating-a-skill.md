@@ -28,7 +28,13 @@ teaches nothing, because the traps are at the end.
 
 ```
 python scripts/sqs.py new my-skill
+python scripts/sqs.py new my-skill --seed invoice --seed receipt   # and what you already ask
 ```
+
+With `--seed`, it also reads your own Claude Code transcripts for prompts carrying those
+words and prints where each one went. Most of them already reaching one skill is the
+answer to Step 2 in disguise: that skill may need a branch, not a neighbour. The prompts
+are your own words - candidate trigger wordings to read, not to paste.
 
 Creates `my-skill/SKILL.md` with the frontmatter and the three headings that matter, and
 a `references/` folder. The template's TODOs are there to be replaced, not filled in
@@ -87,6 +93,14 @@ actually use as new cases. Description edits after this point move the routing o
 everything nearby, so re-run step 5 each time.
 
 ## Editing an existing skill
+
+`python scripts/sqs.py improve my-skill` puts in one place what the suite can say
+reliably about it: every finding with the registry's fix, the prompts in your history
+that really routed to it, the ones a neighbour won that its description shares words
+with, and where the agent's work went after it loaded - a lookup it repeats from session
+to session, a note it reads whole every time, a file it rereads with nothing changed.
+Whether a prompt was *meant* for the skill is not in it - that takes a model,
+which is paid, so the report offers it and never runs it.
 
 The same discipline, in reverse order.
 

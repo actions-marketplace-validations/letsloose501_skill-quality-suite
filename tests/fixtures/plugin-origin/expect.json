@@ -1,0 +1,7 @@
+{
+  "note": "The marketplace entry's `source` is a git-subdir of a monorepo - the files under review may be a checkout of a repository nobody has looked at.",
+  "command": "publish",
+  "expect": [
+    "PB009"
+  ]
+}

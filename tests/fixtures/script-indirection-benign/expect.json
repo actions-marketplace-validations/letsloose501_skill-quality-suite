@@ -1,0 +1,5 @@
+{
+  "note": "The silent side of CB005 and SE008: `getattr` on parsed arguments, a constant `getattr` with a default, base64 decoded into data and never run, a method named `eval`, and a shell script that decodes into a file. Exact, so any finding here is a false positive.",
+  "expect": [],
+  "exact": true
+}

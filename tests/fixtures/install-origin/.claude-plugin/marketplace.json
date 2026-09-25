@@ -1,0 +1,19 @@
+{
+  "name": "acme-tools",
+  "owner": {
+    "name": "Example Owner"
+  },
+  "plugins": [
+    {
+      "name": "note-taker",
+      "source": "./"
+    },
+    {
+      "name": "sync-kit",
+      "source": {
+        "source": "github",
+        "repo": "acme-labs/sync-kit"
+      }
+    }
+  ]
+}

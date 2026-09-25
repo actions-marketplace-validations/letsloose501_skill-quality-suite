@@ -23,7 +23,8 @@ def _load():
     for mod in pkgutil.iter_modules([here]):
         if mod.name.startswith("_") or mod.name == "base":
             continue
-        module = importlib.import_module(f".{mod.name}", __name__)
+        # the names come from this package's own directory, not from data
+        module = importlib.import_module(f".{mod.name}", __name__)  # sqs-allow: CB005
         for obj in vars(module).values():
             if (isinstance(obj, type) and issubclass(obj, HarnessAdapter)
                     and obj is not HarnessAdapter and obj.name):
@@ -67,6 +68,10 @@ class World:
     def owners_of_field(self, field):
         """Which harnesses document this frontmatter field, whatever the role."""
         return sorted(a.name for a in self if field in a.fields)
+
+    def owners_of_syntax(self, key):
+        """Which harnesses document rewriting this piece of body syntax."""
+        return sorted(a.name for a in self if key in a.body_syntax)
 
     def location_fragments(self):
         """The distinctive head of every documented location, e.g. `.claude/skills`.

@@ -31,6 +31,7 @@ my-skill/
     │   └── should-not-trigger.yaml   near-misses that must not
     ├── eval_queries.json             the older single-file form, still read
     ├── evals.json                    the task set: does it help
+    ├── environment.json              where it runs: provider, model, runs per case
     └── files/                        inputs a task needs
 ```
 
@@ -46,6 +47,12 @@ sqs.py eval ./my-skill --runtime           the task set, with the skill and with
 sqs.py eval ./my-skill --all --save v1     both, stored under a label
 sqs.py eval ./my-skill --compare v1 v2     what the last edit moved
 ```
+
+`evals/environment.json` holds named settings - `{"environments": {"default":
+{"provider": "claude", "model": "...", "runs": 3}}}` - and `--env NAME` picks one; without
+it `default` is used if present. A flag on the command line wins over the file. Each saved
+run records its settings, and `--compare` says so when two runs differ in them: what
+moved may be the model, not the skill. An unknown key is refused, not guessed.
 
 `eval` with no layer named runs nothing: it prints how many agent runs each layer would
 take and stops. A command that spends money on the strength of a typo is a command
@@ -130,8 +137,14 @@ carry positives and negatives, with a fixed seed so iterations compare like with
 - Stuck after several passes? Try a structurally different description rather than more
   tweaks. And check the length: descriptions grow during optimisation and the limit is
   1024 characters.
-- Five iterations is usually the point of diminishing returns. If nothing improves, the
-  queries may be the problem - too easy, too hard, or mislabelled.
+- One rewrite from the false positives and negatives is usually most of the gain: a
+  study of production descriptions found further iterations moved F1 by under half a
+  point, inside its own noise (arXiv 2606.30775). If that rewrite does not help, the
+  queries may be the problem - too easy, too hard, or mislabelled - or the two skills'
+  scopes genuinely overlap, which the report flags as a train-validation gap.
+- Run the neighbours as well: `--with-neighbours 2` puts the skills that share most words
+  with this description into the same pass, and `--compare` shows whether the edit took
+  their requests.
 - **Pick the iteration with the best validation numbers, not the last one.** Later ones
   often overfit.
 
@@ -144,6 +157,11 @@ turn.
 ```
 sqs.py eval ./my-skill --runtime
 ```
+
+The agent in this pass runs with permission checks bypassed, so a skill that can reach the
+network, spawn a process, run commands on load or hide what it runs is refused until
+`--trust-target` says it is yours or has been read. Do not pass the flag for a skill you
+have not read: the refusal names the findings, read those first.
 
 The same task twice, and the difference is the whole point:
 
@@ -168,22 +186,34 @@ cannot do this says so in its report rather than calling the comparison a baseli
             "prompt": "Log this receipt: 12.40 EUR at Bakery Nord on 2026-09-18",
             "expected_output": "a row appended to ledger.csv and the balance printed",
             "assertions": ["12.40", "re:balance", "not:could not"],
-            "fixtures": ["evals/files/ledger.csv"],
-            "files": ["ledger.csv"],
+            "files": ["evals/files/ledger.csv"],
+            "outputs": [{"path": "ledger.csv", "contains": ["Bakery Nord", "12.40"]}],
             "forbidden_tools": ["WebSearch"],
             "max_tool_calls": 6}]}
 ```
 
 - an assertion is a **substring** by default, a **regex** behind `re:`, a **prohibition**
   behind `not:`;
-- `files` names what the run must have created - the only assertion form that survives a
-  model rewording its answer;
-- `fixtures` are copied into the run's working directory, which is fresh for every run;
+- `outputs` names what the run must have created - the only assertion form that survives
+  a model rewording its answer. A bare path checks that the file exists;
+  `{"path", "contains"}` also reads it as UTF-8 text and applies the assertion grammar to
+  what is inside, because an empty file exists just as well as the right one. Binary
+  formats (`.xlsx`, `.pdf`, images) can only be checked by existence;
+- `files` are **inputs**, as in skill-creator's format: paths inside the skill, copied
+  into the run's working directory, which is fresh for every run. `fixtures` is the same
+  thing under this suite's older name. An entry in `files` that is not a file in the
+  skill is still graded as an output, the meaning it had here before, and `EV011` asks
+  you to move it;
+- `judge` is a program whose exit code grades the case, for correctness no substring can
+  express - a total that has to add up, a file that has to parse. An argv list, never a
+  shell line: `["{python}", "{skill}/evals/check.py", "{workdir}/totals.md"]`. It is the
+  skill's own code, so a runtime pass runs it only under `--trust-target`;
 - `forbidden_tools` and `max_tool_calls` are how "it worked" is told apart from "it
   worked eventually, after eleven tool calls and a web search".
 
-A case with **no assertions and no files is ungraded**, and stays that way in the report.
-Counting it as a pass would turn "nobody said what success is" into evidence of success.
+A case with **no assertions and no outputs is ungraded**, and stays that way in the
+report. Counting it as a pass would turn "nobody said what success is" into evidence of
+success. skill-creator's `expectations` are graded by a model there and are not read here.
 
 Write assertions **after** you have seen the first outputs: you rarely know what good
 looks like before the skill has run. Good assertions are checkable; weak ones are vague
@@ -308,7 +338,7 @@ and body and write the claims out as sentences you could be wrong about: *writes
 *refuses when the folder is empty*, *never calls the network*, *its output carries a total*.
 With no author to ask and no expectation written down, this is all you have.
 
-Turn each sentence into a case with an **assertion, not a rubric**: `files`, `assertions`,
+Turn each sentence into a case with an **assertion, not a rubric**: `outputs`, `assertions`,
 `forbidden_tools` and `max_tool_calls` in `evals.json` cover most of them deterministically,
 and the judge is for what no assertion reaches. Then run it and read what had no evidence.
 

@@ -80,6 +80,17 @@ def check(skill, cfg=None):
         if m:
             out.append(Finding("SP018", f"`{field}` contains `{m.group(0)}`",
                                where="SKILL.md"))
+    # SP020 - the looser half SP018 does not cover. The validator the reference
+    # skill-creation tooling ships refuses ANY angle bracket in a description, and its
+    # packager runs that validator first - so `a -> b` or `files <10MB` is a skill that
+    # loads locally and cannot be packaged. Reported only when SP018 did not already
+    # name a tag, so one bracket is one finding.
+    desc = skill.fm.get("description") or ""
+    if ("<" in desc or ">" in desc) and not XML_TAG.search(desc):
+        i = min(p for p in (desc.find("<"), desc.find(">")) if p >= 0)
+        out.append(Finding("SP020", f"`description` contains a bare angle bracket: "
+                                    f"\"{desc[max(0, i - 20):i + 20].strip()}\"",
+                           where="SKILL.md"))
     low = (skill.name or "").lower()
     reserved = [w for w in RESERVED_IN_NAME if w in low]
     if reserved:

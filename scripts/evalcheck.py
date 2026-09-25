@@ -17,8 +17,13 @@ it looks like the skill is tested.
 """
 import json
 import os
+import re
+import unicodedata
 
+import quality
 from core import Finding
+from evaluation import tasks as taskmod
+from evaluation import triggers
 
 QUERIES = "evals/eval_queries.json"
 CASES = "evals/evals.json"
@@ -81,6 +86,73 @@ def check(skill, cfg=None):
             if missing:
                 out.append(Finding("EV004", f"{CASES}: case(s) {missing[:3]} lack a `prompt` "
                                             f"or an `expected_output`", where=CASES))
+            out += _preflight(skill)
+
+    # EV010 - trigger cases that restate the description
+    queries, problem = triggers.load(skill.root)
+    if not problem:
+        positives = [q for q in queries if q.want]
+        hits = restated(skill.description or "", positives)
+        if hits:
+            text, wording = hits[0]
+            out.append(Finding("EV010", f"{len(hits)} of {len(positives)} should-trigger "
+                                        f"cases repeat a wording the description lists, "
+                                        f"e.g. \"{text[:50]}\" carries \"{wording}\" - a "
+                                        f"match by string, which says little about the "
+                                        f"phrasings nobody listed", where="evals"))
+    return out
+
+
+def listed_wordings(description):
+    """The wordings a description quotes as triggers, lower-cased: «...», "...", “...”."""
+    out = []
+    for m in quality.QUOTED_RE.finditer(description):
+        w = unicodedata.normalize("NFC", m.group(0)[1:-1]).strip().casefold()
+        if len(w) >= 3:
+            out.append(w)
+    return out
+
+
+def restated(description, positives):
+    """[(query text, wording)] for each should-trigger query that contains a listed wording.
+
+    Whole words only: a wording of `план` inside `по плану` is inflection, not a copy,
+    and counting it was how the first measurement inflated. What is left is the case a
+    matcher can pass by string comparison - the description says the words, the query
+    says the words. That is not always worthless: a one-verb wording two neighbours both
+    list makes the case a test of the fork between them, and it can fail. So the finding
+    is a count at `info` rather than a verdict, and the reader decides which of the
+    counted cases were meant as sanity checks.
+    """
+    wordings = listed_wordings(description)
+    out = []
+    for q in positives:
+        low = unicodedata.normalize("NFC", q.text).casefold()
+        for w in wordings:
+            if re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", low):
+                out.append((q.text, w))
+                break
+    return out
+
+
+def _preflight(skill):
+    """EV008 / EV009 / EV011 - the pre-flight gate `eval --runtime` applies, run for free.
+
+    The same reading the paid pass refuses to spend on, so an author sees it on every
+    `check` rather than on the one run that would have cost money. `EV004` already
+    covers the first two things a case needs - an objective and an expected outcome;
+    these are the other two: a decidable pass criterion, and a case that can run as
+    written in both arms. `EV011` is the one the pass does not refuse: a case that runs,
+    under a reading of `files` its author may not have meant.
+    """
+    task_list, problem = taskmod.load(skill.root)
+    if problem:
+        return []                        # EV004 has already said why
+    out = []
+    codes = {"unrunnable": "EV009", "ungraded": "EV008", "legacy": "EV011"}
+    for task_id, kind, why in taskmod.preflight(skill.root, task_list):
+        code = codes[kind]
+        out.append(Finding(code, f"case `{task_id}`: {why}", where=CASES))
     return out
 
 
