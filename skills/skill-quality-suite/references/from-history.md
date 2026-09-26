@@ -14,16 +14,27 @@ nothing. The deciding is yours, in this conversation, and it costs nothing extra
    several sessions with no skill loaded.
 2. Read the prompts under each row. Group the rows that are one task; drop a row whose
    prompts are conversation, or a project being built rather than a task being repeated.
-3. Propose, one line each, and wait for a yes before writing anything:
-   - a skill in section 1 - `sqs.py improve <skill>`, then the description change that
-     would have caught those prompts. Check first that no `CLAUDE.md` or hook sends the
-     agent to the script directly: then the routing is working, just not through the skill;
-   - a task in section 2 - a new skill: its name, the two or three words it would be
-     asked with (`sqs.py new <name> --seed <word>` shows where those requests go today),
-     and the existing skill it would sit beside. If one skill already takes most of them,
-     propose a branch in that skill instead of a neighbour.
-4. On a yes, build it through [creating-a-skill.md](references/creating-a-skill.md): from
-   one real run of the work, not from the rows.
+3. Give each group one of four verdicts, and say what it rests on:
+   - **Write** - a task no skill covers, repeated, specific enough to have a trigger;
+   - **Improve, then write** - worth a skill, but the rows do not yet show one task; name
+     what the next occurrence has to show;
+   - **Absorb into `<skill>`** - an existing skill already takes most of these requests
+     (`sqs.py new <name> --seed <word>` shows where they go today): a branch there, not a
+     neighbour that would collide with it;
+   - **Drop** - conversation, a one-off, or a project being built rather than a task
+     being repeated.
+
+   For a skill in section 1 the verdict is about its description: `sqs.py improve <skill>`,
+   then the change that would have caught those prompts. Check first that no `CLAUDE.md` or
+   hook sends the agent to the script directly; then the routing works, just not through
+   the skill, and the verdict is Drop.
+4. Say where a new skill lives, from the project column. Work seen in one project belongs
+   in that project's `.claude/skills/`; work seen in two or more is general and goes to the
+   user's own skills folder. A lesson keeps the scope it was learned in until it shows up
+   somewhere else.
+5. Propose, one line per group, and wait for a yes before writing anything. On a yes,
+   build it through [creating-a-skill.md](references/creating-a-skill.md): from one real run
+   of the work, not from the rows.
 
 Bad: "Created skill `budget` from your history." Good: "`plans/budget.md` was edited in nine
 sessions with no skill loaded, each time to move a deadline or a limit. A branch in your
@@ -43,6 +54,13 @@ edit." The first acted on a list; the second names the evidence, the choice and 
   project under development, not a tool in use), source-code files, the harness's own
   files (`MEMORY.md`, `CLAUDE.md`, anything under `.claude/`), scratch and temp files,
   and a script name that only appears inside text - a heredoc, a commit message.
+- **Failed calls and stops** (`improve` section 3): a call that failed inside the skill's
+  work in two or more sessions, with its last error - the skill keeps leading the agent
+  into the same wall, so fix the step that leads there. And how many loads the person
+  stopped, beside the share of turns stopped with no skill loaded: counts, not a verdict.
+- **Secrets are masked.** Every printed prompt goes through the same token shapes the
+  `security` module detects, plus a word for a secret followed by a colon and a value; a
+  person pastes credentials into a chat, and a report of their prompts would print them.
 - **Not visible**: intent. Two rows can be one task, one row can be two, and a document
   edited often may be the output of a skill that simply was not asked for. The prompts are
   printed so that judgement is made by whoever reads them, which is the step above.
