@@ -117,12 +117,12 @@ $ sqs.py security ./helpful-helper
 ```
 
 That output is real, and it is regenerated on every commit from
-[`tests/fixtures/malicious/`](https://github.com/letsloose501/skill-quality-suite/tree/main/tests/fixtures/malicious) -
+[`tests/fixtures/malicious/`](https://github.com/letsloose501/sqs-skills/tree/main/tests/fixtures/malicious) -
 a fixture that reads as a helpful bootstrap skill and does all six things at once. The
 dangerous lines are assembled when the corpus runs rather than checked in: this
 repository is itself a skill, so anything in it ships into everyone's skills directory,
 and a fixture that reads as an attack has no business sitting in a stranger's tree. The
-[examples page](https://github.com/letsloose501/skill-quality-suite/tree/main/examples)
+[examples page](https://github.com/letsloose501/sqs-skills/tree/main/examples)
 shows the whole run.
 
 ## What it cannot tell you
@@ -141,7 +141,7 @@ Two things narrow that gap:
 ## In CI
 
 ```yaml
-- uses: letsloose501/skill-quality-suite@v1
+- uses: letsloose501/sqs-skills@v2
   with:
     command: security
     upload-sarif: "true"   # needs security-events: write

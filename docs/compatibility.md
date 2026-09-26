@@ -96,6 +96,6 @@ and harness by harness.
 
 ## See also
 
-- [`references/agent-compatibility.md`](https://github.com/letsloose501/skill-quality-suite/blob/main/references/agent-compatibility.md)
+- [`references/agent-compatibility.md`](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/references/agent-compatibility.md)
   - the full table, the source behind each row, and how to add a harness without guessing
 - [Publishing](publishing.md) - the rest of what has to be true before a skill leaves your machine

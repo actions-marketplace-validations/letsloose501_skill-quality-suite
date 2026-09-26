@@ -20,7 +20,7 @@ from rules import RULES, module_of
 RANK = {"error": 0, "warning": 1, "info": 2}
 SIGIL = {"error": "⛔", "warning": "⚠️ ", "info": "· "}
 SARIF_LEVEL = {"error": "error", "warning": "warning", "info": "note"}
-TOOL_URI = "https://github.com/letsloose501/skill-quality-suite"
+TOOL_URI = "https://github.com/letsloose501/sqs-skills"
 
 # The order the board prints, and the question each layer answers.
 LAYERS = [

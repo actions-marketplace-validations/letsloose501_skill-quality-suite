@@ -357,6 +357,216 @@ def work_after_load(skill, history_dir=None, limit=3):
     }
 
 
+# What a task leaves behind that can be told apart from conversation: a script it ran and a
+# file it changed. Stems of the prompt were tried first and measured as noise (1,058 real
+# prompts, see `new --seed`); the agent's own actions are the part of a transcript that
+# says what the work was without anyone judging intent.
+# Only a script in the position where it runs: after an interpreter, or first in a command.
+# Matching any `name.py` in the line counted the file names inside heredocs and commit
+# messages, and `skills.sh`, a site's name, as a shell script run in four sessions.
+INTERPRETER = (r"(?:\S*[/\\])?(?:python(?:3(?:\.\d+)?)?|pythonw|py|node|bash|sh|zsh|pwsh"
+               r"|powershell|ruby|tsx|deno|bun)(?:\.exe)?")
+_EXT = r"\.(?:py|ps1|sh|js|mjs|cjs|ts|rb)"
+SCRIPT_RE = re.compile(r"(?:\A\s*|[;&|(]\s*|" + INTERPRETER + r"\s+(?:-\S+\s+)*)"
+                       r"(?:\"([^\"\n]+" + _EXT + r")\"|'([^'\n]+" + _EXT + r")'"
+                       r"|([^\s\"';|&()<>]+" + _EXT + r"))(?=[\s\"';|&)]|$)", re.I)
+
+
+def _script(match):
+    return match.group(1) or match.group(2) or match.group(3)
+SKILL_PATH_RE = re.compile(r"[/\\]\.claude[/\\]skills[/\\]([\w.-]+)[/\\]")
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+# Files the harness itself asks the agent to keep - its memory index, its instructions,
+# anything under `.claude/`. Editing them is the harness at work, not a task of the
+# user's: the first run over real history put an auto-memory index at the top of the list.
+HARNESS_FILE_RE = re.compile(r"(?:^|[/\\])(?:MEMORY|CLAUDE|AGENTS)\.md$|[/\\]\.claude[/\\]",
+                             re.I)
+# Source code edited again and again is software being written, which is the work of a
+# project rather than a task a skill would carry; the documents a person keeps returning
+# to - a plan, a registry, a note - are. Measured: before this, the files of the project
+# under development filled the list, in front of a plan edited in nine sessions.
+CODE_FILE_RE = re.compile(r"\.(?:py|pyi|js|mjs|cjs|jsx|ts|tsx|go|rs|java|kt|cs|cpp|c|h|rb|php"
+                          r"|sh|ps1|json|ya?ml|toml|ini|cfg|lock|css|scss|html?|sql)$", re.I)
+COMMAND_TAG_RE = re.compile(r"<command-name>/?([\w:.-]+)</command-name>")
+COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+
+
+def _signature(path):
+    """A script or file as the last two parts of its path, so one tool run from two
+    working directories - `video/transcript.py` and `C:/x/video/transcript.py` - is one."""
+    parts = [p for p in re.split(r"[/\\]+", path.strip("\"'`")) if p and p not in (".", "~")]
+    return "/".join(parts[-2:]).casefold() if parts else ""
+
+
+def _segments(path):
+    """[{"prompt", "loaded_before", "loaded", "scripts", "edits", "owned"}] for one transcript.
+
+    A segment runs from a typed prompt - or a typed `/command`, which loads by name - to
+    the next one. `loaded_before` is every skill loaded earlier in the session: a skill
+    stays in context after it loads, so a later turn running its script without loading
+    it again is the skill at work, not a miss. `owned` maps a skill folder to the scripts
+    of it the segment ran; those are never counted as work without a skill.
+    """
+    out, seg, session_loaded = [], None, set()
+    try:
+        f = open(path, encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    with f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict) or rec.get("isSidechain"):
+                continue
+            msg = rec.get("message") or {}
+            content = msg.get("content")
+            if rec.get("type") == "user":
+                text = _user_text(content)
+                if text is None or rec.get("isMeta") or rec.get("isCompactSummary"):
+                    continue
+                loaded = set()
+                if text.lstrip().startswith("<"):
+                    m = COMMAND_TAG_RE.search(text)
+                    if not m:
+                        continue                  # a reminder or a command's echo, not a turn
+                    loaded.add(m.group(1).split(":")[-1])
+                    args = COMMAND_ARGS_RE.search(text)
+                    text = args.group(1) if args else ""
+                if seg is not None:
+                    session_loaded |= seg["loaded"]
+                seg = {"prompt": text.strip(), "loaded_before": set(session_loaded),
+                       "loaded": loaded, "scripts": set(), "edits": set(), "owned": {},
+                       "touched": set(), "worked_on": set()}
+                out.append(seg)
+            elif rec.get("type") == "assistant" and isinstance(content, list) and seg:
+                for b in content:
+                    if not (isinstance(b, dict) and b.get("type") == "tool_use"):
+                        continue
+                    tool, inp = b.get("name"), b.get("input") or {}
+                    if tool == "Skill":
+                        seg["loaded"].add((inp.get("skill") or "").split(":")[-1])
+                    elif tool in SHELL_TOOLS:
+                        for m in SCRIPT_RE.finditer(str(inp.get("command") or "")):
+                            script = _script(m)
+                            owner = SKILL_PATH_RE.search(script)
+                            if owner:
+                                seg["owned"].setdefault(owner.group(1), set()).add(
+                                    _signature(script))
+                            elif not HARNESS_FILE_RE.search(script):
+                                seg["scripts"].add(_signature(script))
+                    elif tool in EDIT_TOOLS:
+                        fp = str(inp.get("file_path") or inp.get("notebook_path") or "")
+                        if not fp:
+                            continue
+                        seg["touched"].add(_signature(fp).rsplit("/", 1)[-1])
+                        owner = SKILL_PATH_RE.search(fp)
+                        if owner:
+                            seg["worked_on"].add(owner.group(1))
+                        if not (TEMP_RE.search(fp) or SKILL_PATH_RE.search(fp)
+                                or HARNESS_FILE_RE.search(fp) or CODE_FILE_RE.search(fp)):
+                            seg["edits"].add(_signature(fp))
+    return out
+
+
+_SEGMENTS = {}
+
+
+def _worked_on(history_dir):
+    """{transcript: skills whose files it edited}. A session that edits a skill is building
+    it, and running its scripts there is testing them: the first run over real history
+    listed a trainer skill's own development session as nine routing misses."""
+    out = {}
+    for path, seg in _all_segments(history_dir):
+        out.setdefault(path, set()).update(seg["worked_on"])
+    return out
+
+
+def _all_segments(history_dir):
+    """[(transcript, segment)] over the whole history, parsed once per process: `improve`
+    over a tree asks for every skill, and a real history is hundreds of transcripts."""
+    key = os.path.abspath(history_dir or default_dir())
+    if key not in _SEGMENTS:
+        _SEGMENTS[key] = [(path, seg)
+                          for path in sorted(glob.glob(os.path.join(key, "*", "*.jsonl")))
+                          for seg in _segments(path)]
+    return _SEGMENTS[key]
+
+
+def ran_unloaded(skill, history_dir=None, limit=5):
+    """Prompts whose turn ran this skill's scripts in a session that never loaded it.
+
+    Only a script in the skill's own folder counts - a path the transcript names, not a
+    guess about the topic - only before the skill loaded anywhere in that session, and
+    never in a session that edited the skill.
+    The agent reaching for a skill's tools by hand is the plainest sign its description
+    did not fire on that request: these are should-trigger wordings in the user's words.
+    """
+    names = {skill.folder, (skill.name or skill.folder).split(":")[-1]}
+    building = _worked_on(history_dir)
+    hits, sessions, turns = [], set(), 0
+    for path, seg in _all_segments(history_dir):
+        mine = set().union(*(seg["owned"].get(n, set()) for n in names))
+        if not mine or names & (seg["loaded"] | seg["loaded_before"] | building[path]):
+            continue
+        sessions.add(path)
+        turns += 1
+        if seg["prompt"] and len(seg["prompt"]) <= MAX_PROMPT_CHARS:
+            hits.append({"prompt": seg["prompt"], "scripts": sorted(mine)})
+    return {"turns": turns, "sessions": len(sessions), "examples": hits[:limit]}
+
+
+def unloaded_by_skill(history_dir=None):
+    """{skill folder: (turns, sessions)} - `ran_unloaded` for every skill in one pass."""
+    building = _worked_on(history_dir)
+    turns, sessions = {}, {}
+    for path, seg in _all_segments(history_dir):
+        for owner in seg["owned"]:
+            if owner in seg["loaded"] | seg["loaded_before"] | building[path]:
+                continue
+            turns[owner] = turns.get(owner, 0) + 1
+            sessions.setdefault(owner, set()).add(path)
+    return {k: (turns[k], len(sessions[k])) for k in turns}
+
+
+def unskilled_work(history_dir=None, limit=8, min_sessions=2):
+    """Work repeated across sessions with no skill in context: candidates for a new one.
+
+    A script run or a file changed in turns of `min_sessions` or more sessions, none of
+    which had loaded any skill up to that turn. Ranked by sessions, then turns, and not
+    cut at a threshold: how many repeats make a task worth a skill is the reader's call.
+    A script inside an installed skill is not here - that is `ran_unloaded`, a routing
+    miss rather than a missing skill. The prompts that led to each are attached so that
+    whoever reads the list judges intent; nothing here does.
+    """
+    # A script that was itself edited somewhere in the history is the thing being built,
+    # not a tool being used: the first run ranked the files of the project under
+    # development - its CLI, its test runner - as the user's most repeated work.
+    # Matched by file name, because one script is run as `python sqs.py` from its folder
+    # and edited as `scripts/sqs.py`, and only the name is common to both.
+    developed = {name for _, seg in _all_segments(history_dir) for name in seg["touched"]}
+    by_sig = {}
+    for path, seg in _all_segments(history_dir):
+        if seg["loaded"] or seg["loaded_before"]:
+            continue
+        for kind, sigs in (("script", seg["scripts"]), ("edit", seg["edits"])):
+            for sig in sigs:
+                if kind == "script" and sig.rsplit("/", 1)[-1] in developed:
+                    continue
+                row = by_sig.setdefault((kind, sig), {"sessions": set(), "turns": 0,
+                                                      "prompts": []})
+                row["sessions"].add(path)
+                row["turns"] += 1
+                p = " ".join(seg["prompt"].split())
+                if p and len(p) <= MAX_PROMPT_CHARS and p not in row["prompts"]:
+                    row["prompts"].append(p)
+    ranked = sorted(((k, v) for k, v in by_sig.items() if len(v["sessions"]) >= min_sessions),
+                    key=lambda kv: (-len(kv[1]["sessions"]), -kv[1]["turns"], kv[0]))
+    return [{"kind": k[0], "what": k[1], "sessions": len(v["sessions"]), "turns": v["turns"],
+             "prompts": v["prompts"][:3]} for k, v in ranked[:limit]]
+
+
 def as_query_set(harvested):
     """The drafts in `evals/eval_queries.json` form, the shape `triggers.load` reads."""
     return ([{"query": p, "should_trigger": True} for p in harvested["positive"]]

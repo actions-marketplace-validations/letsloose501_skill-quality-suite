@@ -1,6 +1,6 @@
 # GitHub Pages. The site is the docs/ folder; everything else in the repository is
 # source, and Jekyll has no business rendering it.
-title: Skill Quality Suite
+title: SQS - Skill Quality Suite
 description: >-
   Quality, linting, security, compatibility and publishing toolkit for AI Agent Skills.
   Validate SKILL.md against the Agent Skills specification, scan a skill before you

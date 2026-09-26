@@ -1,5 +1,5 @@
 ---
-title: "Skill Quality Suite - Lint, Security & Validation for AI Agent Skills"
+title: "SQS - Skill Quality Suite: linter, security scanner and evals for AI Agent Skills"
 description: >-
   An open-source quality, linting, security and validation toolkit for AI Agent Skills.
   Validate SKILL.md against the Agent Skills specification, lint instruction quality,
@@ -7,14 +7,15 @@ description: >-
   Codex, Cursor and Gemini CLI, and measure whether a skill actually helps.
 ---
 
-# Skill Quality Suite
+# SQS - Skill Quality Suite
 
-**A quality, linting, security and validation toolkit for AI Agent Skills.** One
-command per question, no dependencies, Python standard library only.
+**A linter, validator, security scanner and evaluation harness for AI Agent Skills
+(`SKILL.md`), which also tells you which skill to fix or write next from the work you
+actually do.** One command per question, no dependencies, Python standard library only.
 
 ```bash
-git clone https://github.com/letsloose501/skill-quality-suite
-python skill-quality-suite/scripts/sqs.py check ./my-skill
+git clone https://github.com/letsloose501/sqs-skills
+python sqs-skills/skills/skill-quality-suite/scripts/sqs.py check ./my-skill
 ```
 
 ## What it answers
@@ -28,8 +29,9 @@ python skill-quality-suite/scripts/sqs.py check ./my-skill
 | What should be true of it, and is it? | `sqs.py cases ./my-skill` | [Case sets](case-sets.md) |
 | Does it fire, and does it help? | `sqs.py eval ./my-skill --all` | [Evaluation](evaluation.md) |
 | Is it ready to publish? | `sqs.py all ./my-skill --strict` | [Publishing](publishing.md) |
+| Which skill should I fix or write next? | `sqs.py discover` | [Case sets](case-sets.md) |
 
-[Worked examples with real output](https://github.com/letsloose501/skill-quality-suite/tree/main/examples)
+[Worked examples with real output](https://github.com/letsloose501/sqs-skills/tree/main/examples)
 show each of these on a good skill, a weak one and a malicious one.
 
 ## Guides
@@ -94,23 +96,24 @@ Through the cross-agent installer, which works for Claude Code, Cursor, Codex,
 Windsurf, Gemini and the rest of the agents `skills` supports:
 
 ```bash
-npx skills@1 add letsloose501/skill-quality-suite
+npx skills@1 add letsloose501/sqs-skills
 ```
 
-Or as a plain clone, so your own agent can run it on itself:
+The installer copies `skills/skill-quality-suite/` and nothing else; the test corpus,
+these pages and CI stay in the repository. By hand:
 
 ```bash
-git clone https://github.com/letsloose501/skill-quality-suite \
-  ~/.claude/skills/skill-quality-suite
+git clone https://github.com/letsloose501/sqs-skills
+cp -r sqs-skills/skills/skill-quality-suite ~/.claude/skills/
 ```
 
-As a plain tool: clone anywhere and call `scripts/sqs.py`. It finds the skills folder on
-its own, or takes `--skills-dir`.
+As a plain tool: clone anywhere and call `skills/skill-quality-suite/scripts/sqs.py`. It
+finds the skills folder on its own, or takes `--skills-dir`.
 
 In CI, as a [GitHub Action from the Marketplace](https://github.com/marketplace/actions/skill-quality-suite):
 
 ```yaml
-- uses: letsloose501/skill-quality-suite@v1
+- uses: letsloose501/sqs-skills@v2
   with:
     path: .
     strict: "true"
@@ -122,8 +125,8 @@ Before the commit, as a pre-commit hook:
 
 ```yaml
 repos:
-  - repo: https://github.com/letsloose501/skill-quality-suite
-    rev: v1
+  - repo: https://github.com/letsloose501/sqs-skills
+    rev: v2
     hooks:
       - id: skill-quality-suite
       - id: skill-quality-suite-security
@@ -141,8 +144,7 @@ like a real one, and that is how a compatibility tool stops being believed.
 
 ## Project
 
-- [Roadmap](roadmap.md) - what is not built yet, and what is worth taking from the
-  neighbouring projects
-- [Source on GitHub](https://github.com/letsloose501/skill-quality-suite) - MIT
+- [Source on GitHub](https://github.com/letsloose501/sqs-skills) - Apache-2.0
 - [The Agent Skills specification](https://agentskills.io/specification) it validates against
-- 71 coded rules, every one of them with a test that has watched it fire
+- 100 coded rules, every one of them with a test that has watched it fire
+- [Support](https://github.com/letsloose501/sqs-skills/blob/main/SUPPORT.md) · [Contributing](https://github.com/letsloose501/sqs-skills/blob/main/CONTRIBUTING.md) · [NOTICE](https://github.com/letsloose501/sqs-skills/blob/main/NOTICE)

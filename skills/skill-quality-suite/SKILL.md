@@ -1,7 +1,7 @@
 ---
 name: skill-quality-suite
-description: Lint, validate and security-scan Agent Skills. Use when asked to check or audit a SKILL.md; when a skill does not fire, fires on a neighbour's work, or half-works and silently skips steps; when writing or reworking one; after a rename left a reference pointing at nothing; before committing or publishing; when a skill came from elsewhere and has to be read before it is trusted; and when the question is whether the last edit made its routing better or worse.
-license: MIT
+description: Lint, validate and security-scan Agent Skills. Use when asked to check or audit a SKILL.md; when a skill does not fire, fires on a neighbour's work, or half-works and silently skips steps; when writing or reworking one; after a rename left a reference pointing at nothing; before committing or publishing; when a skill came from elsewhere and has to be read before it is trusted; when deciding which skill to write or fix next from the work actually done; and when the question is whether the last edit made its routing better or worse.
+license: Apache-2.0
 ---
 
 # Skill quality suite
@@ -54,7 +54,8 @@ edits. The free checks say X. Run it?"
 | Does the skill actually help | `sqs.py eval <skill> --runtime` - **paid, ask first**: the task with it and without it |
 | Did my last edit break it | `sqs.py eval <skill> --all --save v2`, then `--compare v1 v2` - **paid, ask first** |
 | What do people actually type to reach it | `sqs.py cases <skill> --from-history` - free, reads local transcripts |
-| What should I change in this skill | `sqs.py improve <skill>` - findings with fixes, what your own requests say, and where its work went after loading |
+| What should I change in this skill | `sqs.py improve <skill>` - findings with fixes, your own requests, and where its work went |
+| Which skill to write next, or which one keeps missing | `sqs.py discover` - free, reads local transcripts; then propose from [from-history.md](references/from-history.md) |
 | Switching the gate on over an old tree | `sqs.py baseline create`, then `check --baseline` |
 | One line per layer, for a decision | `sqs.py check <skill> --format board` |
 | Writing a new skill | `sqs.py new <name> [--seed WORD]`, then [creating-a-skill.md](references/creating-a-skill.md) |
@@ -69,6 +70,13 @@ edits. The free checks say X. Run it?"
 `check` is the everyday one: structure, spec, quality, compat and security together.
 `all` adds the publish module. Neither runs an agent - that is `eval`, and it is always
 opt-in.
+
+## From your history to a proposal
+
+`sqs.py discover` reads which skills' scripts ran while they never loaded, and which work
+repeats with no skill at all; it prints evidence and decides nothing. Turning it into a
+proposal - read the prompts, group, propose, wait for a yes - is in
+[from-history.md](references/from-history.md).
 
 ## Reading the report
 
@@ -222,6 +230,8 @@ golden corpus and the generated pages all have to agree before a change is done.
   that already fires, and before the first `sqs.py eval`.
 - [publishing.md](references/publishing.md) - the gate before a skill leaves the machine,
   and what the publish module cannot see.
+- [from-history.md](references/from-history.md) - from the user's own sessions to a
+  proposal: which skill to write next, which one keeps missing. Open it before `discover`.
 - [porting.md](references/porting.md) - moving a skill to another harness: read the
   target's own page now, plan against it, write a copy, never the original. Open it before
   changing a skill for a harness it was not written for.

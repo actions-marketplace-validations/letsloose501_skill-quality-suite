@@ -23,8 +23,8 @@ installed rather than wrote arrives with none at all, no author to ask, and a de
 that is itself the thing in question - because nothing here tests the other half of the
 promise: **does it do what it says it does?** The three sources to build a set from - what
 you expect of it, each improvement as it lands, and a stranger's stated promises - are in
-[where the cases come from](https://github.com/letsloose501/skill-quality-suite/blob/main/references/evaluating.md#where-the-cases-come-from);
-generating them is [roadmap item 17](roadmap.md).
+[where the cases come from](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/references/evaluating.md#where-the-cases-come-from);
+`sqs.py cases <skill> --generate` drafts one from them - see [case sets](case-sets.md).
 
 Everything here runs an agent, so it costs money and minutes and needs one installed.
 Nothing runs unless you name it:
@@ -313,7 +313,7 @@ between the two, so pick one per skill rather than keeping both.
 
 - [Test plugins with evals](https://code.claude.com/docs/en/plugin-evals) - Claude Code's
   own runner, compared above
-- [`references/evaluating.md`](https://github.com/letsloose501/skill-quality-suite/blob/main/references/evaluating.md)
+- [`references/evaluating.md`](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/references/evaluating.md)
   - the working detail: writing queries, writing assertions, and the part that stays a
   human's job
 - [Case sets](case-sets.md) - where the queries and tasks this page runs come from

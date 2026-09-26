@@ -110,6 +110,6 @@ for the tree, and `.sqsignore` for a subtree that is not skill payload at all.
 
 ## See also
 
-- [The full rule list](quality-rules.md), all 70, with the reasoning for each
+- [The full rule list](quality-rules.md), all 100, with the reasoning for each
 - [Skill security](skill-security.md) - what to run before you install a stranger's skill
-- [Worked examples with real output](https://github.com/letsloose501/skill-quality-suite/tree/main/examples)
+- [Worked examples with real output](https://github.com/letsloose501/sqs-skills/tree/main/examples)

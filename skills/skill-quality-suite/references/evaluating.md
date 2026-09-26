@@ -336,9 +336,9 @@ The set is what makes an improvement safe to attempt. That is the reason to spen
 minutes below, not tidiness.
 
 Three sources, and they answer different questions. Use all three on a skill you are adopting
-and at least the first two on one you are writing. Generating them is
-[item 17](https://letsloose501.github.io/skill-quality-suite/roadmap); until that exists, this
-is the twenty minutes that makes the rest of the page worth running.
+and at least the first two on one you are writing. `sqs.py cases <skill> --generate` drafts
+the set out of all three; reading the draft is the twenty minutes that makes the rest of the
+page worth running.
 
 **1. What you expect of it.** Write down, in plain sentences, what you want this skill to do
 *for you*. Do it before you read the skill closely, and if the skill does not exist yet, do it

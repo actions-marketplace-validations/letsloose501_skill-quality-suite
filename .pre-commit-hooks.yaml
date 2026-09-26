@@ -8,7 +8,7 @@
 - id: skill-quality-suite
   name: skill quality (changed skills)
   description: Structure, spec, quality, compatibility and security over the skills this commit touches.
-  entry: scripts/sqs.py
+  entry: skills/skill-quality-suite/scripts/sqs.py
   args: [check, --changed, --quiet]
   language: script
   pass_filenames: false
@@ -18,7 +18,7 @@
 - id: skill-quality-suite-security
   name: skill security
   description: Secrets, destructive commands, injection and hidden characters. Run it on a skill somebody else wrote, before the agent reads it for work.
-  entry: scripts/sqs.py
+  entry: skills/skill-quality-suite/scripts/sqs.py
   args: [security, --quiet]
   language: script
   pass_filenames: false

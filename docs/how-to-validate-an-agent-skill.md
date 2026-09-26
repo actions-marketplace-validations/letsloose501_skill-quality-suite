@@ -164,7 +164,7 @@ the output is still load the agent pays for.
 ## In CI, so it stays true
 
 ```yaml
-- uses: letsloose501/skill-quality-suite@v1
+- uses: letsloose501/sqs-skills@v2
   with:
     path: .
     strict: "true"
@@ -180,4 +180,4 @@ nothing else notices.
 
 - [Skill validation reference](skill-validation.md) - the same material as a reference
 - [How to secure Agent Skills](how-to-secure-agent-skills.md)
-- [All 99 rules](quality-rules.md)
+- [All 100 rules](quality-rules.md)

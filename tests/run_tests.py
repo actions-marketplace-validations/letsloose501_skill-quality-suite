@@ -33,8 +33,9 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 FIXTURES = os.path.join(HERE, "fixtures")
-SQS = os.path.join(REPO, "scripts", "sqs.py")
-sys.path.insert(0, os.path.join(REPO, "scripts"))
+SUITE = os.path.join(REPO, "skills", "skill-quality-suite")
+SQS = os.path.join(SUITE, "scripts", "sqs.py")
+sys.path.insert(0, os.path.join(SUITE, "scripts"))
 
 HIDDEN_LINE = "\nSee the " + chr(0x200b) + "setup" + chr(0x202e) + " notes for the rest.\n"
 # Assembled here rather than written into a fixture file, for the same reason the
@@ -360,6 +361,7 @@ def unit_checks():
     out += dependency_checks()
     out += ranking_checks()
     out += work_checks()
+    out += discover_checks()
     out += noise_checks()
     out += neighbour_checks()
     out += environment_checks()
@@ -449,10 +451,59 @@ def unit_checks():
         if got:
             out.append(f"PB014 with an upstream remote: expected silence, got {got}")
 
+    # PB015: the repository root is the skill, so its tests and docs ship with it. Only a
+    # git checkout can say where the root is, so it is built here: the root form with a
+    # `tests/` beside SKILL.md fires, and the same repository with the skill moved into
+    # `skills/<name>/` does not - nor does a root skill carrying nothing but its payload.
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = os.path.join(tmp, "gizmo")
+        os.makedirs(os.path.join(repo, "tests"))
+        os.makedirs(os.path.join(repo, "references"))
+        body = ("---" + chr(10) + "name: gizmo" + chr(10) + "description: Builds gizmos. "
+                "Use when a gizmo is needed." + chr(10) + "---" + chr(10) + chr(10)
+                + "1. Build the gizmo." + chr(10))
+        with open(os.path.join(repo, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write(body)
+        subprocess.run(["git", "-C", repo, "init", "-q"], check=True)
+        got = [f.code for f in publish.payload_findings(Skill(repo))]
+        if got != ["PB015"]:
+            out.append(f"PB015 at the repository root beside tests/: got {got}")
+        os.rmdir(os.path.join(repo, "tests"))
+        got = [f.code for f in publish.payload_findings(Skill(repo))]
+        if got:
+            out.append(f"PB015 on a root skill carrying only its payload: got {got}")
+        # a nested skill may carry a `docs/` of its own - Cline names it as a skill
+        # directory - and that is payload, because this folder is not the repository
+        nested = os.path.join(repo, "skills", "gizmo")
+        os.makedirs(os.path.join(nested, "docs"))
+        os.replace(os.path.join(repo, "SKILL.md"), os.path.join(nested, "SKILL.md"))
+        os.makedirs(os.path.join(repo, "tests"))
+        got = [f.code for f in publish.payload_findings(Skill(nested))]
+        if got:
+            out.append(f"PB015 on a skill in skills/<name>/: got {got}")
+
+    # What an installer hands a user is this skill's folder alone. Copied out on its own,
+    # it has to read clean to `security` - the check two marketplace scanners failed this
+    # project on, when the folder was the repository and carried the attack corpus.
+    with tempfile.TemporaryDirectory() as tmp:
+        shipped = os.path.join(tmp, "skill-quality-suite")
+        shutil.copytree(SUITE, shipped, ignore=shutil.ignore_patterns("__pycache__"))
+        r = subprocess.run([sys.executable, SQS, "security", shipped, "--format", "json"],
+                           capture_output=True, text=True, encoding="utf-8", cwd=tmp)
+        try:
+            codes = [f["code"] for f in json.loads(r.stdout).get("findings", [])]
+        except ValueError:
+            codes = ["(no json)"]
+        if codes:
+            out.append(f"the shipped folder is not clean to `security`: {codes}")
+        stray = [d for d in publish.NOT_PAYLOAD if os.path.isdir(os.path.join(shipped, d))]
+        if stray:
+            out.append(f"the shipped folder carries repository material: {stray}")
+
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when
     # the suite is installed as one, so the probe looks in both.
-    engine_dir = next((d for d in (os.path.join(REPO, "scripts"), os.path.dirname(REPO))
+    engine_dir = next((d for d in (os.path.join(SUITE, "scripts"), os.path.dirname(SUITE))
                        if os.path.isfile(os.path.join(d, "check_skills.py"))), None)
     if engine_dir is None:
         out.append("check_skills.py is neither bundled nor beside the skills - the "
@@ -482,7 +533,7 @@ def unit_checks():
     # a skill pointed at directly, with the skills dir pointing at the skill itself.
     # The structure engine resolves a skill by name under the skills dir, and when the
     # two disagree it used to report the skill as having no SKILL.md at all.
-    r = subprocess.run([sys.executable, SQS, "check", REPO, "--skills-dir", REPO,
+    r = subprocess.run([sys.executable, SQS, "check", SUITE, "--skills-dir", SUITE,
                         "--format", "json"], capture_output=True, text=True,
                        encoding="utf-8", cwd=REPO)
     try:
@@ -524,11 +575,11 @@ def unit_checks():
         if missing:
             out.append("examples/README.md no longer shows " + ", ".join(missing)
                        + " - the page promises findings it does not print; run "
-                         "`python scripts/build_docs.py`")
+                         "`python tools/build_docs.py`")
 
     # every documented format has to produce parseable output on a real skill
     for fmt, parse in (("json", json.loads), ("sarif", json.loads)):
-        r = subprocess.run([sys.executable, SQS, "check", REPO, "--format", fmt],
+        r = subprocess.run([sys.executable, SQS, "check", SUITE, "--format", fmt],
                            capture_output=True, text=True, encoding="utf-8", cwd=REPO)
         try:
             parse(r.stdout)
@@ -650,7 +701,7 @@ def indirection_checks():
     of them emit the same code. Each row here reaches exactly one. The executing calls
     are assembled, as in `_PATTERNS`, so no row is a payload written out.
     """
-    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    sys.path.insert(0, os.path.join(SUITE, "scripts"))
     import capabilities
     import security
     ex, nl = "ex" + "ec", chr(10)
@@ -1092,6 +1143,91 @@ def work_checks():
     for key, (got, expected) in want.items():
         if got != expected:
             out.append(f"work_after_load {key}: {got!r}, expected {expected!r}")
+    return out
+
+
+def discover_checks():
+    """`discover` and `improve`'s unloaded-scripts line against sessions built to cross
+    every exclusion, one call that must count beside one that must not:
+
+    - a skill's script run before it loaded counts; after it loaded in the same session,
+      or in a session that edited the skill, it does not;
+    - a document edited in two sessions with no skill counts; one session does not; a
+      code file, a harness file (MEMORY.md), a scratchpad file and a file edited while a
+      skill was loaded do not;
+    - a script run in two sessions counts, unless it was itself edited somewhere, and a
+      script name inside a heredoc or a commit message is not a run;
+    - a typed `/command` is a load.
+    """
+    from core import Skill
+    from evaluation import history
+    n = [0]
+
+    def call(tool, **inp):
+        n[0] += 1
+        return [{"type": "assistant", "message": {"id": f"m{n[0]}", "content": [
+                    {"type": "tool_use", "id": f"t{n[0]}", "name": tool, "input": inp}]}},
+                {"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": f"t{n[0]}", "content": "ok"}]}}]
+
+    def say(text):
+        return [{"type": "user", "message": {"content": text}}]
+
+    own = "python ~/.claude/skills/statement-check/scripts/check.py march.csv"
+    one = (say("reconcile the march export") + call("Bash", command=own)       # counts
+           + call("Edit", file_path="plans/budget.md")                          # counts
+           + call("Edit", file_path="app/main.py")                              # code
+           + call("Edit", file_path="/home/u/.claude/projects/p/memory/MEMORY.md")
+           + call("Edit", file_path="/tmp/scratchpad/draft.md")
+           + call("Bash", command="python tools/report.py --month 3")          # counts
+           + call("Bash", command="python tools/build.py")                     # developed
+           + call("Bash", command="git commit -m 'fix tools/stray.py'")
+           + call("Bash", command="cat > notes.md << EOF\ntools/stray.py\nEOF")
+           + say("now check it") + call("Skill", skill="statement-check")
+           + say("again") + call("Bash", command=own)                          # loaded
+           + call("Edit", file_path="plans/loaded-only.md"))
+    two = (say("the april one") + call("Bash", command=own)                     # counts
+           + call("Edit", file_path="plans/budget.md")
+           + call("Edit", file_path="app/main.py")
+           + call("Edit", file_path="/home/u/.claude/projects/p/memory/MEMORY.md")
+           + call("Edit", file_path="/tmp/scratchpad/draft.md")
+           + call("Bash", command="python tools/report.py --month 4")
+           + call("Bash", command="python tools/build.py")
+           + call("Bash", command="git commit -m 'fix tools/stray.py'")
+           + call("Edit", file_path="tools/build.py")
+           + call("Edit", file_path="plans/loaded-only.md"))
+    building = (say("tidy the checker") + call("Bash", command=own)              # building
+                + call("Edit",
+                       file_path="/home/u/.claude/skills/statement-check/SKILL.md"))
+    typed = ([{"type": "user", "message": {"content":
+               "<command-name>/statement-check</command-name>"
+               "<command-args>may too</command-args>"}}]
+             + call("Bash", command=own))                                       # typed
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        proj = os.path.join(tmp, "history", "p")
+        os.makedirs(proj)
+        for name, recs in (("a.jsonl", one), ("b.jsonl", two), ("c.jsonl", building),
+                           ("d.jsonl", typed)):
+            with open(os.path.join(proj, name), "w", encoding="utf-8") as f:
+                for r in recs:
+                    f.write(json.dumps(r) + "\n")
+        hist = os.path.join(tmp, "history")
+        skill = Skill(os.path.join(FIXTURES, "restated-cases", "statement-check"))
+        u = history.ran_unloaded(skill, hist)
+        work = history.unskilled_work(hist)
+        by = history.unloaded_by_skill(hist)
+    got = {
+        "ran_unloaded": ((u["turns"], u["sessions"]), (2, 2)),
+        "prompts": (sorted(x["prompt"] for x in u["examples"]),
+                    ["reconcile the march export", "the april one"]),
+        "by_skill": (by.get("statement-check"), (2, 2)),
+        "unskilled": (sorted((w["kind"], w["what"], w["sessions"]) for w in work),
+                      [("edit", "plans/budget.md", 2), ("script", "tools/report.py", 2)]),
+    }
+    for key, (have, expected) in got.items():
+        if have != expected:
+            out.append(f"discover {key}: {have!r}, expected {expected!r}")
     return out
 
 
@@ -1580,7 +1716,7 @@ def evaluation_checks():
             f.write(good)
 
     # the trigger dataset parser must refuse what it cannot read rather than guess
-    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    sys.path.insert(0, os.path.join(SUITE, "scripts"))
     from evaluation import triggers
     nl = chr(10)
     unreadable = ["- prompt: |" + nl + "    two lines" + nl,

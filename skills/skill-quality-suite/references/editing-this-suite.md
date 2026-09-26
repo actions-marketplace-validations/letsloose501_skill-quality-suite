@@ -3,11 +3,17 @@
 What to run and what to keep true when the change is to skill-quality-suite itself,
 not to a skill it checks.
 
+Commands below run from the repository root. The skill is `skills/skill-quality-suite/`;
+the corpus (`tests/`), the page generator (`tools/`), the documentation site (`docs/`) and
+CI sit beside it, because an installer copies only the skill's folder, and a corpus of
+deliberately malicious skills has no place in somebody's skills directory.
+
 The rule codes are the join key of the whole thing: `rules.py` is the single place a code
 is defined, and every engine emits codes from it. After adding or changing a rule:
 
 ```
-python scripts/sqs.py rules --audit     registry against the engines, and against the corpus
+python skills/skill-quality-suite/scripts/sqs.py rules --audit
+                                           registry against the engines, and against the corpus
 python tests/run_tests.py               every case, then the unit checks
 ```
 
@@ -20,8 +26,8 @@ Two pages are generated rather than written, because a hand-written page about a
 is a snapshot of what the tool did the day somebody wrote it:
 
 ```
-python scripts/build_docs.py            docs/quality-rules.md and examples/README.md
-python scripts/build_docs.py --check    fails when either has gone stale
+python tools/build_docs.py              docs/quality-rules.md and examples/README.md
+python tools/build_docs.py --check      fails when either has gone stale
 ```
 
 `tests/fixtures/` is that corpus: small skills trees with an `expect.json` beside each,

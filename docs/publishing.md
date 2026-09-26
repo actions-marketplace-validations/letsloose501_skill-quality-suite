@@ -118,6 +118,35 @@ upstream is correct, and says so to the rule once upstream is a git remote. The 
 read beside the skill, one level up, and at the plugin root; one shared by several skills
 is reported on the first of them.
 
+## Does the repository ship inside the skill
+
+`PB015` fires when `SKILL.md` sits at the root of its git repository beside `tests/`,
+`docs/`, `examples/` or `.github/`. The cross-agent installer copies a skill's folder, and
+a `SKILL.md` at the root shadows anything nested below it, so the folder is the whole
+repository: the test corpus, the documentation site and CI land in every user's skills
+directory.
+
+That matters more than disk space. Skill marketplaces run security scanners over what a
+skill ships, and a scanner reads a test fixture of an attack as an attack. This project
+learned it on itself: on skills.sh, two of three partner audits failed it. One cited a
+real flaw, since fixed - the suite imported a check script out of the folder it was
+analysing - and, beside it, the fixture of a malicious skill the corpus tests against and
+the way the test runner assembled a fake token and hidden characters. The other rated that
+fixture as malware. Material the agent never loads decided most of both verdicts.
+
+The fix is layout: move the skill into `skills/<name>/` and keep tests, docs and CI beside
+it. `.sqsignore` does not help here; it hides a path from this suite, not from the
+installer or anybody else's scanner. The rule stays silent for a nested skill, even one
+with a `docs/` of its own, because that folder is not the repository.
+
+Two facts about marketplace audits worth knowing before you publish, from the
+[skills.sh API documentation](https://www.skills.sh/docs/api): audit results are public at
+`/api/v1/skills/audit/{owner}/{repo}/{skill}`, one row per partner with `status`,
+`riskLevel` and `auditedAt`; and they "are generated automatically after a skill is
+installed for the first time". The page does not describe a re-audit on later commits, and
+this project's audit date did not move across fifty of them - so the first install is the
+version that gets judged. Run `sqs.py all --strict` before it, not after.
+
 Plus, from the other modules and worth re-reading before a release:
 
 - `SP013` - repository furniture (README, Makefile, `package.json`) shipping inside the
@@ -135,7 +164,7 @@ Plus, from the other modules and worth re-reading before a release:
 4. `sqs.py eval ./my-skill --trigger` - a skill that never fires is worth nothing,
    however good its instructions. See [Evaluation](evaluation.md).
 5. Read the skill yourself, against
-   [`references/writing-rubric.md`](https://github.com/letsloose501/skill-quality-suite/blob/main/references/writing-rubric.md).
+   [`references/writing-rubric.md`](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/references/writing-rubric.md).
 
 ## What the publish check cannot see
 
@@ -163,5 +192,5 @@ The recorded findings stay in the file, counted and dated. It is a queue, not a 
 
 ## See also
 
-- [`references/publishing.md`](https://github.com/letsloose501/skill-quality-suite/blob/main/references/publishing.md)
+- [`references/publishing.md`](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/references/publishing.md)
 - [Skill validation](skill-validation.md) · [Skill security](skill-security.md) · [Evaluation](evaluation.md)
