@@ -45,7 +45,11 @@ scripts ran, which files changed. From that:
 - `improve <skill>` puts the rule findings with their fixes next to the prompts that
   really reached the skill, the ones a neighbour won, and what the agent kept looking up
   after it loaded;
-- `cases --from-history` turns those prompts into a trigger set in your own words.
+- `cases --from-history` turns those prompts into a trigger set in your own words;
+- a **mistakes journal** - one four-line note per mistake the agent catches itself making,
+  reviewed into rules and gates - feeds both: `improve` lists the entries that name the
+  skill, including those a review already cleared from the folder but git remembers
+  ([how to keep one](skills/skill-quality-suite/references/mistakes-journal.md)).
 
 The agent running the skill reads that evidence and proposes; nothing is created or
 rewritten without your yes.
@@ -85,6 +89,7 @@ into the pass so you see whether an edit stole their requests.
 | What do people actually type to reach it? | `cases --from-history` |
 | What should I change in it? | `improve` |
 | Which skill should I fix or write next? | `discover` |
+| Which mistakes keep happening with it? | `improve` with a mistakes journal |
 | Would a new skill just collide with an old one? | `new <name> --seed WORD` |
 | Can it be published? | `publish` |
 
@@ -124,7 +129,8 @@ first time:
 - a README in the same marketplace tells readers to install a plugin from a marketplace
   that does not list it (`PB014`);
 - this repository shipped its own attack corpus to every user while `SKILL.md` sat at the
-  repository root, and two marketplace scanners failed it largely for that (`PB015`).
+  repository root; two marketplace scanners failed it largely for that, and all three
+  passed it once the skill moved into its own folder (`PB015`).
 
 ### What published measurements say about skills
 

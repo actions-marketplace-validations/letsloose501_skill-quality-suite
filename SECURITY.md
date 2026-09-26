@@ -21,8 +21,8 @@ the trust boundary is a design constraint rather than a footnote:
   `--trust-target`. Do not point `eval` at a skill you have not read.
 - **No network in the static half**, no dependencies outside the standard library.
 - **Your history stays local.** `cases --from-history`, `improve` and `discover` read
-  Claude Code transcripts from your own disk and print to your terminal; nothing is sent
-  anywhere and nothing is written.
+  Claude Code transcripts and your mistakes journal from your own disk and print to your
+  terminal; nothing is sent anywhere and nothing is written.
 
 ## What an install gives you
 

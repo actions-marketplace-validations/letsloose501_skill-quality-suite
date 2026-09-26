@@ -178,6 +178,13 @@ for. Every row prints the prompts that led to it, because whether two rows are o
 is a judgement, and the skill's instructions leave it to the agent running it, in
 conversation: propose, and write nothing until the user says yes.
 
+With a mistakes journal configured (`"mistakes": "path"` in `sqs.config.json`, or
+`--mistakes-dir`), `discover` adds a third list: the skills the journal names, and how
+often, counting the entries a review already cleared from the folder but git still has.
+`improve <skill>` prints their patterns. The journal's format and the review that turns
+repeats into rules and gates are in
+[mistakes-journal.md](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/references/mistakes-journal.md).
+
 ## What this is not
 
 - **not a score.** "78% honest" is unactionable, and the one-number headline this

@@ -54,7 +54,7 @@ edits. The free checks say X. Run it?"
 | Does the skill actually help | `sqs.py eval <skill> --runtime` - **paid, ask first**: the task with it and without it |
 | Did my last edit break it | `sqs.py eval <skill> --all --save v2`, then `--compare v1 v2` - **paid, ask first** |
 | What do people actually type to reach it | `sqs.py cases <skill> --from-history` - free, reads local transcripts |
-| What should I change in this skill | `sqs.py improve <skill>` - findings with fixes, your own requests, and where its work went |
+| What should I change in this skill | `sqs.py improve <skill>` - findings with fixes, your requests, your [mistakes journal](references/mistakes-journal.md) |
 | Which skill to write next, or which one keeps missing | `sqs.py discover` - free, reads local transcripts; then propose from [from-history.md](references/from-history.md) |
 | Switching the gate on over an old tree | `sqs.py baseline create`, then `check --baseline` |
 | One line per layer, for a decision | `sqs.py check <skill> --format board` |
@@ -188,11 +188,9 @@ Three scopes of escape hatch, for findings that are correct-and-intended:
   `off`/`info`/`warning`/`error`, `ignore` skips skills, `allow_dirs` accepts a directory
   the spec does not name, `harnesses` sets the target environments and `lang` the
   publication language.
-- **A subtree** - `.sqsignore` at the skill root, one path glob per line. What it lists
-  is not read at all, so nothing about it is checked and nothing about it is claimed.
-  That is the difference from `sqs-allow`, which says "found it, and it is meant to be
-  there". For material inside the folder that is not skill payload: a test corpus,
-  vendored files, generated output.
+- **A subtree** - `.sqsignore` at the skill root, one path glob per line: not read at all,
+  so nothing is claimed about it. It hides a path from this suite only, not from the
+  installer (`PB015`).
 
 Two more ways to make a report survive contact with an old tree, neither of which hides
 anything:
@@ -232,6 +230,8 @@ golden corpus and the generated pages all have to agree before a change is done.
   and what the publish module cannot see.
 - [from-history.md](references/from-history.md) - from the user's own sessions to a
   proposal: which skill to write next, which one keeps missing. Open it before `discover`.
+- [mistakes-journal.md](references/mistakes-journal.md) - recording a mistake, reviewing
+  the journal into rules and gates, and what `improve` reads from it.
 - [porting.md](references/porting.md) - moving a skill to another harness: read the
   target's own page now, plan against it, write a copy, never the original. Open it before
   changing a skill for a harness it was not written for.
