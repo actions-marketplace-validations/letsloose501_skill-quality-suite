@@ -53,6 +53,7 @@ a subprocess with `--format json`, and compares the rule codes that came back.
 | `name-and-drift` | an off-spec name, and a description that grew away from its body |
 | `quality-prose` | what, never when; a description talking about itself; TODOs; unverifiable instructions; a bundled script that waits for a human |
 | `structure-links`, `link-shapes`, `sibling-link` | every shape of broken pointer: a file that is not there, a heading that moved, a neighbour's file, a skill that does not exist, an outbound path into a vault that is gone |
+| `environment-paths` | a missing path into a tool's own folder (ST017, a warning) next to a missing path into the user's files (ST011) |
 | `code-as-prose` | a program pasted into the text, and a skill that activates and says nothing |
 | `duplicate-name` | two folders claiming one `name` |
 | `large-skill` | budgets and asset weight, generated at run time |

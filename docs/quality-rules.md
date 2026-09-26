@@ -11,7 +11,7 @@ description: >-
 
 # Quality rules
 
-Every finding the suite can emit, all 100 of them, rendered from `scripts/rules.py`.
+Every finding the suite can emit, all 101 of them, rendered from `scripts/rules.py`.
 
 `sqs.py explain <CODE>` prints the same reasoning at the terminal, and `sqs.py rules --module security` lists one module.
 
@@ -688,6 +688,7 @@ Links, orphans, budgets, section pointers, outbound paths. This is the class of 
 | `ST014` | error | high | low | no | Duplicate `name` across skills |
 | `ST015` | error | high | low | no | No SKILL.md |
 | `ST016` | warning | unrated | unrated | no | External link unreachable |
+| `ST017` | warning | high | medium | no | Path into a tool's folder not on this machine |
 
 ### ST001 - Link to a file that does not exist
 
@@ -784,3 +785,9 @@ Links, orphans, budgets, section pointers, outbound paths. This is the class of 
 **Why it matters.** A dead URL in a reference sends the agent to fetch nothing.
 
 **Fix.** Update or remove the link. 403 is reported separately: it usually means the site blocks bots, not that the page is gone.
+
+### ST017 - Path into a tool's folder not on this machine
+
+**Why it matters.** A path under `~/.claude`, `~/.config/<tool>`, a dot-folder or a platform config root exists only where that tool is installed. On a CI runner or a fresh machine it is missing, and a missing install cannot be told from a broken path.
+
+**Fix.** Check it on a machine with the tool installed. If the file only describes install locations, waive it for the file with `sqs-allow-file: ST017`.
