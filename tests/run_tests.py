@@ -361,6 +361,7 @@ def unit_checks():
     out += dependency_checks()
     out += ranking_checks()
     out += journal_checks()
+    out += failure_checks()
     out += work_checks()
     out += discover_checks()
     out += noise_checks()
@@ -1157,6 +1158,77 @@ def work_checks():
     for key, (got, expected) in want.items():
         if got != expected:
             out.append(f"work_after_load {key}: {got!r}, expected {expected!r}")
+    return out
+
+
+def failure_checks():
+    """Failed calls, stops and projects, read the way `improve` and `discover` read them.
+
+    Three sessions of one skill, in two projects. A shell call that fails in two sessions
+    must be reported, with its last error; one that fails once must not; a call that
+    failed before the skill loaded belongs to nobody. A stop by the person counts for the
+    load it interrupted and must not start a turn of its own. A secret in a prompt is
+    masked in both of its shapes, and a harmless "password manager" stays readable.
+    """
+    from core import Skill
+    from evaluation import history
+    n = [0]
+
+    def call(tool, error=None, **inp):
+        n[0] += 1
+        result = {"type": "tool_result", "tool_use_id": f"t{n[0]}", "content": error or "ok"}
+        if error:
+            result["is_error"] = True
+        return [{"type": "assistant", "message": {"id": f"m{n[0]}", "content": [
+                    {"type": "tool_use", "id": f"t{n[0]}", "name": tool, "input": inp}]}},
+                {"type": "user", "message": {"content": [result]}}]
+
+    def say(text):
+        return [{"type": "user", "message": {"content": text}}]
+
+    load = call("Skill", skill="statement-check")
+    broken = "cd ~/plans && grep 'x"
+    a = (say("the server password: hunter2secret, now reconcile march")
+         + call("Bash", command=broken, error="Exit code 2 unexpected EOF")   # before load
+         + load + call("Bash", command=broken, error="Exit code 2 unexpected EOF")
+         + call("Bash", command="python once.py", error="Exit code 1 boom")
+         + say("[Request interrupted by user]"))
+    b = (say("reconcile april, key sk-ant-" + "a" * 30) + load
+         + call("Bash", command=broken, error="Exit code 2 unexpected EOF"))
+    c = say("tidy the password manager notes") + call("Edit", file_path="plans/tidy.md")
+    d = say("tidy them again") + call("Edit", file_path="plans/tidy.md")
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for proj, name, recs in (("p1", "a.jsonl", a), ("p1", "b.jsonl", b),
+                                 ("p1", "c.jsonl", c), ("p2", "d.jsonl", d)):
+            os.makedirs(os.path.join(tmp, "history", proj), exist_ok=True)
+            with open(os.path.join(tmp, "history", proj, name), "w", encoding="utf-8") as f:
+                for r in recs:
+                    f.write(json.dumps(r) + "\n")
+        hist = os.path.join(tmp, "history")
+        skill = Skill(os.path.join(FIXTURES, "restated-cases", "statement-check"))
+        w = history.work_after_load(skill, hist)
+        work = history.unskilled_work(hist)
+        prompts = sorted(p for p, _ in history.routing_decisions(os.path.join(hist, "p1", "a.jsonl"))
+                         + history.routing_decisions(os.path.join(hist, "p1", "b.jsonl")))
+        turns = len(history._segments(os.path.join(hist, "p1", "a.jsonl")))
+    got = {
+        "failures": ([(x["call"], x["sessions"]) for x in w.get("failures", [])],
+                     [("cd ~/plans", 2)]),
+        "last_error": ([x["last_error"] for x in w.get("failures", [])],
+                       ["Exit code 2 unexpected EOF"]),
+        "interrupted": (w.get("interrupted", {}).get("loads"), 1),
+        "stop is not a turn": (turns, 1),
+        "projects": ([(x["what"], x["projects"]) for x in work],
+                     [("plans/tidy.md", ["p1", "p2"])]),
+        "redacted": (prompts, ["reconcile april, key [redacted]",
+                               "the server password: [redacted] now reconcile march"]),
+        "harmless kept": (history.redact("tidy the password manager notes"),
+                          "tidy the password manager notes"),
+    }
+    for key, (have, expected) in got.items():
+        if have != expected:
+            out.append(f"failures {key}: {have!r}, expected {expected!r}")
     return out
 
 

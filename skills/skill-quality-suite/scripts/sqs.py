@@ -1082,7 +1082,10 @@ def cmd_discover(skills, history_dir, fmt="text", journal_dir=None):
         print("   nothing repeated in two or more sessions")
     for w in work:
         verb = "ran" if w["kind"] == "script" else "edited"
-        print(f"   {w['sessions']:3} session(s), {w['turns']:3} turn(s)  {verb} {w['what']}")
+        where = (f"1 project ({w['projects'][0][-40:]})" if len(w["projects"]) == 1
+                 else f"{len(w['projects'])} projects")
+        print(f"   {w['sessions']:3} session(s), {w['turns']:3} turn(s), {where}  "
+              f"{verb} {w['what']}")
         for p in w["prompts"]:
             print(f"          {p[:90]}")
     if work:
@@ -1142,6 +1145,16 @@ def _print_work(w):
               f"a section or a script would do: {x['file'][-80:]}")
     for x in w["rereads"]:
         print(f"     read again with no edit between: {x['times']}x {x['file'][-80:]}")
+    for x in w.get("failures", []):
+        print(f"     failed again in {x['sessions']} sessions - fix the step that leads there: "
+              f"{x['call']}")
+        print(f"        last error: {x['last_error'][:110]}")
+    stop = w.get("interrupted") or {}
+    if stop.get("loads"):
+        base = (f"{stop['base_stopped']} of {stop['base_turns']} turns with no skill"
+                if stop.get("base_turns") else "no baseline")
+        print(f"     you stopped it in {stop['loads']} of {w['loads']} loads ({base}) - "
+              f"look at what it was doing when you did")
 
 
 def cmd_new_seeded(seeds, history_dir):

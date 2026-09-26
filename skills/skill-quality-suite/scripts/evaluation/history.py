@@ -34,6 +34,32 @@ import re
 MAX_PROMPT_CHARS = 400
 
 
+# A person pastes credentials into a chat, and a report built from their prompts prints
+# them back: the first run of `discover` put a server's root password on the screen. Every
+# prompt this module hands out goes through `redact`. The shapes are `security.SECRETS`
+# plus the prose form a person actually types - a word for a secret, a colon, the value.
+SECRET_PROSE_RE = re.compile(
+    r"((?:password|passwd|pass|token|api[ _-]?key|secret|пароль|парол\w*|токен|ключ|секрет)"
+    r"\b[^\n:=]{0,24}[:=]\s*)(\S+)", re.I)
+REDACTED = "[redacted]"
+# The harness records a stop by the person as a user message, or inside a tool result.
+INTERRUPT_RE = re.compile(r"\[Request interrupted by user|doesn't want to proceed")
+
+
+def redact(text):
+    from security import SECRETS                                  # noqa: PLC0415
+    for _, pattern in SECRETS:
+        text = pattern.sub(REDACTED, text)
+    return SECRET_PROSE_RE.sub(lambda m: m.group(1) + REDACTED, text)
+
+
+def _result_text(block):
+    c = block.get("content")
+    if isinstance(c, str):
+        return c
+    return " ".join(x.get("text", "") for x in c or [] if isinstance(x, dict))
+
+
 def default_dir():
     return os.path.join(os.path.expanduser("~"), ".claude", "projects")
 
@@ -85,7 +111,7 @@ def routing_decisions(path):
                 if _not_a_prompt(rec, text):
                     prompt, decided = None, True
                     continue
-                prompt, decided = text.strip(), False
+                prompt, decided = redact(text.strip()), False
             elif kind == "assistant" and isinstance(content, list) and not decided:
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_use":
@@ -225,6 +251,14 @@ def _result_chars(block):
     return sum(len(x.get("text", "")) for x in c or [] if isinstance(x, dict))
 
 
+def _failure_key(tool, key):
+    """What a failed call was, stable across sessions: a shell command's first two words,
+    or a tool and the file name it touched."""
+    if tool in SHELL_TOOLS:
+        return " ".join(re.sub(r"[\"'`]", "", key).split()[:2])[:80]
+    return f"{tool} {os.path.basename(key)}".strip()[:80]
+
+
 def _loads(path, name):
     """[{"calls": [(tool, key)], "reads": [(key, chars)], "usage": {...}}] for one transcript.
 
@@ -254,6 +288,10 @@ def _loads(path, name):
             content = msg.get("content")
             if rec.get("type") == "user":
                 text = _user_text(content)
+                if text is not None and INTERRUPT_RE.search(text):
+                    if seg is not None:               # a stop, not a new request
+                        seg["interrupted"] = True
+                    continue
                 if text is not None:
                     if not rec.get("isMeta") and not text.lstrip().startswith("<"):
                         seg = None                    # the person spoke: the load's work ends
@@ -262,6 +300,11 @@ def _loads(path, name):
                     for b in content:
                         if isinstance(b, dict) and b.get("type") == "tool_result":
                             call = pending.pop(b.get("tool_use_id"), None)
+                            result = _result_text(b)
+                            if INTERRUPT_RE.search(result):
+                                seg["interrupted"] = True
+                            elif b.get("is_error") and call:
+                                seg["failures"].append((_failure_key(*call), result))
                             if call and call[0] == "Read" and not TEMP_RE.search(call[1]):
                                 seg["reads"].append((call[1], _result_chars(b)))
             elif rec.get("type") == "assistant" and isinstance(content, list):
@@ -273,7 +316,8 @@ def _loads(path, name):
                     if tool == "Skill":
                         seg = None
                         if is_this(inp.get("skill") or "", name):
-                            seg = {"calls": [], "reads": [], "usage": {"fresh": 0, "out": 0}}
+                            seg = {"calls": [], "reads": [], "usage": {"fresh": 0, "out": 0},
+                                   "failures": [], "interrupted": False}
                             out.append(seg)
                         continue
                     if seg is None:
@@ -306,7 +350,13 @@ def work_after_load(skill, history_dir=None, limit=3):
     - `heavy_reads` - the files, read in two or more sessions, that cost the most
       characters across all loads; a grep, a section or a script would do;
     - `rereads` - a file read again in one load with no edit to it in between;
-    - `cost` - loads, sessions, and the median fresh input and output tokens per load.
+    - `cost` - loads, sessions, and the median fresh input and output tokens per load;
+    - `failures` - a call that failed inside the skill's work in two or more sessions, with
+      the last error: the skill keeps leading the agent into the same wall. Measured on a
+      real history: a planning skill's shell command broke on its own quoting in eight
+      sessions, a lyrics skill read a file past the size limit in three;
+    - `interrupted` - loads the person stopped, beside the share of turns they stopped
+      with no skill loaded. Counts, not a verdict: the samples are small.
     """
     import statistics                                               # noqa: PLC0415
     name = skill.name or skill.folder
@@ -345,7 +395,23 @@ def work_after_load(skill, history_dir=None, limit=3):
                 if key in open_reads:
                     rereads[key] = rereads.get(key, 0) + 1
                 open_reads.add(key)
+    fail_sessions, fail_last = {}, {}
+    for path, seg in loads:
+        for key, result in seg["failures"]:
+            fail_sessions.setdefault(key, set()).add(path)
+            fail_last[key] = redact(" ".join(result.split()))[:160]
+    failures = sorted(((len(v), k) for k, v in fail_sessions.items() if len(v) >= 2),
+                      key=lambda r: (-r[0], r[1]))
+    base_turns = base_stopped = 0
+    for _, seg in _all_segments(history_dir):
+        if not seg["loaded"] and not seg["loaded_before"]:
+            base_turns += 1
+            base_stopped += seg["interrupted"]
     return {
+        "failures": [{"call": k, "sessions": n, "last_error": fail_last[k]}
+                     for n, k in failures[:limit]],
+        "interrupted": {"loads": sum(1 for _, s in loads if s["interrupted"]),
+                        "base_turns": base_turns, "base_stopped": base_stopped},
         "loads": len(loads), "sessions": len({p for p, _ in loads}),
         "median_fresh_tokens": int(statistics.median(s["usage"]["fresh"] for _, s in loads)),
         "median_output_tokens": int(statistics.median(s["usage"]["out"] for _, s in loads)),
@@ -424,7 +490,16 @@ def _segments(path):
             content = msg.get("content")
             if rec.get("type") == "user":
                 text = _user_text(content)
+                if text is None and seg is not None and isinstance(content, list) and any(
+                        isinstance(b, dict) and b.get("type") == "tool_result"
+                        and INTERRUPT_RE.search(_result_text(b)) for b in content):
+                    seg["interrupted"] = True
+                    continue
                 if text is None or rec.get("isMeta") or rec.get("isCompactSummary"):
+                    continue
+                if INTERRUPT_RE.search(text):
+                    if seg is not None:                # a stop belongs to the turn it ended
+                        seg["interrupted"] = True
                     continue
                 loaded = set()
                 if text.lstrip().startswith("<"):
@@ -436,9 +511,9 @@ def _segments(path):
                     text = args.group(1) if args else ""
                 if seg is not None:
                     session_loaded |= seg["loaded"]
-                seg = {"prompt": text.strip(), "loaded_before": set(session_loaded),
+                seg = {"prompt": redact(text.strip()), "loaded_before": set(session_loaded),
                        "loaded": loaded, "scripts": set(), "edits": set(), "owned": {},
-                       "touched": set(), "worked_on": set()}
+                       "touched": set(), "worked_on": set(), "interrupted": False}
                 out.append(seg)
             elif rec.get("type") == "assistant" and isinstance(content, list) and seg:
                 for b in content:
@@ -555,16 +630,21 @@ def unskilled_work(history_dir=None, limit=8, min_sessions=2):
                 if kind == "script" and sig.rsplit("/", 1)[-1] in developed:
                     continue
                 row = by_sig.setdefault((kind, sig), {"sessions": set(), "turns": 0,
-                                                      "prompts": []})
+                                                      "prompts": [], "projects": set()})
                 row["sessions"].add(path)
+                row["projects"].add(os.path.basename(os.path.dirname(path)))
                 row["turns"] += 1
                 p = " ".join(seg["prompt"].split())
                 if p and len(p) <= MAX_PROMPT_CHARS and p not in row["prompts"]:
                     row["prompts"].append(p)
     ranked = sorted(((k, v) for k, v in by_sig.items() if len(v["sessions"]) >= min_sessions),
                     key=lambda kv: (-len(kv[1]["sessions"]), -kv[1]["turns"], kv[0]))
+    # Where the work happens decides where its skill lives: in one project it belongs in
+    # that project's skills folder, across several it is general. Transcripts are stored per
+    # project, so the folder a session sits in is the project, with no guessing.
     return [{"kind": k[0], "what": k[1], "sessions": len(v["sessions"]), "turns": v["turns"],
-             "prompts": v["prompts"][:3]} for k, v in ranked[:limit]]
+             "projects": sorted(v["projects"]), "prompts": v["prompts"][:3]}
+            for k, v in ranked[:limit]]
 
 
 def as_query_set(harvested):

@@ -43,8 +43,8 @@ scripts ran, which files changed. From that:
   description missed), and the documents and scripts you return to in session after session
   with no skill loaded (a skill nobody wrote yet), each with the prompts that led there;
 - `improve <skill>` puts the rule findings with their fixes next to the prompts that
-  really reached the skill, the ones a neighbour won, and what the agent kept looking up
-  after it loaded;
+  really reached the skill, the ones a neighbour won, what the agent kept looking up after
+  it loaded, the calls that failed there again and again, and how often you stopped it;
 - `cases --from-history` turns those prompts into a trigger set in your own words;
 - a **mistakes journal** - one four-line note per mistake the agent catches itself making,
   reviewed into rules and gates - feeds both: `improve` lists the entries that name the
