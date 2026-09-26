@@ -1,0 +1,7 @@
+{
+  "note": "Missing paths into a tool's own folder (a dot-folder under home) are ST017, a warning: on a clean runner a tool that is not installed looks exactly like a broken path. A missing path into ordinary user folders stays ST011.",
+  "expect": [
+    "ST011",
+    "ST017"
+  ]
+}
