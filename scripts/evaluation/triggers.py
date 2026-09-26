@@ -195,21 +195,46 @@ def split(queries, seed=0, share=TRAIN_SHARE):
     return train, valid
 
 
-def measure(queries, skill_name, provider, runs, model, on_event=None):
-    """[(query, rate, usable runs)] - how often each query loaded the skill."""
+NOTHING = "(no skill)"
+
+
+def measure(queries, skill_name, provider, runs, model, on_event=None, spend=None):
+    """[(query, rate, usable runs, {skill loaded first: runs})] - how often each query
+    loaded the skill, and what it loaded when it did not.
+
+    The last element is what makes a miss actionable: "fired 0 of 2" says the description
+    lost, not to whom - and whether to fix this description or the neighbour's depends
+    entirely on who won. The first skill a run loaded is the routing decision; a skill
+    loaded later in the same run is the agent's choice about its task.
+
+    `spend`, when given, is a dict the runs' reported cost and time are added to. A run
+    that reports no cost leaves `cost_usd` unknown for the whole pass rather than
+    counting as free - the same rule as everywhere else: not measured is not zero.
+    """
     rows = []
     for q in queries:
         hits = usable = 0
+        went = {}
         for attempt in range(runs):
             if on_event:
                 on_event(q, attempt + 1, runs)
             run = provider.run(q.text, skill=None, bare=False, model=model, timeout=180,
                                max_budget_usd=RUN_BUDGET_USD)
+            if spend is not None:
+                spend["runs"] = spend.get("runs", 0) + 1
+                if run.cost_usd is None or spend.get("cost_usd", 0) is None:
+                    spend["cost_usd"] = None
+                else:
+                    spend["cost_usd"] = spend.get("cost_usd", 0) + run.cost_usd
+                if run.duration_s is not None:
+                    spend["duration_s"] = spend.get("duration_s", 0) + run.duration_s
             if not run.ok:
                 continue
             usable += 1
             hits += int(skill_name in run.skills)
-        rows.append((q, hits / usable if usable else None, usable))
+            first = run.skills[0] if run.skills else NOTHING
+            went[first] = went.get(first, 0) + 1
+        rows.append((q, hits / usable if usable else None, usable, went))
     return rows
 
 
@@ -220,7 +245,7 @@ def confusion(rows, threshold=THRESHOLD):
     its runs: the model is not deterministic, and one run of one query is an anecdote.
     """
     tp = fp = fn = tn = unusable = 0
-    for q, rate, _ in rows:
+    for q, rate, *_ in rows:
         if rate is None:
             unusable += 1
             continue
@@ -260,13 +285,18 @@ def evaluate(skill, provider, runs=3, model=None, use_split=True, seed=0, on_eve
     out = {"skill": name, "provider": provider.name, "model": model, "runs_per_query": runs,
            "queries": len(queries), "positive": pos, "negative": len(queries) - pos,
            "threshold": THRESHOLD, "sets": {}}
+    spend = {}
     for label, subset in sets:
-        rows = measure(subset, name, provider, runs, model, on_event)
+        rows = measure(subset, name, provider, runs, model, on_event, spend)
         out["sets"][label] = {
             "metrics": confusion(rows),
             "cases": [{"prompt": q.text, "expected": "trigger" if q.want else "no-trigger",
-                       "rate": rate, "runs": usable} for q, rate, usable in rows],
+                       "rate": rate, "runs": usable, "went_to": went}
+                      for q, rate, usable, went in rows],
         }
+    out["agent_runs"] = spend.get("runs", 0)
+    out["cost_usd"] = spend.get("cost_usd") if spend.get("runs") else None
+    out["duration_s"] = spend.get("duration_s")
     if "train" in out["sets"]:
         from . import regression                                  # noqa: PLC0415
         gap = regression.split_gap(out)
@@ -311,7 +341,21 @@ def render(report):
         for c in wrong:
             why = "did not fire" if c["expected"] == "trigger" else "fired when it should not"
             lines.append(f"      [{c['rate']:.2f}] {why}: {c['prompt'][:66]}")
+            # who won instead: a miss to a neighbour is a boundary to draw, a miss to
+            # nothing is a description that does not reach the request at all
+            went = c.get("went_to") or {}
+            if c["expected"] == "trigger" and went:
+                took = ", ".join(f"{k} {v}/{c['runs']}" for k, v in
+                                 sorted(went.items(), key=lambda kv: -kv[1])
+                                 if k != report["skill"])
+                if took:
+                    lines.append(f"             went to: {took}")
         lines.append("")
+    cost = report.get("cost_usd")
+    runs_total = report.get("agent_runs")
+    if runs_total:
+        spent = f"${cost:.2f}" if cost is not None else "n/a (a run did not report its cost)"
+        lines += [f"  {runs_total} agent run(s), cost {spent}", ""]
     gap = report.get("split_gap")
     if gap and gap["lower"] > 0:
         lines += [f"  Train F1 is above validation by more than the runs vary (at least "

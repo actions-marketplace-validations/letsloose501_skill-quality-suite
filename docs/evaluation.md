@@ -97,6 +97,26 @@ The output is the confusion matrix and the cases behind it:
 not equal: a skill that stays quiet costs a turn, a skill that barges in costs the user
 their work. Which one your tree can afford is a judgement about your tree.
 
+Under a missed should-trigger case the report says **what loaded instead** - the first
+skill each run reached for, or nothing:
+
+```
+      [0.00] did not fire: archive receipt number 2 from march
+             went to: ledger-lite 3/3
+```
+
+The two misses call for different fixes. A miss to a neighbour is a boundary to draw
+between two descriptions, and the neighbour's may be the one to change; a miss to nothing
+is a description that does not reach the request at all. Only the first skill a run loads
+counts - it is the routing decision, and anything loaded later is the agent's choice about
+its task. The same counts are stored per case as `went_to`.
+
+The last line is the bill: how many agent runs the pass made, failed ones included,
+and what they reported costing. If any run reported no cost, the total reads `n/a`
+rather than a partial sum - not measured is not zero. `--compare` puts the pass cost
+beside the other costs, and it is judged the same way: reported, not failed, unless
+`--fail-on-cost`.
+
 The set is split 60/40 into train and validation, stratified. Tune the description
 against the train failures; the validation numbers are the only thing that says the
 change generalised rather than memorised the failures.

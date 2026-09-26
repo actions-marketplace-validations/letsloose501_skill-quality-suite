@@ -712,6 +712,23 @@ to people with none of those. That is the generalisation from a single example t
 of this project refuses everywhere else. What is worth having from the item is already
 here: the pass it depends on now works, and what it costs is written down.
 
+**The first live pass, and the two things it asked for.** 23.09.2026, the video skill,
+twenty queries at two runs each: 40 runs, none unusable. Precision 100% - all three
+queries meant for its fork with the analysis skill went there. Recall 67% on train and
+100% on validation: one request that asked for improvement and notes together fired 0 of
+2, and two bare links fired 1 of 2 each. Two runs per query put the pass's own noise at
+±33-50 points, so the recall figure says where to look, not how good the description is;
+on the same rates, five runs would bring the train noise to ±17.
+
+Reading the misses found two holes in the report, both shipped the same day. It said a
+query *did not fire* but not **what fired instead**, and whether to fix this description
+or the neighbour's depends entirely on that - so each case now carries `went_to`, and a
+missed one prints it. And it said nothing about **what the pass cost**, though every run
+reports it: the report now counts the runs, failed ones included, and sums their cost,
+`n/a` when any run did not report one; `--compare` treats it as a cost row. Tested on the
+scripted provider and by mutation; the sum over live runs has not been seen yet, because
+seeing it means paying for another pass.
+
 **Description budget (15)** is the gap the registry admits to. `QL001` fires when a
 description is too short to carry triggers and `SP008` fires at the specification's 1024
 characters, and between those two there is no opinion at all. Neighbouring projects have

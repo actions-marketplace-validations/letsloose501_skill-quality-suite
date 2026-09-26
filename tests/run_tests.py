@@ -986,6 +986,16 @@ def noise_checks():
     if "trigger recall" not in rows or not rows["trigger recall"][4] \
             or "noise" not in rows["trigger recall"][3]:
         out.append(f"compare did not judge recall against its noise: {diff['quality']}")
+    # the trigger pass has a price too, and it moves like any other cost; a pass whose
+    # cost was never reported has nothing to compare, and must not read as free
+    priced = [dict(p, trigger=dict(p["trigger"], cost_usd=c))
+              for p, c in ((good, 0.10), (good, 0.20), (good, None))]
+    rows = {r[0]: r for r in regression.compare(priced[0], priced[1])["cost_regressions"]}
+    if "trigger pass cost" not in rows:
+        out.append(f"a trigger pass that doubled in cost was not flagged: {rows}")
+    rows = {r[0] for r in regression.compare(priced[2], priced[1])["cost"]}
+    if "trigger pass cost" in rows:
+        out.append("an unreported trigger cost was compared as if it were known")
 
     # The train-validation gap, printed only when it is larger than the runs vary.
     from collections import namedtuple
@@ -1205,9 +1215,21 @@ def neighbour_checks():
         with open(os.path.join(tree, "script-v1.json"), encoding="utf-8") as f:
             base = json.load(f)
         for label, winner in (("v1", "receipt-archive"), ("v2", "ledger-lite")):
-            script = dict(base, rules=[{"contains": "archive receipt", "bare": False,
-                                        "run": {"skills": [winner], "text": "ok"}}]
-                                       + base["rules"])
+            # v2 prices every run the neighbour's pass makes; in v1 half of them report no
+            # cost (a rule is laid over `default`, so "no cost" has to be said as None).
+            # The pass cost is a sum in one and unknown in the other - never a partial sum
+            priced = {"cost_usd": 0.01 if label == "v2" else None}
+            extra = [{"contains": "archive receipt", "bare": False,
+                      "run": dict(priced, skills=[winner], text="ok")}]
+            if label == "v1":
+                # a run that fails is still a run somebody paid for: it counts in
+                # `agent_runs` even though it measured nothing
+                extra.append({"contains": "plan a trip to city 3", "bare": False,
+                              "run": {"error": "timed out after 180s"}})
+            else:
+                extra.append({"contains": "plan a trip", "bare": False,
+                              "run": {"skills": [], "text": "ok", "cost_usd": 0.002}})
+            script = dict(base, rules=extra + base["rules"])
             with open(os.path.join(tree, f"script-n{label}.json"), "w", encoding="utf-8") as f:
                 json.dump(script, f)
 
@@ -1223,8 +1245,32 @@ def neighbour_checks():
                 "--no-split", "--save", "n1")
         if "`receipt-archive` joins" not in r.stderr or "receipt-notes" in r.stderr:
             out.append(f"--with-neighbours picked the wrong neighbours: {r.stderr[-300:]!r}")
-        run("script-nv2.json", "--trigger", "--with-neighbours", "2", "--runs", "3",
-            "--no-split", "--save", "n2")
+        if "cost n/a" not in r.stdout:
+            out.append(f"a pass whose runs reported no cost did not say so: {r.stdout[-300:]!r}")
+        r = run("script-nv2.json", "--trigger", "--with-neighbours", "2", "--runs", "3",
+                "--no-split", "--save", "n2")
+        if "went to: ledger-lite 3/3" not in r.stdout:
+            out.append(f"a miss did not name the skill that took it: {r.stdout[-400:]!r}")
+
+        def stored(label):
+            path = os.path.join(tree, ".sqs", "evals", "receipt-archive", f"{label}.json")
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)["trigger"]
+
+        for label, winner, cost in (("n1", "receipt-archive", None),
+                                    ("n2", "ledger-lite", 0.144)):
+            rep = stored(label)
+            went = [c["went_to"] for c in rep["sets"]["all"]["cases"]
+                    if c["expected"] == "trigger"]
+            if went != [{winner: 3}] * 4:
+                out.append(f"{label}: went_to should be {winner} 3 of 3 each, got {went}")
+            got = rep["cost_usd"]
+            if (got is None) != (cost is None) or (cost is not None
+                                                   and abs(got - cost) > 1e-9):
+                out.append(f"{label}: pass cost should be {cost}, got {got}")
+            if rep["agent_runs"] != 24:
+                out.append(f"{label}: 8 queries x 3 runs is 24 agent runs, "
+                           f"got {rep['agent_runs']}")
         r = run("script-nv2.json", "--with-neighbours", "2", "--compare", "n1", "n2")
         if r.returncode != 1 or r.stdout.count("REGRESSION DETECTED") != 1:
             out.append(f"the neighbour's lost requests did not fail the gate exactly once: "
