@@ -499,6 +499,19 @@ def unit_checks():
         stray = [d for d in publish.NOT_PAYLOAD if os.path.isdir(os.path.join(shipped, d))]
         if stray:
             out.append(f"the shipped folder carries repository material: {stray}")
+        # The whole gate, strict, on a machine that is not the author's: an empty home.
+        # A path the skill mentions under `~` resolves on the author's machine and on no
+        # CI runner - the self-check went red in CI for exactly that while every local
+        # run was green.
+        home = os.path.join(tmp, "home")
+        os.makedirs(home)
+        r = subprocess.run([sys.executable, SQS, "all", shipped, "--strict", "--harness",
+                            "all"], capture_output=True, text=True, encoding="utf-8",
+                           cwd=tmp, env=dict(os.environ, HOME=home, USERPROFILE=home,
+                                             PYTHONIOENCODING="utf-8"))
+        if r.returncode != 0:
+            out.append("the shipped folder fails `all --strict` on a fresh machine: "
+                       + (r.stdout.strip().splitlines() or ["(no output)"])[-1])
 
     # ST015: the folder with no SKILL.md, which only the structure engine ever sees.
     # The engine is bundled in `scripts/` in a checkout and sits beside the skills when

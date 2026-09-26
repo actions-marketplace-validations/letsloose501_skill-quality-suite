@@ -46,5 +46,6 @@ edit." The first acted on a list; the second names the evidence, the choice and 
 - **Not visible**: intent. Two rows can be one task, one row can be two, and a document
   edited often may be the output of a skill that simply was not asked for. The prompts are
   printed so that judgement is made by whoever reads them, which is the step above.
-- Everything is read locally from `~/.claude/projects/` (`--history-dir` for another <!-- sqs-allow: PB006 -->
+- Everything is read locally from the `projects` folder of Claude Code's home directory,
+  where it keeps a transcript per session (`--history-dir` for another
   place); nothing leaves the machine, and nothing is written.
