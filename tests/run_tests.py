@@ -360,6 +360,7 @@ def unit_checks():
     out += indirection_checks()
     out += dependency_checks()
     out += ranking_checks()
+    out += journal_checks()
     out += work_checks()
     out += discover_checks()
     out += noise_checks()
@@ -1156,6 +1157,61 @@ def work_checks():
     for key, (got, expected) in want.items():
         if got != expected:
             out.append(f"work_after_load {key}: {got!r}, expected {expected!r}")
+    return out
+
+
+def journal_checks():
+    """The mistakes journal, read in a git repository built so each rule is crossed.
+
+    Entries that must name the skill `statement-check`: in backticks, as a path into its
+    folder (still in the folder), and as `skills/statement-check` in an entry the review
+    already cleared (only git has it). Entries that must not: the bare word in prose, a
+    plugin-qualified `other:statement-check`, and a project folder that shares the name
+    but is not a skill path. Fields are parsed in both spellings a journal has used.
+    """
+    from core import Skill
+    import journal
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        jd = os.path.join(tmp, "mistakes")
+        os.makedirs(jd)
+
+        def put(name, body):
+            with open(os.path.join(jd, name), "w", encoding="utf-8") as f:
+                f.write(body)
+
+        git = ["git", "-C", jd, "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(["git", "-C", jd, "init", "-q"], check=True)
+        put("2026-09-01-cleared.md", "MISTAKE: ran it from skills/statement-check wrong\n"
+            "WHY: w\nFIX: f\nPATTERN: cleared pattern\n")
+        subprocess.run(git + ["add", "-A"], check=True)
+        subprocess.run(git + ["commit", "-qm", "a"], check=True)
+        os.remove(os.path.join(jd, "2026-09-01-cleared.md"))
+        subprocess.run(git + ["commit", "-qam", "review cleared it"], check=True)
+        put("2026-09-02-backticks.md", "MISTAKE: `statement-check` read the wrong column\n"
+            "WHY: w\nFIX: f\nPATTERN: open pattern in english\n")
+        put("2026-09-03-path.md", "ОШИБКА: statement-check/references/rules.md устарел\n"
+            "ПОЧЕМУ: п\nРЕШЕНИЕ: р\nПАТТЕРН: русский паттерн\n")
+        put("2026-09-04-prose.md", "MISTAKE: the statement check in the bank app was off\n"
+            "PATTERN: prose only\n")
+        put("2026-09-05-plugin.md", "MISTAKE: `other:statement-check` misfired\n"
+            "PATTERN: another plugin's skill\n")
+        put("2026-09-06-project.md", "MISTAKE: statement-check/main.py crashed\n"
+            "PATTERN: a project folder of the same name\n")
+        skill = Skill(os.path.join(FIXTURES, "restated-cases", "statement-check"))
+        got = journal.for_skill(skill, jd, limit=10)
+    want = {
+        "count": (got["count"], 3),
+        "open": (got["open"], 2),
+        "names": (sorted(e["name"] for e in got["entries"]),
+                  ["2026-09-01-cleared.md", "2026-09-02-backticks.md", "2026-09-03-path.md"]),
+        "reviewed": ([e["reviewed"] for e in got["entries"]], [False, False, True]),
+        "patterns": ([e["pattern"] for e in got["entries"]],
+                     ["русский паттерн", "open pattern in english", "cleared pattern"]),
+    }
+    for key, (have, expected) in want.items():
+        if have != expected:
+            out.append(f"journal {key}: {have!r}, expected {expected!r}")
     return out
 
 

@@ -34,8 +34,8 @@ Nothing goes out until every one of these is true.
 8. **Only the skill ships** (`PB015`). A `SKILL.md` at the repository root beside
    `tests/`, `docs/` or `.github/` means the installer copies all of it, and marketplace
    scanners read a test fixture of an attack as an attack. Keep the skill in
-   `skills/<name>/`. Marketplace audits (skills.sh) run after the first install, so the
-   first published version is the one judged.
+   `skills/<name>/`. Marketplace audits (skills.sh) run when a version is installed, not
+   when it is committed, so the installed version is the one judged.
 9. **One documentation language, and it is the repository's** (`PB004`, with `--lang`).
    Translate rather than mix. The exception worth keeping is a skill whose subject is
    the language - one working with local services, local retail, local paperwork; there

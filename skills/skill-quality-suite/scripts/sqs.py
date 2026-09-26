@@ -192,7 +192,8 @@ def load_config(root, path=None):
     """`sqs.config.json` beside the skills, unless a path is given.
 
     Keys: `rules` (code -> off/info/warning/error), `ignore` (skill names),
-    `agents` (runtimes the skills target), `lang`, `allow_dirs`.
+    `agents` (runtimes the skills target), `lang`, `allow_dirs`, `mistakes` (the
+    mistakes journal folder `improve` and `discover` read).
     """
     path = path or os.path.join(root, "sqs.config.json")
     if not os.path.isfile(path):
@@ -203,6 +204,11 @@ def load_config(root, path=None):
     except (OSError, ValueError) as e:
         print(f"config {path}: {e}", file=sys.stderr)
         return {}
+
+
+def journal_dir(cfg, flag=None):
+    import journal  # noqa: PLC0415
+    return journal.resolve(cfg, flag)
 
 
 def own_tree(root):
@@ -947,7 +953,7 @@ PAID_OFFER = ("Not run, and not run without your say-so: `eval --trigger` measur
               "against the last saved run - not as one number today.")
 
 
-def cmd_improve(skills, results, history_dir, fmt="text"):
+def cmd_improve(skills, results, history_dir, fmt="text", journal_dir=None):
     """`sqs.py improve <skill>` - what to change, from the skill and from your requests.
 
     Two sources, and only what each can say reliably. The skill itself: every finding,
@@ -962,6 +968,7 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
     model, which is paid, so it is offered at the end and never started from here.
     """
     from evaluation import history  # noqa: PLC0415
+    import journal  # noqa: PLC0415
     findings = dict(results)
     report = {}
     for s in skills:
@@ -981,6 +988,8 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
         h = history.harvest(s, history_dir, limit=1000)
         report[s.folder] = {"fix": fix, "work": history.work_after_load(s, history_dir),
                             "ran_unloaded": history.ran_unloaded(s, history_dir),
+                            "journal": journal.for_skill(s, journal_dir) if journal_dir
+                            else None,
                             "routed_here": len(h["positive"]),
                             "examples": h["positive"][:5],
                             "neighbours_won": h["near_miss"][:5],
@@ -1018,7 +1027,8 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
             print("     no trigger set yet: `sqs.py cases <skill> --from-history --apply` "
                   "drafts one from exactly these")
         _print_work(r["work"])
-        print(f"  4. Paid, only if you want it. {r['paid_offer']}")
+        _print_journal(r["journal"])
+        print(f"  5. Paid, only if you want it. {r['paid_offer']}")
     return 0
 
 
@@ -1033,7 +1043,7 @@ def _print_unloaded(u):
         print(f"     ~  {' '.join(x['prompt'].split())[:70]}   ran {', '.join(x['scripts'])}")
 
 
-def cmd_discover(skills, history_dir, fmt="text"):
+def cmd_discover(skills, history_dir, fmt="text", journal_dir=None):
     """`sqs.py discover` - what the history says to build or to fix, across the tree.
 
     Two readings of the agent's own actions, never of the wording alone, which was
@@ -1047,10 +1057,16 @@ def cmd_discover(skills, history_dir, fmt="text"):
     names = {s.folder for s in skills} | {s.name for s in skills if s.name}
     unloaded = {k: v for k, v in history.unloaded_by_skill(history_dir).items() if k in names}
     work = history.unskilled_work(history_dir)
+    import journal  # noqa: PLC0415
+    named, total = journal.per_skill(skills, journal_dir) if journal_dir else ({}, 0)
     if fmt == "json":
         print(json.dumps({"ran_unloaded": {k: {"turns": t, "sessions": n}
                                            for k, (t, n) in unloaded.items()},
-                          "unskilled_work": work}, ensure_ascii=False, indent=2))
+                          "unskilled_work": work,
+                          "journal": {"dir": journal_dir, "entries": total,
+                                      "skills": {k: {"entries": c, "open": o}
+                                                 for k, (c, o) in named.items()}}},
+                         ensure_ascii=False, indent=2))
         return 0
     print("1. Skills whose own scripts ran in sessions that never loaded them")
     if not unloaded:
@@ -1074,7 +1090,37 @@ def cmd_discover(skills, history_dir, fmt="text"):
               "document edited often may already belong to a skill that did not fire. For "
               "a task worth a skill: `sqs.py new <name> --seed <word>`, then "
               "references/creating-a-skill.md.")
+    print()
+    print("3. Skills your mistakes journal names")
+    if not journal_dir:
+        print("   no journal configured: `mistakes` in sqs.config.json or --mistakes-dir")
+    elif not named:
+        print(f"   none of {total} entries names a skill here")
+    for k, (c, o) in sorted(named.items(), key=lambda kv: (-kv[1][0], kv[0])):
+        print(f"   {c:3} entr{'y ' if c == 1 else 'ies'} ({o} not reviewed)  {k}")
+    if named:
+        print(f"   of {total} entries in all. `sqs.py improve <skill>` prints their patterns; "
+              f"{journal.LADDER}.")
     return 0
+
+
+def _print_journal(j):
+    """Section 4 of `improve`: what the mistakes journal says about the skill."""
+    import journal  # noqa: PLC0415
+    if j is None:
+        print("  4. Mistakes journal - none configured: `mistakes` in sqs.config.json or "
+              "--mistakes-dir; see references/mistakes-journal.md")
+        return
+    if not j["count"]:
+        print(f"  4. Mistakes journal - no entry names it ({j['journal']})")
+        return
+    print(f"  4. Mistakes journal - {j['count']} entr{'y' if j['count'] == 1 else 'ies'} "
+          f"name it, {j['open']} not reviewed yet. The ladder: {journal.LADDER}.")
+    print("     Read the patterns, not the count: entries about one skill are often "
+          "different mistakes.")
+    for e in j["entries"]:
+        mark = "reviewed" if e["reviewed"] else "open"
+        print(f"     {e['date'] or '?':10} {mark:8} {e['pattern'][:120]}")
 
 
 def _print_work(w):
@@ -1231,6 +1277,8 @@ def main(argv=None):
     ap.add_argument("--seed", action="append", default=[],
                     help="new: a word the new skill would be asked with; shows the prompts in "
                          "your history that carry it and where they went (repeatable)")
+    ap.add_argument("--mistakes-dir", help="improve, discover: the mistakes journal folder "
+                                           "(default: `mistakes` in sqs.config.json)")
     ap.add_argument("--history-dir", help="cases --from-history: where the transcripts are "
                                           "(default ~/.claude/projects)")
     a = ap.parse_args(argv)
@@ -1248,7 +1296,8 @@ def main(argv=None):
         print(f"no skills directory at {root}", file=sys.stderr)
         return 2
     if a.command == "discover":
-        return cmd_discover(discover(root), a.history_dir, a.format)
+        return cmd_discover(discover(root), a.history_dir, a.format,
+                            journal_dir(load_config(root, a.config), a.mistakes_dir))
     if a.command == "new":
         if not a.args:
             return 2
@@ -1406,7 +1455,8 @@ def main(argv=None):
     results = [(s.folder, collect(s, modules, cfg, skill_registry, engine, world))
                for s in skills]
     if a.command == "improve":
-        return cmd_improve(skills, results, a.history_dir, a.format)
+        return cmd_improve(skills, results, a.history_dir, a.format,
+                           journal_dir(cfg, a.mistakes_dir))
 
     # A duplicate `name` is only visible from above: one skill shadows the other and
     # which one wins is not knowable in advance.

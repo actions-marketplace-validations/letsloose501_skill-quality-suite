@@ -143,9 +143,12 @@ Two facts about marketplace audits worth knowing before you publish, from the
 [skills.sh API documentation](https://www.skills.sh/docs/api): audit results are public at
 `/api/v1/skills/audit/{owner}/{repo}/{skill}`, one row per partner with `status`,
 `riskLevel` and `auditedAt`; and they "are generated automatically after a skill is
-installed for the first time". The page does not describe a re-audit on later commits, and
-this project's audit date did not move across fifty of them - so the first install is the
-version that gets judged. Run `sqs.py all --strict` before it, not after.
+installed for the first time". Commits alone did not move this project's audit date across
+fifty of them; an install of the new version on 26.09.2026 brought a fresh audit from all
+three partners within three minutes - Gen Agent Trust Hub `SAFE`, Socket with no alerts,
+Snyk `LOW`, where two of them had failed the old layout. Whether every install re-audits,
+or only a changed version, the page does not say. Either way the version that gets
+installed is the version that gets judged: run `sqs.py all --strict` before publishing.
 
 Plus, from the other modules and worth re-reading before a release:
 
