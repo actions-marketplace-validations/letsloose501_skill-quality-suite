@@ -557,6 +557,42 @@ def known_repos(skill, entries):
     return known
 
 
+# What a repository carries for its maintainers and not for the agent. Beside a SKILL.md at
+# the repository root, all of it is inside the skill's folder, and that folder is what an
+# installer copies.
+NOT_PAYLOAD = ("tests", "test", "fixtures", "docs", "examples", "benchmarks", ".github")
+
+
+def payload_findings(skill):
+    """PB015 - SKILL.md at the root of its repository, beside the repository's own material.
+
+    `npx skills add` copies a skill's folder, and when that folder is the repository root
+    it copies the test corpus, the documentation site and CI with it (the installer's own
+    README: a SKILL.md at the root shadows anything nested below it). Watched on this
+    project: two marketplace scanners failed it on a fixture of a malicious skill and on
+    the assembly of a fake token in its test runner - material the agent never loads and
+    a user never needed. `.sqsignore` hides such a directory from this suite, not from
+    anybody else's scanner, so it does not silence this.
+    """
+    ok, top = _git(skill.root, "rev-parse", "--show-toplevel")
+    if not ok or not top.strip():
+        return []
+    try:
+        if not os.path.samefile(top.strip(), skill.root):
+            return []
+    except OSError:
+        return []
+    carried = [d for d in NOT_PAYLOAD if os.path.isdir(os.path.join(skill.root, d))]
+    if not carried:
+        return []
+    name = skill.name or skill.folder
+    return [Finding("PB015", f"SKILL.md is at the repository root beside "
+                             f"{', '.join(d + '/' for d in carried)} - an installer copies "
+                             f"the whole folder, so these land in every user's skills "
+                             f"directory and in every marketplace scanner's view; move the "
+                             f"skill into `skills/{name}/`", severity="warning")]
+
+
 def install_findings(skill):
     """PB014 - an install command whose target disagrees with where this ships from.
 
@@ -690,6 +726,9 @@ def check(skill, cfg=None):
 
     # PB014 - the README tells a stranger to install from somewhere this does not live
     out += install_findings(skill)
+
+    # PB015 - the repository is the skill, so everything in it ships
+    out += payload_findings(skill)
 
     # PB010 - PB013 - opt-in, because a comparison needs a stated "before". `--since`
     # resolves to one in `sqs.py`, which is also where the note about a `--since` that

@@ -21,7 +21,6 @@ A line carrying `sqs-allow: SE002` (or `sqs-allow: *`) is exempt from that code 
 escape hatch for a file that documents a pattern rather than using it.
 """
 import argparse
-import importlib.util
 import json
 import os
 import re
@@ -220,30 +219,23 @@ def own_tree(root):
         return False
 
 
-def load_structure_engine(root, trust_target=False):
+def load_structure_engine(root):
     """check_skills.py, imported rather than shelled out to.
 
     It is the structure engine and it already carries the rule codes; parsing its
     printed output back into findings would be a second, drifting source of truth.
     """
-    # The engine the suite runs is the engine the suite ships: bundled in `scripts/`,
-    # and beside the skills when the suite is installed as one (it runs standalone
-    # there, and as a hook pair). The tree being checked used to come first, which is
-    # how a folder handed over to be read got its own `check_skills.py` imported and
-    # executed instead - an analyser running the material it was pointed at. It is a
-    # candidate now only when the caller says in as many words that the tree is theirs.
-    candidates = [os.path.join(HERE, "check_skills.py"),
-                  os.path.join(os.path.dirname(os.path.dirname(HERE)), "check_skills.py")]
-    if trust_target:
-        candidates.insert(0, os.path.join(root, "check_skills.py"))
-    for candidate in candidates:
-        if os.path.isfile(candidate):
-            os.environ.setdefault("CLAUDE_SKILLS_DIR", root)
-            sp = importlib.util.spec_from_file_location("check_skills", candidate)
-            mod = importlib.util.module_from_spec(sp)
-            sp.loader.exec_module(mod)
-            return mod
-    return None
+    # The engine the suite runs is the one it ships in `scripts/`, imported like any
+    # other module of the suite. A tree under analysis used to be able to supply its own
+    # `check_skills.py`, first unconditionally and later behind `--trust-target`: either
+    # way an analyser importing a file out of the material it was pointed at. No path
+    # outside this folder is loaded any more, trusted or not.
+    os.environ.setdefault("CLAUDE_SKILLS_DIR", root)
+    try:
+        import check_skills                                     # noqa: PLC0415
+    except ImportError:
+        return None
+    return check_skills
 
 
 _warned_no_engine = False
@@ -257,7 +249,7 @@ def structure_findings(skill, engine):
         global _warned_no_engine
         if not _warned_no_engine:
             _warned_no_engine = True
-            print("check_skills.py not found beside the skills - the structure module is "
+            print("check_skills.py is missing from this suite's scripts/ - the structure module is "
                   "skipped", file=sys.stderr)
         return []
     # The engine resolves a skill by name under its own SKILLS_DIR, so it is pointed at
@@ -404,7 +396,11 @@ def fixture_coverage():
     rule with no positive fixture has never been observed firing, and one with no
     negative fixture has never been observed staying quiet.
     """
-    tests_dir = os.path.join(os.path.dirname(HERE), "tests")
+    # The corpus lives in the repository, beside `skills/`, not inside the skill: the
+    # installer copies the skill's folder, and a corpus of deliberately broken skills has
+    # no business in a stranger's skills directory. An installed copy has no corpus.
+    suite = os.path.dirname(HERE)
+    tests_dir = os.path.join(os.path.dirname(os.path.dirname(suite)), "tests")
     root = os.path.join(tests_dir, "fixtures")
     cover = {}
     if not os.path.isdir(root):
@@ -448,7 +444,6 @@ def cmd_rules(module=None, audit=False, fmt="text"):
             if os.path.isdir(base):
                 engines += [os.path.join(base, p) for p in sorted(os.listdir(base))
                             if p.endswith(".py") and p != "rules.py"]
-        engines.append(os.path.join(os.path.dirname(os.path.dirname(HERE)), "check_skills.py"))
         emitted = set()
         for path in engines:
             if not os.path.isfile(path):
@@ -473,7 +468,8 @@ def cmd_rules(module=None, audit=False, fmt="text"):
         if ungraded_codes:
             print("no confidence/false-positive grading: " + ", ".join(ungraded_codes))
         if cover is None:
-            print("no tests/fixtures beside the scripts - rule coverage unmeasured")
+            print("no tests/fixtures in the repository around this skill - rule coverage "
+                  "unmeasured (an installed copy carries no corpus)")
         else:
             countable = len(RULES) - len(no_engine)
             have = countable - len(untested)
@@ -984,6 +980,7 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
         fix.sort(key=lambda r: (RANK.get(r["severity"], 3), r["code"]))
         h = history.harvest(s, history_dir, limit=1000)
         report[s.folder] = {"fix": fix, "work": history.work_after_load(s, history_dir),
+                            "ran_unloaded": history.ran_unloaded(s, history_dir),
                             "routed_here": len(h["positive"]),
                             "examples": h["positive"][:5],
                             "neighbours_won": h["near_miss"][:5],
@@ -1016,11 +1013,67 @@ def cmd_improve(skills, results, history_dir, fmt="text"):
                   "closest first - check the boundary on the top ones:")
             for n in r["neighbours_won"]:
                 print(f"     -  {' '.join(n['query'].split())[:70]}   -> {n['went_to']}")
+        _print_unloaded(r["ran_unloaded"])
         if not r["has_trigger_set"] and (r["routed_here"] or r["neighbours_won"]):
             print("     no trigger set yet: `sqs.py cases <skill> --from-history --apply` "
                   "drafts one from exactly these")
         _print_work(r["work"])
         print(f"  4. Paid, only if you want it. {r['paid_offer']}")
+    return 0
+
+
+def _print_unloaded(u):
+    """Part of section 2 of `improve`: its own scripts, run while it was never loaded."""
+    if not u["turns"]:
+        return
+    print(f"     its own scripts ran in {u['turns']} turn(s) of {u['sessions']} session(s) "
+          f"that never loaded it - the description did not fire, or something else (a "
+          f"CLAUDE.md, a hook, a memory) sends the agent straight to the script:")
+    for x in u["examples"]:
+        print(f"     ~  {' '.join(x['prompt'].split())[:70]}   ran {', '.join(x['scripts'])}")
+
+
+def cmd_discover(skills, history_dir, fmt="text"):
+    """`sqs.py discover` - what the history says to build or to fix, across the tree.
+
+    Two readings of the agent's own actions, never of the wording alone, which was
+    measured as noise: the skills whose scripts ran in sessions that never loaded them
+    (a routing miss, or an instruction elsewhere doing the routing), and the work
+    repeated across sessions with no skill in context (a candidate for a new skill). It
+    decides nothing: the prompts behind each row are printed so a reader - the agent
+    running this, or the person - judges whether the rows are one task.
+    """
+    from evaluation import history  # noqa: PLC0415
+    names = {s.folder for s in skills} | {s.name for s in skills if s.name}
+    unloaded = {k: v for k, v in history.unloaded_by_skill(history_dir).items() if k in names}
+    work = history.unskilled_work(history_dir)
+    if fmt == "json":
+        print(json.dumps({"ran_unloaded": {k: {"turns": t, "sessions": n}
+                                           for k, (t, n) in unloaded.items()},
+                          "unskilled_work": work}, ensure_ascii=False, indent=2))
+        return 0
+    print("1. Skills whose own scripts ran in sessions that never loaded them")
+    if not unloaded:
+        print("   none - every script run from a skill folder came after that skill loaded")
+    for k, (t, n) in sorted(unloaded.items(), key=lambda kv: (-kv[1][0], kv[0])):
+        print(f"   {t:4} turn(s) in {n:3} session(s)  {k}")
+    if unloaded:
+        print("   `sqs.py improve <skill>` lists the prompts behind each: should-trigger "
+              "wordings, unless an instruction outside the skill is doing the routing")
+    print()
+    print("2. Work repeated across sessions with no skill loaded")
+    if not work:
+        print("   nothing repeated in two or more sessions")
+    for w in work:
+        verb = "ran" if w["kind"] == "script" else "edited"
+        print(f"   {w['sessions']:3} session(s), {w['turns']:3} turn(s)  {verb} {w['what']}")
+        for p in w["prompts"]:
+            print(f"          {p[:90]}")
+    if work:
+        print("   Read the prompts before deciding: rows can be one task or several, and a "
+              "document edited often may already belong to a skill that did not fire. For "
+              "a task worth a skill: `sqs.py new <name> --seed <word>`, then "
+              "references/creating-a-skill.md.")
     return 0
 
 
@@ -1102,12 +1155,12 @@ def main(argv=None):
                                  description="quality suite for Agent Skills")
     ap.add_argument("command", help="check | all | " + " | ".join(sorted(MODULES.values()))
                     + " | fix | eval | baseline | explain | rules | harnesses | new | route"
-                    + " | improve")
+                    + " | improve | discover")
     ap.add_argument("args", nargs="*", help="skill names, a rule code, or a new skill's name")
     ap.add_argument("--skills-dir")
     ap.add_argument("--trust-target", action="store_true",
-                    help="the tree is yours: let its own check_skills.py and "
-                         "evals/run_evals.py run, and let `eval --runtime` run a skill "
+                    help="the tree is yours: let its own evals/run_evals.py run, "
+                         "and let `eval --runtime` run a skill "
                          "that can reach the network or spawn processes. Off by default "
                          "- reading a skill is not a reason to execute one")
     ap.add_argument("--config")
@@ -1194,6 +1247,8 @@ def main(argv=None):
     if not os.path.isdir(root):
         print(f"no skills directory at {root}", file=sys.stderr)
         return 2
+    if a.command == "discover":
+        return cmd_discover(discover(root), a.history_dir, a.format)
     if a.command == "new":
         if not a.args:
             return 2
@@ -1330,7 +1385,7 @@ def main(argv=None):
     if a.command == "evals" and a.init:
         return cmd_init_evals(skills)
 
-    engine = load_structure_engine(root, a.trust_target) if "structure" in modules else None
+    engine = load_structure_engine(root) if "structure" in modules else None
 
     if a.command == "fix":
         rc = 0

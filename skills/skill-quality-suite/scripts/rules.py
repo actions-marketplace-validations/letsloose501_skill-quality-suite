@@ -428,6 +428,16 @@ _ROWS = {
               "people to install upstream, add upstream as a git remote and the finding goes "
               "away on its own.", False),
 
+    "PB015": ("warning", "Repository material ships inside the skill",
+              "SKILL.md sits at the root of its git repository, beside tests, docs, examples or "
+              "CI. An installer copies the skill's folder, which here is the whole repository: "
+              "the test corpus and the documentation land in every user's skills directory, and "
+              "every marketplace scanner reads them as the skill. A fixture of an attack that "
+              "tests a scanner reads, to the next scanner, as an attack.",
+              "Move the skill into `skills/<name>/` and keep the repository's own material "
+              "beside it. `.sqsignore` does not help: it hides a directory from this suite, not "
+              "from the installer or anybody else's scanner.", False),
+
     # ---- EV: evals -----------------------------------------------------------
     "EV001": ("error", "Routing invariant broken",
               "Two skills claim the same wording and only one can win, or a skill claims wording "
@@ -686,6 +696,7 @@ GRADES = {
     # both sides are read off disk; the risk is a fork with no `upstream` remote, and
     # recall stops at the install spellings the pattern knows
     "PB014": ("medium", "medium"),
+    "PB015": ("high", "low"),    # git's own toplevel and a directory listing - both exact
 
     # evals: file parsing and a delegated runner
     "EV001": ("high", "low"),    "EV002": ("high", "low"),    "EV003": ("high", "low"),

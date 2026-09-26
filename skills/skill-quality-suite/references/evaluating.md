@@ -118,6 +118,26 @@ property of the number. The cases are printed under the counts for the same reas
 two false positives that are both the same near-miss are one problem, and only the list
 shows that.
 
+Under a missed should-trigger case the report says **what loaded instead** - the first
+skill each run reached for, or nothing:
+
+```
+      [0.00] did not fire: archive receipt number 2 from march
+             went to: ledger-lite 3/3
+```
+
+The two misses call for different fixes. A miss to a neighbour is a boundary to draw
+between two descriptions, and the neighbour's may be the one to change; a miss to nothing
+is a description that does not reach the request at all. Only the first skill a run loads
+counts - it is the routing decision, and anything loaded later is the agent's choice about
+its task. The same counts are stored per case as `went_to`.
+
+The last line is the bill: how many agent runs the pass made, failed ones included,
+and what they reported costing. If any run reported no cost, the total reads `n/a`
+rather than a partial sum - not measured is not zero. `--compare` puts the pass cost
+beside the other costs, and it is judged the same way: reported, not failed, unless
+`--fail-on-cost`.
+
 The runner splits the set **60/40 into train and validation**, stratified so both halves
 carry positives and negatives, with a fixed seed so iterations compare like with like.
 
@@ -316,9 +336,9 @@ The set is what makes an improvement safe to attempt. That is the reason to spen
 minutes below, not tidiness.
 
 Three sources, and they answer different questions. Use all three on a skill you are adopting
-and at least the first two on one you are writing. Generating them is
-[item 17](https://letsloose501.github.io/skill-quality-suite/roadmap); until that exists, this
-is the twenty minutes that makes the rest of the page worth running.
+and at least the first two on one you are writing. `sqs.py cases <skill> --generate` drafts
+the set out of all three; reading the draft is the twenty minutes that makes the rest of the
+page worth running.
 
 **1. What you expect of it.** Write down, in plain sentences, what you want this skill to do
 *for you*. Do it before you read the skill closely, and if the skill does not exist yet, do it

@@ -146,6 +146,38 @@ prompt a skill loaded after, and out of context it is not a wording. Everything 
 is your own words, so it is printed for review and written only with `--apply`, and only
 where the skill has no trigger set yet.
 
+## Which skill to fix or write next
+
+`--from-history` needs a skill to harvest for. `discover` asks the question one level up:
+across all your sessions, where does the work go?
+
+```bash
+python scripts/sqs.py discover
+```
+
+It reads the same transcripts, but from the agent's actions rather than the prompt's
+wording - which skill loaded, which scripts ran, which files changed - because a first
+attempt at classifying prompts by their words was measured as noise on 1,058 real ones.
+Two lists come out:
+
+- **skills whose own scripts ran in sessions that never loaded them.** A script inside
+  `.claude/skills/<skill>/` run from the shell, before that skill loaded anywhere in the
+  session, in a session that did not edit the skill (a session editing a skill is testing
+  it). Either the description missed those requests, or something else - a `CLAUDE.md`, a
+  hook - sends the agent to the script directly. `improve <skill>` lists the prompts;
+- **work repeated with no skill loaded.** A document changed, or a script run, in two or
+  more sessions that had loaded no skill up to that turn. Left out: a script that was
+  itself edited somewhere (the project being built, not a tool being used), source code,
+  the harness's own files (`MEMORY.md`, `CLAUDE.md`, `.claude/`), scratch files, and a
+  script name that only appears inside a heredoc or a commit message.
+
+On one real history of 678 sessions, the first list named a notes skill whose link checker
+ran in 27 sessions that never loaded it, and the second list was led by a planning
+document edited in nine sessions with no skill loaded - a task nobody had written a skill
+for. Every row prints the prompts that led to it, because whether two rows are one task
+is a judgement, and the skill's instructions leave it to the agent running it, in
+conversation: propose, and write nothing until the user says yes.
+
 ## What this is not
 
 - **not a score.** "78% honest" is unactionable, and the one-number headline this

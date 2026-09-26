@@ -72,7 +72,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -95,7 +95,7 @@ runs:
         SQS_SARIF: ${{ inputs.sarif-file }}
       run: |
         set -o pipefail
-        args=("$SQS_ACTION_DIR/scripts/sqs.py" "$SQS_COMMAND" "$SQS_PATH")
+        args=("$SQS_ACTION_DIR/skills/skill-quality-suite/scripts/sqs.py" "$SQS_COMMAND" "$SQS_PATH")
         if [ "$SQS_STRICT" = "true" ]; then args+=(--strict); fi
         if [ -n "$SQS_HARNESS" ]; then args+=(--harness "$SQS_HARNESS"); fi
         if [ -n "$SQS_MIN_CONFIDENCE" ]; then args+=(--min-confidence "$SQS_MIN_CONFIDENCE"); fi
@@ -122,7 +122,7 @@ runs:
       # `always()` leads, so the upload still happens on the run that went red -
       # a failing gate is exactly the run whose findings somebody wants to read.
     - if: ${{ always() && inputs.upload-sarif == 'true' && inputs.sarif-file != '' }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4
       with:
         sarif_file: ${{ inputs.sarif-file }}
         category: skill-quality-suite

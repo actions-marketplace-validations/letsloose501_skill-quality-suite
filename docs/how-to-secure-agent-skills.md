@@ -73,7 +73,7 @@ patterns worth refusing outright:
 The placeholders are deliberate. This page ships inside the skill, so the literal
 forms would sit in every reader's skills directory for their own scanner to find;
 the shapes stay recognisable without being copy-pasteable. The literal patterns live
-in [`scripts/security.py`](https://github.com/letsloose501/skill-quality-suite/blob/main/scripts/security.py),
+in [`scripts/security.py`](https://github.com/letsloose501/sqs-skills/blob/main/skills/skill-quality-suite/scripts/security.py),
 where they have to.
 
 The download-into-a-shell row deserves its own line. It is the most normal-looking instruction on the
@@ -162,15 +162,15 @@ report says so with the call that did it.
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/letsloose501/skill-quality-suite
-    rev: v1
+  - repo: https://github.com/letsloose501/sqs-skills
+    rev: v2
     hooks:
       - id: skill-quality-suite-security
 ```
 
 ```yaml
 # a skill repository's CI
-- uses: letsloose501/skill-quality-suite@v1
+- uses: letsloose501/sqs-skills@v2
   with:
     command: security
     upload-sarif: "true"    # needs security-events: write
@@ -185,4 +185,4 @@ nobody opens is a scanner that has already stopped working.
 
 - [Skill security reference](skill-security.md)
 - [How to validate an AI Agent Skill](how-to-validate-an-agent-skill.md)
-- [Worked examples, including a malicious skill and the real report over it](https://github.com/letsloose501/skill-quality-suite/tree/main/examples)
+- [Worked examples, including a malicious skill and the real report over it](https://github.com/letsloose501/sqs-skills/tree/main/examples)

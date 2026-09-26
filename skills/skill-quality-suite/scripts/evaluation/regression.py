@@ -51,6 +51,7 @@ COST = [
     ("runtime", ("sides", "treatment", "cost_usd"), "cost"),
     ("runtime", ("sides", "treatment", "duration_s"), "wall time"),
     ("runtime", ("sides", "treatment", "tool_calls"), "tool calls"),
+    ("trigger", ("cost_usd",), "trigger pass cost"),
 ]
 
 
